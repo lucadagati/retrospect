@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wasmbed-controller-sa
+  namespace: wasmbed
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: wasmbed-controller-role
+rules:
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+- apiGroups: ["wasmbed.github.io"]
+  resources: ["applications", "devices"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+- apiGroups: ["wasmbed.github.io"]
+  resources: ["applications/status", "devices/status"]
+  verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: wasmbed-controller-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: wasmbed-controller-role
+subjects:
+- kind: ServiceAccount
+  name: wasmbed-controller-sa
+  namespace: wasmbed

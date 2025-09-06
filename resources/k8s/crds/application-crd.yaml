@@ -1,0 +1,43 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: applications.wasmbed.github.io
+spec:
+  group: wasmbed.github.io
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              name:
+                type: string
+              wasmBinary:
+                type: string
+              targetDevices:
+                type: array
+                items:
+                  type: string
+              config:
+                type: object
+          status:
+            type: object
+            properties:
+              state:
+                type: string
+              deployedDevices:
+                type: array
+                items:
+                  type: string
+              lastDeployed:
+                type: string
+  scope: Namespaced
+  names:
+    plural: applications
+    singular: application
+    kind: Application

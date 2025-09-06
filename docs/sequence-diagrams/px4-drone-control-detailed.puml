@@ -1,0 +1,265 @@
+' SPDX-License-Identifier: CC-BY-4.0
+' Copyright © 2025 Wasmbed contributors
+
+@startuml
+title PX4 Drone Control - Complete Integration Workflow
+
+skinparam wrapMessageWidth 200
+skinparam sequenceMessageAlign center
+skinparam sequenceArrowThickness 2
+skinparam sequenceLifeLineBackgroundColor #E8F4FD
+skinparam sequenceActorBackgroundColor #D4E6F1
+skinparam sequenceParticipantBackgroundColor #F8F9FA
+
+actor "User" as USER #LightBlue
+participant "kubectl" as KUBECTL #LightGreen
+participant "Kubernetes API" as K8S_API #LightGray
+participant "Controller" as CONTROLLER #LightCyan
+participant "Gateway Server" as GATEWAY #LightCoral
+participant "WASM Runtime" as WASM_RT #LightSteelBlue
+participant "microROS Bridge" as MICROROS #LightPink
+participant "FastDDS" as FASTDDS #LightYellow
+participant "PX4 Autopilot" as PX4 #LightBlue
+participant "MCU Device" as MCU #LightBlue
+database "etcd" as ETCD #LightSteelBlue
+
+== PX4 Application Deployment ==
+
+USER -> KUBECTL : **Deploy PX4 Drone Control App**
+note right : kubectl apply -f px4-drone-control-app.yaml\nWASM with PX4 integration\nmicroROS + FastDDS support\nMAVLink command compatibility
+
+KUBECTL -> K8S_API : **POST PX4 Application**
+note right : POST /apis/wasmbed.github.io/v1alpha1/namespaces/wasmbed/applications\nPX4-specific configuration\nWASM bytecode with PX4 topics\nTarget: px4-drone-device
+
+K8S_API -> ETCD : **Store PX4 Application**
+note right : Persist PX4 application resource\nGenerate resource version\nCreate watch events\nStatus: Pending
+
+ETCD -> K8S_API : **PX4 Application Created**
+note right : Resource stored successfully\nVersion: 1\nUID generated\nReady for deployment
+
+K8S_API -> CONTROLLER : **Watch Event: PX4 App Added**
+note right : Event type: ADDED\nObject: PX4 Application resource\nNamespace: wasmbed\nResource version
+
+== Controller Processing ==
+
+CONTROLLER -> CONTROLLER : **Reconcile PX4 Application**
+note right : Parse PX4 application spec\nValidate WASM bytecode\nCheck PX4 device availability\nVerify microROS compatibility
+
+CONTROLLER -> K8S_API : **Query PX4 Device**
+note right : GET /apis/wasmbed.github.io/v0/namespaces/wasmbed/devices\nFilter: px4-drone-device\nCheck device status\nVerify PX4 capabilities
+
+K8S_API -> ETCD : **Query PX4 Device**
+note right : Search for px4-drone-device\nCheck device status: Connected\nVerify PX4 integration flags\nReturn device resource
+
+ETCD -> K8S_API : **Return PX4 Device**
+note right : PX4 device found\nStatus: Connected\nCapabilities: ["px4", "micoros", "fastdds"]\nGateway assigned
+
+K8S_API -> CONTROLLER : **PX4 Device Available**
+note right : HTTP 200 OK\nPX4 device resource\nStatus: Connected\nReady for PX4 app deployment
+
+CONTROLLER -> K8S_API : **Update PX4 App Status**
+note right : PATCH PX4 application resource\nStatus.phase: "Deploying"\nStatus.target_device: px4-drone-device\nStatus.gateway: gateway-pod-name
+
+== Gateway Deployment ==
+
+CONTROLLER -> GATEWAY : **Deploy PX4 Application**
+note right : HTTP POST /deploy\nDevice ID: px4-drone-device\nApplication ID: px4-drone-control-app\nWASM bytecode with PX4 integration\nPX4-specific configuration
+
+GATEWAY -> GATEWAY : **Validate PX4 Application**
+note right : Decode WASM bytecode\nValidate PX4 integration\nCheck microROS topics\nVerify MAVLink commands
+
+GATEWAY -> MCU : **TLS Encrypted PX4 Deployment**
+note right : Encrypted deployment message\nPX4 application WASM\nmicroROS configuration\nFastDDS settings\nMAVLink command mappings
+
+== MCU PX4 Integration ==
+
+MCU -> MCU : **Receive PX4 Deployment**
+note right : Decrypt PX4 deployment\nValidate PX4 application\nPrepare microROS bridge\nInitialize FastDDS
+
+MCU -> WASM_RT : **Load PX4 WASM Module**
+note right : Parse PX4 WASM binary\nInitialize PX4 integration functions\nSet up microROS topics\nConfigure MAVLink commands
+
+WASM_RT -> WASM_RT : **Initialize PX4 Instance**
+note right : Create PX4 WASM instance\nSet up microROS topics\nInitialize FastDDS participant\nConfigure MAVLink protocol
+
+WASM_RT -> MICROROS : **Initialize microROS Node**
+note right : Create microROS node: "px4_drone_control_node"\nSet domain ID: 0\nConfigure QoS: Reliable\nInitialize participant
+
+MICROROS -> FASTDDS : **Initialize FastDDS**
+note right : Create FastDDS participant\nSet transport: UDP\nConfigure serialization: CDR\nSet QoS profile: Reliable
+
+FASTDDS -> MICROROS : **FastDDS Ready**
+note right : Participant created\nTransport configured\nQoS applied\nReady for communication
+
+MICROROS -> WASM_RT : **microROS Ready**
+note right : Node initialized\nTopics configured\nPublisher/Subscriber ready\nPX4 bridge active
+
+== PX4 Topic Configuration ==
+
+WASM_RT -> MICROROS : **Configure PX4 Topics**
+note right : Input topics: /fmu/in/*\nOutput topics: /fmu/out/*\nTopic types: PX4 message types\nQoS: Reliable
+
+MICROROS -> FASTDDS : **Create PX4 Publishers**
+note right : /fmu/in/vehicle_command\n/fmu/in/position_setpoint\n/fmu/in/attitude_setpoint\nPublisher QoS: Reliable
+
+MICROROS -> FASTDDS : **Create PX4 Subscribers**
+note right : /fmu/out/vehicle_status\n/fmu/out/vehicle_local_position\n/fmu/out/battery_status\n/fmu/out/vehicle_attitude\n/fmu/out/actuator_outputs
+
+FASTDDS -> MICROROS : **PX4 Topics Ready**
+note right : All publishers created\nAll subscribers created\nQoS configured\nReady for PX4 communication
+
+MICROROS -> WASM_RT : **PX4 Integration Complete**
+note right : All topics configured\nPublishers/Subscribers ready\nPX4 bridge active\nReady for commands
+
+== PX4 Communication ==
+
+WASM_RT -> MICROROS : **Send MAVLink Command**
+note right : Command: ARM (ID: 400)\nTarget: PX4 autopilot\nPriority: High\nTimeout: 5 seconds
+
+MICROROS -> FASTDDS : **Publish Vehicle Command**
+note right : Topic: /fmu/in/vehicle_command\nMessage: MAVLink ARM command\nQoS: Reliable\nDelivery: Guaranteed
+
+FASTDDS -> PX4 : **Deliver Command to PX4**
+note right : FastDDS transport\nUDP communication\nCDR serialization\nReliable delivery
+
+PX4 -> PX4 : **Process MAVLink Command**
+note right : Parse ARM command\nValidate command\nCheck safety conditions\nExecute arm sequence
+
+PX4 -> FASTDDS : **Publish Vehicle Status**
+note right : Topic: /fmu/out/vehicle_status\nMessage: Armed status\nQoS: Reliable\nStatus update
+
+FASTDDS -> MICROROS : **Deliver Status Update**
+note right : Vehicle status message\nArmed: true\nFlight mode: Manual\nBattery: 90%
+
+MICROROS -> WASM_RT : **PX4 Status Update**
+note right : Vehicle armed successfully\nStatus: Armed\nFlight mode: Manual\nReady for flight
+
+== Flight Control Sequence ==
+
+WASM_RT -> MICROROS : **Send Takeoff Command**
+note right : Command: TAKEOFF (ID: 22)\nAltitude: 5 meters\nSpeed: 1 m/s\nTimeout: 30 seconds
+
+MICROROS -> FASTDDS : **Publish Takeoff Command**
+note right : Topic: /fmu/in/vehicle_command\nMessage: MAVLink TAKEOFF\nParameters: altitude, speed\nQoS: Reliable
+
+FASTDDS -> PX4 : **Deliver Takeoff Command**
+note right : Takeoff command received\nAltitude target set\nTakeoff sequence initiated\nStatus: Taking off
+
+PX4 -> PX4 : **Execute Takeoff**
+note right : Increase throttle\nMaintain attitude\nClimb to target altitude\nMonitor position
+
+PX4 -> FASTDDS : **Publish Position Updates**
+note right : Topic: /fmu/out/vehicle_local_position\nMessage: Current position\nX, Y, Z coordinates\nVelocity data
+
+FASTDDS -> MICROROS : **Deliver Position Data**
+note right : Position: X=0, Y=0, Z=5.2\nVelocity: VX=0.1, VY=0.0, VZ=0.0\nAltitude: 5.2 meters\nStatus: Hovering
+
+MICROROS -> WASM_RT : **Position Update**
+note right : Takeoff complete\nPosition: (0, 0, 5.2)\nStatus: Hovering\nReady for navigation
+
+== Navigation Control ==
+
+WASM_RT -> MICROROS : **Set Target Position**
+note right : Target: X=10, Y=5, Z=5\nSpeed: 2 m/s\nAccuracy: 0.5 meters\nTimeout: 60 seconds
+
+MICROROS -> FASTDDS : **Publish Position Setpoint**
+note right : Topic: /fmu/in/position_setpoint\nMessage: Target position\nX=10, Y=5, Z=5\nVelocity: 2 m/s
+
+FASTDDS -> PX4 : **Deliver Position Setpoint**
+note right : Position setpoint received\nTarget: (10, 5, 5)\nNavigation mode activated\nFlight plan generated
+
+PX4 -> PX4 : **Execute Navigation**
+note right : Calculate flight path\nAdjust attitude\nControl velocity\nNavigate to target
+
+PX4 -> FASTDDS : **Publish Navigation Status**
+note right : Topic: /fmu/out/vehicle_local_position\nMessage: Current position\nX=8.5, Y=4.2, Z=5.1\nVelocity: 1.8 m/s
+
+FASTDDS -> MICROROS : **Deliver Navigation Update**
+note right : Position: (8.5, 4.2, 5.1)\nDistance to target: 1.8m\nETA: 1 second\nStatus: Approaching
+
+MICROROS -> WASM_RT : **Navigation Update**
+note right : Approaching target\nPosition: (8.5, 4.2, 5.1)\nDistance: 1.8m\nETA: 1 second
+
+== Landing Sequence ==
+
+WASM_RT -> MICROROS : **Send Land Command**
+note right : Command: LAND (ID: 21)\nDescent rate: 1 m/s\nLanding accuracy: 0.3m\nTimeout: 30 seconds
+
+MICROROS -> FASTDDS : **Publish Land Command**
+note right : Topic: /fmu/in/vehicle_command\nMessage: MAVLink LAND\nDescent rate: 1 m/s\nLanding sequence
+
+FASTDDS -> PX4 : **Deliver Land Command**
+note right : Land command received\nLanding mode activated\nDescent initiated\nStatus: Landing
+
+PX4 -> PX4 : **Execute Landing**
+note right : Reduce throttle\nMaintain attitude\nDescend to ground\nMonitor altitude
+
+PX4 -> FASTDDS : **Publish Landing Status**
+note right : Topic: /fmu/out/vehicle_status\nMessage: Landing status\nAltitude: 0.5m\nStatus: Landing\nGround proximity: 0.5m
+
+FASTDDS -> MICROROS : **Deliver Landing Status**
+note right : Landing in progress\nAltitude: 0.5m\nGround proximity: 0.5m\nStatus: Final approach
+
+MICROROS -> WASM_RT : **Landing Status**
+note right : Landing in progress\nAltitude: 0.5m\nGround proximity: 0.5m\nFinal approach
+
+== Status Monitoring ==
+
+WASM_RT -> MICROROS : **Request Battery Status**
+note right : Query battery level\nCheck voltage\nMonitor current\nEstimate flight time
+
+MICROROS -> FASTDDS : **Subscribe to Battery**
+note right : Topic: /fmu/out/battery_status\nMonitor battery level\nCheck voltage\nTrack current draw
+
+FASTDDS -> PX4 : **Request Battery Data**
+note right : Battery status request\nVoltage: 12.4V\nCurrent: 8.5A\nPercentage: 85%
+
+PX4 -> FASTDDS : **Publish Battery Status**
+note right : Topic: /fmu/out/battery_status\nVoltage: 12.4V\nCurrent: 8.5A\nPercentage: 85%\nFlight time: 12 minutes
+
+FASTDDS -> MICROROS : **Deliver Battery Data**
+note right : Battery: 85%\nVoltage: 12.4V\nCurrent: 8.5A\nFlight time: 12 minutes
+
+MICROROS -> WASM_RT : **Battery Status**
+note right : Battery: 85%\nVoltage: 12.4V\nCurrent: 8.5A\nFlight time: 12 minutes
+
+== Error Handling ==
+
+alt **PX4 Communication Error**
+    FASTDDS -> MICROROS : **Communication Lost**
+    note right : PX4 connection lost\nFastDDS timeout\nNetwork error\nCommunication failed
+    
+    MICROROS -> WASM_RT : **PX4 Disconnected**
+    note right : PX4 communication lost\nConnection timeout\nError: Communication failed\nRetry in 5 seconds
+    
+    WASM_RT -> GATEWAY : **Error Report**
+    note right : PX4 communication error\nConnection lost\nError details\nRecovery attempt
+end
+
+alt **MAVLink Command Failed**
+    PX4 -> FASTDDS : **Command Rejected**
+    note right : MAVLink command failed\nSafety check failed\nInvalid parameters\nCommand rejected
+    
+    FASTDDS -> MICROROS : **Command Error**
+    note right : Command rejected\nError code: MAV_RESULT_DENIED\nError message\nRetry information
+    
+    MICROROS -> WASM_RT : **Command Failed**
+    note right : MAVLink command failed\nError: MAV_RESULT_DENIED\nSafety check failed\nRetry with different parameters
+end
+
+alt **Emergency Stop**
+    WASM_RT -> MICROROS : **Emergency Stop**
+    note right : Emergency stop activated\nImmediate disarm\nLand immediately\nSafety priority
+    
+    MICROROS -> FASTDDS : **Publish Emergency Stop**
+    note right : Topic: /fmu/in/vehicle_command\nCommand: EMERGENCY_STOP\nPriority: Critical\nImmediate execution
+    
+    FASTDDS -> PX4 : **Deliver Emergency Stop**
+    note right : Emergency stop received\nImmediate disarm\nLand immediately\nSafety mode activated
+    
+    PX4 -> PX4 : **Execute Emergency Stop**
+    note right : Immediate disarm\nCut throttle\nLand immediately\nSafety mode active
+end
+
+@enduml
+

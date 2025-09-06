@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wasmbed-k8s-controller
+  namespace: wasmbed
+  labels:
+    app: wasmbed-k8s-controller
+    version: v1.0.0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wasmbed-k8s-controller
+  template:
+    metadata:
+      labels:
+        app: wasmbed-k8s-controller
+        version: v1.0.0
+    spec:
+      serviceAccountName: wasmbed-controller-sa
+      containers:
+      - name: controller
+        image: wasmbed-k8s-controller:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+          name: metrics
+        env:
+        - name: WASMBED_GATEWAY_URL
+          value: "http://wasmbed-gateway:8080"
+        - name: RUST_LOG
+          value: "info"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      restartPolicy: Always

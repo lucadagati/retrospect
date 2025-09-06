@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT-0
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: wasmbed-device-access
+rules:
+  - apiGroups: ["wasmbed.github.io"]
+    resources: ["devices"]
+    verbs: ["get", "patch", "list", "create"]
+  - apiGroups: ["wasmbed.github.io"]
+    resources: ["devices/status"]
+    verbs: ["patch"]

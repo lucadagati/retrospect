@@ -1,0 +1,43 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: devices.wasmbed.github.io
+spec:
+  group: wasmbed.github.io
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              deviceId:
+                type: string
+              publicKey:
+                type: string
+              deviceType:
+                type: string
+              capabilities:
+                type: array
+                items:
+                  type: string
+          status:
+            type: object
+            properties:
+              state:
+                type: string
+              lastSeen:
+                type: string
+              applications:
+                type: array
+                items:
+                  type: string
+  scope: Namespaced
+  names:
+    plural: devices
+    singular: device
+    kind: Device

@@ -1,0 +1,91 @@
+[package]
+name = "wasmbed-gateway"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "1.0.98"
+rustls-pki-types = "1.12.0"
+tokio-util = "0.7.15"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"
+uuid = { version = "1.0", features = ["v4"] }
+base64 = "0.21"
+chrono = { version = "0.4", features = ["serde"] }
+serde_json = "1.0"
+
+[dependencies.clap]
+version = "4.5.40"
+features = [ "derive", "env" ]
+
+[dependencies.kube]
+version = "1.1.0"
+default-features = false
+features = [ "client", "rustls-tls" ]
+
+[dependencies.wasmbed-cert]
+path = "../wasmbed-cert"
+
+[dependencies.wasmbed-k8s-resource]
+path = "../wasmbed-k8s-resource"
+features = [ "client" ]
+
+[dependencies.wasmbed-protocol]
+path = "../wasmbed-protocol"
+features = [ "alloc" ]
+
+[dependencies.wasmbed-protocol-server]
+path = "../wasmbed-protocol-server"
+
+[dependencies.wasmbed-types]
+path = "../wasmbed-types"
+features = [ "k8s" ]
+
+[dependencies.tokio]
+version = "1.45.1"
+features = [ "rt-multi-thread", "signal" ]
+
+[dependencies.axum]
+version = "0.7"
+features = ["json", "multipart"]
+
+[dependencies.tower]
+version = "0.5"
+features = ["util"]
+
+[dependencies.tower-http]
+version = "0.6"
+features = ["cors", "trace"]
+
+[dependencies.serde]
+version = "1.0"
+features = ["derive"]
+
+[dependencies.reqwest]
+version = "0.11"
+features = ["json"]
+
+[dependencies.tokio-stream]
+version = "0.1"
+features = ["net"]
+
+[dependencies.serde_cbor]
+version = "0.11"
+
+[dependencies.rustls]
+version = "0.23"
+
+[dependencies.rustls-pemfile]
+version = "2.0"
+
+[dependencies.minicbor]
+version = "1.0"
+
+[dependencies.pem]
+version = "3.0"
