@@ -1,17 +1,17 @@
 # Protocol Specification
 
-## 🎯 Overview
+##  Overview
 
 This document provides the complete technical specification for the Wasmbed communication protocol, including message formats, state machines, and implementation requirements.
 
-## 📋 Protocol Version
+##  Protocol Version
 
 - **Current Version**: 1.0.0
 - **Release Date**: September 2024
 - **Status**: Stable
 - **Compatibility**: Backward compatible with future 1.x versions
 
-## 🔧 Message Format
+##  Message Format
 
 ### Envelope Structure
 
@@ -317,7 +317,7 @@ pub struct ApplicationMetrics {
 }
 ```
 
-## 🔐 Security Model
+##  Security Model
 
 ### TLS Configuration
 
@@ -367,7 +367,7 @@ pub enum TlsVersion {
 - **Replay Protection**: Timestamp-based replay protection
 - **Sequence Numbers**: Optional sequence numbers for ordering
 
-## 📊 Performance Requirements
+##  Performance Requirements
 
 ### Latency Requirements
 
@@ -394,7 +394,7 @@ pub enum TlsVersion {
 | TLS handshake | < 2MB | < 5% | < 10KB |
 | Message serialization | < 512KB | < 1% | Variable |
 
-## 🔧 Implementation Requirements
+##  Implementation Requirements
 
 ### CBOR Serialization
 
@@ -472,7 +472,7 @@ pub enum ErrorCode {
 }
 ```
 
-## 🚀 Version Compatibility
+##  Version Compatibility
 
 ### Backward Compatibility
 
@@ -493,7 +493,7 @@ fn negotiate_version(client_version: ProtocolVersion, server_version: ProtocolVe
 }
 ```
 
-## 🔍 Debugging and Monitoring
+##  Debugging and Monitoring
 
 ### Protocol Logging
 
@@ -540,7 +540,7 @@ pub struct ProtocolMetrics {
 }
 ```
 
-## 🧪 Testing
+##  Testing
 
 ### Unit Tests
 
@@ -614,7 +614,7 @@ async fn test_heartbeat_performance() {
 }
 ```
 
-## 📋 Compliance
+##  Compliance
 
 ### Standards Compliance
 

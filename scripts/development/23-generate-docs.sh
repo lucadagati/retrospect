@@ -8,40 +8,40 @@ echo "📚 Generating Wasmbed documentation..."
 
 # Check if cargo is available
 if ! command -v cargo >/dev/null 2>&1; then
-    echo "❌ Cargo not found"
+    echo " Cargo not found"
     echo "Please install Rust and Cargo"
     exit 1
 fi
 
-echo "✅ Cargo is available"
+echo " Cargo is available"
 
 # Create docs directory
 mkdir -p docs
 
 # Generate Rust documentation
-echo "📋 Generating Rust documentation..."
+echo " Generating Rust documentation..."
 cargo doc --no-deps --all-features --open
 
 if [ $? -eq 0 ]; then
-    echo "✅ Rust documentation generated"
+    echo " Rust documentation generated"
 else
-    echo "❌ Rust documentation generation failed"
+    echo " Rust documentation generation failed"
     exit 1
 fi
 
 # Generate API documentation
-echo "📋 Generating API documentation..."
+echo " Generating API documentation..."
 cargo doc --document-private-items --no-deps --all-features
 
 if [ $? -eq 0 ]; then
-    echo "✅ API documentation generated"
+    echo " API documentation generated"
 else
-    echo "❌ API documentation generation failed"
+    echo " API documentation generation failed"
     exit 1
 fi
 
 # Generate project documentation
-echo "📋 Generating project documentation..."
+echo " Generating project documentation..."
 
 # Create comprehensive README
 cat > docs/README.md << 'EOF'
@@ -90,10 +90,10 @@ Wasmbed is an IoT device management platform using Kubernetes and WebAssembly.
 ```
 EOF
 
-echo "✅ Project documentation generated"
+echo " Project documentation generated"
 
 # Generate component documentation
-echo "📋 Generating component documentation..."
+echo " Generating component documentation..."
 
 # Gateway documentation
 cat > docs/gateway.md << 'EOF'
@@ -161,10 +161,10 @@ CBOR-based communication protocol between Gateway and MCUs.
 - Certificate-based identity
 EOF
 
-echo "✅ Component documentation generated"
+echo " Component documentation generated"
 
 # Generate deployment guide
-echo "📋 Generating deployment guide..."
+echo " Generating deployment guide..."
 cat > docs/deployment.md << 'EOF'
 # Deployment Guide
 
@@ -210,10 +210,10 @@ cat > docs/deployment.md << 'EOF'
 ```
 EOF
 
-echo "✅ Deployment guide generated"
+echo " Deployment guide generated"
 
 # Generate API reference
-echo "📋 Generating API reference..."
+echo " Generating API reference..."
 cat > docs/api-reference.md << 'EOF'
 # API Reference
 
@@ -247,21 +247,21 @@ spec:
 - `GET /status`: Device status
 EOF
 
-echo "✅ API reference generated"
+echo " API reference generated"
 
 echo ""
-echo "🎉 Documentation generation completed!"
+echo " Documentation generation completed!"
 echo ""
-echo "📊 Documentation Summary:"
+echo " Documentation Summary:"
 echo "========================="
-echo "✅ Rust documentation: Generated"
-echo "✅ API documentation: Generated"
-echo "✅ Project documentation: Generated"
-echo "✅ Component documentation: Generated"
-echo "✅ Deployment guide: Generated"
-echo "✅ API reference: Generated"
+echo " Rust documentation: Generated"
+echo " API documentation: Generated"
+echo " Project documentation: Generated"
+echo " Component documentation: Generated"
+echo " Deployment guide: Generated"
+echo " API reference: Generated"
 echo ""
-echo "📁 Documentation location:"
+echo " Documentation location:"
 echo "  - Rust docs: target/doc/"
 echo "  - Project docs: docs/"
 echo ""

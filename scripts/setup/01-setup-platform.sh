@@ -16,10 +16,10 @@ CLUSTER_NAME="wasmbed"
 NAMESPACE="wasmbed"
 GATEWAY_IMAGE_TAG=""
 
-echo "🚀 Setting up Wasmbed development environment..."
+echo " Setting up Wasmbed development environment..."
 
 check_prerequisites() {
-    echo -e "${BLUE}📋 Checking prerequisites...${NC}"
+    echo -e "${BLUE} Checking prerequisites...${NC}"
     
     local missing_tools=()
     
@@ -40,18 +40,18 @@ check_prerequisites() {
     fi
     
     if [ ${#missing_tools[@]} -ne 0 ]; then
-        echo -e "${RED}❌ Missing required tools: ${missing_tools[*]}${NC}"
+        echo -e "${RED} Missing required tools: ${missing_tools[*]}${NC}"
         echo "Please install missing tools and run the setup again."
         exit 1
     fi
     
     # Check if we're in Nix shell
     if [ -z "${IN_NIX_SHELL:-}" ]; then
-        echo -e "${YELLOW}⚠️  Not in Nix shell. Running 'nix develop' first...${NC}"
+        echo -e "${YELLOW}  Not in Nix shell. Running 'nix develop' first...${NC}"
         exec nix develop --command "$0" "$@"
     fi
     
-    echo -e "${GREEN}✅ Prerequisites check passed${NC}"
+    echo -e "${GREEN} Prerequisites check passed${NC}"
 }
 
 build_gateway_image() {
@@ -70,19 +70,19 @@ build_gateway_image() {
     GATEWAY_IMAGE_TAG=$(echo "$load_output" | grep "Loaded image:" | sed 's/Loaded image: //')
     
     if [ -z "$GATEWAY_IMAGE_TAG" ]; then
-        echo -e "${RED}❌ Failed to extract image tag${NC}"
+        echo -e "${RED} Failed to extract image tag${NC}"
         exit 1
     fi
     
-    echo -e "${GREEN}✅ Gateway image built: ${GATEWAY_IMAGE_TAG}${NC}"
+    echo -e "${GREEN} Gateway image built: ${GATEWAY_IMAGE_TAG}${NC}"
 }
 
 setup_k3d_cluster() {
-    echo -e "${BLUE}🏗️  Setting up k3d cluster...${NC}"
+    echo -e "${BLUE}  Setting up k3d cluster...${NC}"
     
     # Check if cluster already exists
     if k3d cluster list | grep -q "$CLUSTER_NAME"; then
-        echo "  ⚠️  Cluster $CLUSTER_NAME already exists, deleting..."
+        echo "    Cluster $CLUSTER_NAME already exists, deleting..."
         k3d cluster delete "$CLUSTER_NAME"
     fi
     
@@ -91,15 +91,15 @@ setup_k3d_cluster() {
     k3d cluster create --config resources/k3d/config.yaml
     
     # Configure kubectl
-    echo "  ⚙️  Configuring kubectl..."
+    echo "    Configuring kubectl..."
     export KUBECONFIG=$(k3d kubeconfig write "$CLUSTER_NAME")
     
     # Wait for cluster to be ready
     echo "  ⏳ Waiting for cluster to be ready..."
     kubectl wait --for=condition=Ready nodes --all --timeout=60s
     
-    echo -e "${GREEN}✅ k3d cluster is ready${NC}"
-    echo -e "${BLUE}💡 KUBECONFIG is set to: $KUBECONFIG${NC}"
+    echo -e "${GREEN} k3d cluster is ready${NC}"
+    echo -e "${BLUE} KUBECONFIG is set to: $KUBECONFIG${NC}"
 }
 
 import_images() {
@@ -108,14 +108,14 @@ import_images() {
     echo "  📥 Importing gateway image: $GATEWAY_IMAGE_TAG"
     k3d image import -c "$CLUSTER_NAME" "$GATEWAY_IMAGE_TAG"
     
-    echo -e "${GREEN}✅ Images imported successfully${NC}"
+    echo -e "${GREEN} Images imported successfully${NC}"
 }
 
 deploy_kubernetes_resources() {
     echo -e "${BLUE}🚢 Deploying Kubernetes resources...${NC}"
     
     # Create namespace
-    echo "  📁 Creating namespace..."
+    echo "   Creating namespace..."
     kubectl apply -f resources/k8s/000-namespace.yaml
     
     # Deploy CRDs
@@ -126,17 +126,17 @@ deploy_kubernetes_resources() {
     cargo run -p wasmbed-k8s-resource-tool crd application | kubectl -n "$NAMESPACE" apply -f -
     
     # Deploy RBAC resources
-    echo "  🔐 Deploying RBAC resources..."
+    echo "   Deploying RBAC resources..."
     kubectl apply -f resources/k8s/100-service-account-gateway.yaml
     kubectl apply -f resources/k8s/101-cluster-role-gateway-device-access.yaml
     kubectl apply -f resources/k8s/102-cluster-rolebinding-gateway.yaml
     
     # Deploy service
-    echo "  🌐 Deploying gateway service..."
+    echo "   Deploying gateway service..."
     kubectl apply -f resources/k8s/110-service-gateway.yaml
     
     # Update StatefulSet with correct image tag and deploy
-    echo "  🎯 Deploying gateway StatefulSet with image: $GATEWAY_IMAGE_TAG"
+    echo "   Deploying gateway StatefulSet with image: $GATEWAY_IMAGE_TAG"
     sed "s|image: wasmbed-gateway:.*|image: $GATEWAY_IMAGE_TAG|" \
         resources/k8s/111-statefulset-gateway.yaml | \
         kubectl apply -f -
@@ -145,18 +145,18 @@ deploy_kubernetes_resources() {
     echo "  📏 Scaling to 1 replica..."
     kubectl -n "$NAMESPACE" scale statefulset wasmbed-gateway --replicas=1
     
-    echo -e "${GREEN}✅ Kubernetes resources deployed${NC}"
+    echo -e "${GREEN} Kubernetes resources deployed${NC}"
 }
 
 create_test_device() {
-    echo -e "${BLUE}📱 Creating test device...${NC}"
+    echo -e "${BLUE} Creating test device...${NC}"
     
     cargo run -p wasmbed-k8s-resource-tool manifest device \
         --name device-0 \
         --cert resources/dev-certs/client-0.der \
     | kubectl -n "$NAMESPACE" apply -f -
     
-    echo -e "${GREEN}✅ Test device created${NC}"
+    echo -e "${GREEN} Test device created${NC}"
 }
 
 wait_for_gateway() {
@@ -168,23 +168,23 @@ wait_for_gateway() {
     # Wait for pod to be ready
     kubectl -n "$NAMESPACE" wait --for=condition=ready pod/wasmbed-gateway-0 --timeout=300s
     
-    echo -e "${GREEN}✅ Gateway is ready${NC}"
+    echo -e "${GREEN} Gateway is ready${NC}"
 }
 
 display_status() {
     echo ""
-    echo -e "${GREEN}🎉 Wasmbed environment setup completed successfully!${NC}"
+    echo -e "${GREEN} Wasmbed environment setup completed successfully!${NC}"
     echo ""
-    echo -e "${BLUE}📊 Environment Status:${NC}"
+    echo -e "${BLUE} Environment Status:${NC}"
     echo "  🏠 Cluster: $CLUSTER_NAME"
-    echo "  📁 Namespace: $NAMESPACE"
+    echo "   Namespace: $NAMESPACE"
     echo "  🐳 Gateway Image: $GATEWAY_IMAGE_TAG"
-    echo "  ⚙️  KUBECONFIG: $KUBECONFIG"
+    echo "    KUBECONFIG: $KUBECONFIG"
     echo ""
-    echo -e "${BLUE}🔍 Quick status check:${NC}"
+    echo -e "${BLUE} Quick status check:${NC}"
     kubectl -n "$NAMESPACE" get pods,services,devices
     echo ""
-    echo -e "${BLUE}💡 Next steps:${NC}"
+    echo -e "${BLUE} Next steps:${NC}"
     echo "  1. Run './scripts/test.sh' to test the connection"
     echo "  2. Run './scripts/monitor.sh' to monitor the system"
     echo "  3. To cleanup: './scripts/cleanup.sh'"

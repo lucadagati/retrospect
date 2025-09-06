@@ -4,43 +4,43 @@ Welcome to the comprehensive technical documentation for the Wasmbed IoT Device 
 
 ## 📚 Documentation Structure
 
-### 🏗️ Architecture & Design
+###  Architecture & Design
 - **[System Architecture](architecture/system-overview.md)** - High-level system design and components
 - **[Protocol Design](architecture/protocol-design.md)** - Detailed communication protocol specification
 - **[Security Architecture](architecture/security.md)** - Security model and implementation
 - **[Data Flow](architecture/data-flow.md)** - End-to-end data flow diagrams
 
-### 🔧 Implementation Guides
+###  Implementation Guides
 - **[Gateway Implementation](implementation/gateway.md)** - MPU Gateway detailed implementation
 - **[Controller Implementation](implementation/controller.md)** - Kubernetes controller implementation
 - **[MCU Firmware](implementation/mcu-firmware.md)** - RISC-V firmware implementation
 - **[Protocol Implementation](implementation/protocol.md)** - Communication protocol implementation
 
-### 📋 API Reference
+###  API Reference
 - **[Kubernetes CRDs](api/crds.md)** - Custom Resource Definitions reference
 - **[Gateway API](api/gateway-api.md)** - Gateway REST API reference
 - **[Protocol Messages](api/protocol-messages.md)** - Protocol message formats
 - **[Controller API](api/controller-api.md)** - Controller health and metrics endpoints
 
-### 🚀 Deployment & Operations
+###  Deployment & Operations
 - **[Installation Guide](deployment/installation.md)** - Complete installation instructions
 - **[Configuration](deployment/configuration.md)** - System configuration options
 - **[Monitoring](deployment/monitoring.md)** - Monitoring and observability
 - **[Troubleshooting](deployment/troubleshooting.md)** - Common issues and solutions
 
-### 🧪 Development & Testing
+###  Development & Testing
 - **[Development Setup](development/setup.md)** - Development environment setup
 - **[Testing Guide](development/testing.md)** - Testing strategies and tools
 - **[Debugging](development/debugging.md)** - Debugging techniques and tools
 - **[Performance](development/performance.md)** - Performance optimization guide
 
-### 📊 Specifications
+###  Specifications
 - **[Protocol Specification](specifications/protocol.md)** - Detailed protocol specification
 - **[Security Specification](specifications/security.md)** - Security requirements and implementation
 - **[Performance Specification](specifications/performance.md)** - Performance requirements
 - **[Compatibility](specifications/compatibility.md)** - Compatibility matrix
 
-## 🎯 Quick Start
+##  Quick Start
 
 ### For Developers
 1. Read [System Architecture](architecture/system-overview.md) for high-level understanding
@@ -60,7 +60,7 @@ Welcome to the comprehensive technical documentation for the Wasmbed IoT Device 
 3. Check [Security Architecture](architecture/security.md) for security model
 4. Review [Performance Specification](specifications/performance.md) for requirements
 
-## 📖 Documentation Standards
+##  Documentation Standards
 
 ### Code Examples
 All code examples are tested and verified to work with the current version.
@@ -75,7 +75,7 @@ All code examples are tested and verified to work with the current version.
 - Compatible with Rust 1.88+ and Kubernetes 1.33+
 - Tested with k3d v5.6.0 and QEMU 8.0+
 
-## 🤝 Contributing to Documentation
+##  Contributing to Documentation
 
 ### Guidelines
 1. **Accuracy**: All technical details must be verified

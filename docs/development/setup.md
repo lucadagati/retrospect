@@ -1,10 +1,10 @@
 # Development Setup Guide
 
-## 🎯 Overview
+##  Overview
 
 This guide provides detailed instructions for setting up a development environment for Wasmbed, including all necessary tools, dependencies, and configuration.
 
-## 🔧 Prerequisites
+##  Prerequisites
 
 ### System Requirements
 
@@ -54,7 +54,7 @@ This guide provides detailed instructions for setting up a development environme
 - Postman (API testing)
 ```
 
-## 🚀 Installation Steps
+##  Installation Steps
 
 ### 1. Install Nix
 
@@ -111,7 +111,7 @@ brew install qemu
 qemu-system-riscv32 --version
 ```
 
-## 🏗️ Project Setup
+##  Project Setup
 
 ### 1. Clone Repository
 
@@ -165,7 +165,7 @@ cargo test -p wasmbed-k8s-resource
 cargo test --test integration
 ```
 
-## 🔧 Development Workflow
+##  Development Workflow
 
 ### 1. Code Organization
 
@@ -222,7 +222,7 @@ cargo audit
 cargo bench
 ```
 
-## 🧪 Testing
+##  Testing
 
 ### 1. Unit Tests
 
@@ -263,7 +263,7 @@ RUST_LOG=debug cargo test --test integration
 ./scripts/cleanup.sh
 ```
 
-## 🔍 Debugging
+##  Debugging
 
 ### 1. Logging
 
@@ -303,7 +303,7 @@ cargo install flamegraph
 cargo flamegraph
 ```
 
-## 📊 Performance Testing
+##  Performance Testing
 
 ### 1. Load Testing
 
@@ -329,7 +329,7 @@ cargo bench --bench protocol_benchmarks
 cargo bench --bench compare
 ```
 
-## 🔐 Security
+##  Security
 
 ### 1. Certificate Management
 
@@ -365,7 +365,7 @@ cargo tree
 cargo outdated
 ```
 
-## 🚀 Deployment
+##  Deployment
 
 ### 1. Local Development
 
@@ -392,7 +392,7 @@ docker push your-registry/wasmbed-gateway:latest
 docker push your-registry/wasmbed-k8s-controller:latest
 ```
 
-## 📋 Best Practices
+##  Best Practices
 
 ### 1. Code Style
 
@@ -447,7 +447,7 @@ mod tests {
 }
 ```
 
-## 🔧 IDE Configuration
+##  IDE Configuration
 
 ### 1. VS Code
 

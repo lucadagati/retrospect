@@ -21,11 +21,11 @@ print_status() {
     local status=$1
     local message=$2
     if [ "$status" = "SUCCESS" ]; then
-        echo -e "${GREEN}✅ SUCCESS${NC}: $message"
+        echo -e "${GREEN} SUCCESS${NC}: $message"
     elif [ "$status" = "ERROR" ]; then
-        echo -e "${RED}❌ ERROR${NC}: $message"
+        echo -e "${RED} ERROR${NC}: $message"
     else
-        echo -e "${YELLOW}⚠️  WARN${NC}: $message"
+        echo -e "${YELLOW}  WARN${NC}: $message"
     fi
 }
 
@@ -59,7 +59,7 @@ fi
 print_status "SUCCESS" "Backup file found: $BACKUP_FILE"
 
 # Extract backup
-echo "📋 Extracting backup..."
+echo " Extracting backup..."
 cd "$BACKUP_DIR"
 tar -xzf "$BACKUP_NAME.tar.gz"
 cd - > /dev/null
@@ -68,7 +68,7 @@ cd - > /dev/null
 TIMESTAMP=$(echo "$BACKUP_NAME" | sed 's/wasmbed-backup-//')
 
 # Step 1: Restore CRDs
-echo "📋 Step 1: Restoring CRDs..."
+echo " Step 1: Restoring CRDs..."
 if [ -f "$BACKUP_DIR/crds_$TIMESTAMP.txt" ]; then
     cargo run -p wasmbed-k8s-resource-tool -- crd device | kubectl apply -f - 2>/dev/null || true
     cargo run -p wasmbed-k8s-resource-tool -- crd application | kubectl apply -f - 2>/dev/null || true
@@ -78,19 +78,19 @@ else
 fi
 
 # Step 2: Restore namespace
-echo "📋 Step 2: Restoring namespace..."
+echo " Step 2: Restoring namespace..."
 kubectl create namespace "$NAMESPACE" 2>/dev/null || true
 print_status "SUCCESS" "Namespace restored"
 
 # Step 3: Restore RBAC
-echo "📋 Step 3: Restoring RBAC..."
+echo " Step 3: Restoring RBAC..."
 kubectl apply -f resources/k8s/020-service-accounts.yaml 2>/dev/null || true
 kubectl apply -f resources/k8s/030-roles.yaml 2>/dev/null || true
 kubectl apply -f resources/k8s/040-role-bindings.yaml 2>/dev/null || true
 print_status "SUCCESS" "RBAC restored"
 
 # Step 4: Restore resources
-echo "📋 Step 4: Restoring resources..."
+echo " Step 4: Restoring resources..."
 if [ -f "$BACKUP_DIR/resources_$TIMESTAMP.yaml" ]; then
     kubectl apply -f "$BACKUP_DIR/resources_$TIMESTAMP.yaml" 2>/dev/null || true
     print_status "SUCCESS" "Resources restored"
@@ -99,7 +99,7 @@ else
 fi
 
 # Step 5: Restore secrets
-echo "📋 Step 5: Restoring secrets..."
+echo " Step 5: Restoring secrets..."
 if [ -f "$BACKUP_DIR/secrets_$TIMESTAMP.yaml" ]; then
     kubectl apply -f "$BACKUP_DIR/secrets_$TIMESTAMP.yaml" 2>/dev/null || true
     print_status "SUCCESS" "Secrets restored"
@@ -108,7 +108,7 @@ else
 fi
 
 # Step 6: Restore configmaps
-echo "📋 Step 6: Restoring configmaps..."
+echo " Step 6: Restoring configmaps..."
 if [ -f "$BACKUP_DIR/configmaps_$TIMESTAMP.yaml" ]; then
     kubectl apply -f "$BACKUP_DIR/configmaps_$TIMESTAMP.yaml" 2>/dev/null || true
     print_status "SUCCESS" "Configmaps restored"
@@ -117,7 +117,7 @@ else
 fi
 
 # Step 7: Restore custom resources
-echo "📋 Step 7: Restoring custom resources..."
+echo " Step 7: Restoring custom resources..."
 if [ -f "$BACKUP_DIR/devices_$TIMESTAMP.yaml" ]; then
     kubectl apply -f "$BACKUP_DIR/devices_$TIMESTAMP.yaml" 2>/dev/null || true
     print_status "SUCCESS" "Devices restored"
@@ -133,7 +133,7 @@ else
 fi
 
 # Step 8: Restore network policies
-echo "📋 Step 8: Restoring network policies..."
+echo " Step 8: Restoring network policies..."
 if [ -f "$BACKUP_DIR/networkpolicies_$TIMESTAMP.yaml" ]; then
     kubectl apply -f "$BACKUP_DIR/networkpolicies_$TIMESTAMP.yaml" 2>/dev/null || true
     print_status "SUCCESS" "Network policies restored"
@@ -142,7 +142,7 @@ else
 fi
 
 # Step 9: Restore certificates
-echo "📋 Step 9: Restoring certificates..."
+echo " Step 9: Restoring certificates..."
 if [ -d "$BACKUP_DIR/certs_$TIMESTAMP" ]; then
     cp -r "$BACKUP_DIR/certs_$TIMESTAMP"/* resources/dev-certs/ 2>/dev/null || true
     print_status "SUCCESS" "Certificates restored"
@@ -151,13 +151,13 @@ else
 fi
 
 # Step 10: Wait for pods to be ready
-echo "📋 Step 10: Waiting for pods to be ready..."
+echo " Step 10: Waiting for pods to be ready..."
 kubectl rollout status statefulset/wasmbed-gateway -n "$NAMESPACE" --timeout=300s 2>/dev/null || true
 kubectl rollout status deployment/wasmbed-k8s-controller -n "$NAMESPACE" --timeout=300s 2>/dev/null || true
 print_status "SUCCESS" "Pods are ready"
 
 # Step 11: Verify restoration
-echo "📋 Step 11: Verifying restoration..."
+echo " Step 11: Verifying restoration..."
 PODS=$(kubectl get pods -n "$NAMESPACE" --no-headers 2>/dev/null | wc -l)
 RUNNING_PODS=$(kubectl get pods -n "$NAMESPACE" --no-headers 2>/dev/null | grep -c "Running" || echo "0")
 
@@ -168,13 +168,13 @@ else
 fi
 
 # Cleanup extracted files
-echo "📋 Cleaning up extracted files..."
+echo " Cleaning up extracted files..."
 rm -rf "$BACKUP_DIR"/*"$TIMESTAMP"* 2>/dev/null || true
 
 echo ""
-echo "🎉 Platform restoration completed!"
+echo " Platform restoration completed!"
 echo ""
-echo "📊 Restoration Summary:"
+echo " Restoration Summary:"
 echo "======================="
 echo "Backup: $BACKUP_NAME"
 echo "Namespace: $NAMESPACE"

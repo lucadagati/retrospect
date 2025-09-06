@@ -1,6 +1,6 @@
 # PX4 Integration with Wasmbed Platform - Complete Guide
 
-## 🎯 **Overview**
+##  **Overview**
 
 This document provides comprehensive guidance for integrating PX4 autopilot systems with the Wasmbed platform using microROS and FastDDS middleware.
 
@@ -42,7 +42,7 @@ This document provides comprehensive guidance for integrating PX4 autopilot syst
 - **TLS**: Secure communication with Wasmbed Gateway
 - **Serial**: Direct serial communication with PX4
 
-## 🔧 **Technical Integration**
+##  **Technical Integration**
 
 ### **microROS Bridge Configuration**
 
@@ -293,7 +293,7 @@ fields:
   - warning: "uint8 - Warning flags"
 ```
 
-## 🚀 **WASM Application Development**
+##  **WASM Application Development**
 
 ### **PX4 Integration WASM Module**
 
@@ -565,7 +565,7 @@ fields:
 )
 ```
 
-## 🚀 **Deployment Guide**
+##  **Deployment Guide**
 
 ### **Prerequisites**
 
@@ -591,7 +591,7 @@ fields:
    ./apps/drone-control/test-px4-integration.sh test
    ```
 
-## 🧪 **Testing**
+##  **Testing**
 
 ### **Test Commands**
 
@@ -617,7 +617,7 @@ fields:
 
 ### **Test Results**
 
-✅ **All tests passed successfully:**
+ **All tests passed successfully:**
 
 - PX4 device registered
 - PX4 application deployed
@@ -627,7 +627,7 @@ fields:
 - Sensor data integration
 - Flight sequence simulated
 
-## 📊 **Performance Metrics**
+##  **Performance Metrics**
 
 ### **WASM Application**
 
@@ -643,7 +643,7 @@ fields:
 - **Throughput**: 1000 messages/second
 - **Reliability**: 99.9% (with FastDDS QoS)
 
-## 🔒 **Security**
+##  **Security**
 
 ### **Authentication**
 
@@ -657,7 +657,7 @@ fields:
 - Device-specific permissions
 - Application isolation
 
-## 🚀 **Deployment**
+##  **Deployment**
 
 ### **Prerequisites**
 
@@ -707,7 +707,7 @@ fields:
 - [FastDDS Documentation](https://fast-dds.docs.eprosima.com/)
 - [MAVLink Protocol](https://mavlink.io/)
 
-## 🎉 **Conclusion**
+##  **Conclusion**
 
 The Wasmbed platform successfully integrates with PX4 autopilot systems, providing:
 

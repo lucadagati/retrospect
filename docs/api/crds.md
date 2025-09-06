@@ -1,10 +1,10 @@
 # Kubernetes CRDs Reference
 
-## 🎯 Overview
+##  Overview
 
 Wasmbed extends Kubernetes with Custom Resource Definitions (CRDs) to manage IoT devices and WASM applications. This document provides a comprehensive reference for all CRDs, their schemas, and usage examples.
 
-## 📋 CRD Definitions
+##  CRD Definitions
 
 ### 1. Device CRD
 
@@ -317,7 +317,7 @@ status:
   last_updated: "2024-09-01T22:00:00Z"
 ```
 
-## 🔧 CRD Operations
+##  CRD Operations
 
 ### Creating Resources
 
@@ -423,7 +423,7 @@ kubectl delete application temperature-monitor
 kubectl delete application temperature-monitor --cascade=true
 ```
 
-## 📊 Status Fields
+##  Status Fields
 
 ### Device Status Phases
 
@@ -447,7 +447,7 @@ kubectl delete application temperature-monitor --cascade=true
 | `Failed` | Application deployment failed | Check logs and retry |
 | `Deleting` | Application is being deleted | Wait for cleanup |
 
-## 🔍 Validation Rules
+##  Validation Rules
 
 ### Device Validation
 
@@ -477,7 +477,7 @@ kubectl delete application temperature-monitor --cascade=true
 - spec.target_devices.device_count: Must be >= 1
 ```
 
-## 🚀 Advanced Usage
+##  Advanced Usage
 
 ### Device Selectors
 
@@ -548,7 +548,7 @@ kubectl get device hifive1-001 -o jsonpath='{.status.connection_info}'
 kubectl get application temperature-monitor -o jsonpath='{.status.metrics}'
 ```
 
-## 🔐 Security Considerations
+##  Security Considerations
 
 ### RBAC Permissions
 
@@ -601,7 +601,7 @@ spec:
       port: 443
 ```
 
-## 🧪 Testing CRDs
+##  Testing CRDs
 
 ### Validation Tests
 
@@ -632,7 +632,7 @@ kubectl delete -f test-application.yaml
 kubectl delete -f test-device.yaml
 ```
 
-## 📋 Best Practices
+##  Best Practices
 
 ### Resource Naming
 

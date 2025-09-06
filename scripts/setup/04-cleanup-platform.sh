@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-echo "🧹 Cleaning up Wasmbed environment..."
+echo " Cleaning up Wasmbed environment..."
 
 # Colors for output
 RED='\033[0;31m'
@@ -14,15 +14,15 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 cleanup_k3d() {
-    echo -e "${BLUE}🔧 Cleaning up k3d cluster...${NC}"
+    echo -e "${BLUE} Cleaning up k3d cluster...${NC}"
     if k3d cluster list | grep -q wasmbed; then
-        echo "  ⏹️  Stopping wasmbed cluster..."
+        echo "    Stopping wasmbed cluster..."
         k3d cluster stop wasmbed || true
-        echo "  🗑️  Deleting wasmbed cluster..."
+        echo "    Deleting wasmbed cluster..."
         k3d cluster delete wasmbed || true
-        echo -e "${GREEN}  ✅ k3d cluster cleaned up${NC}"
+        echo -e "${GREEN}   k3d cluster cleaned up${NC}"
     else
-        echo "  ℹ️  No wasmbed cluster found"
+        echo "    No wasmbed cluster found"
     fi
 }
 
@@ -31,37 +31,37 @@ cleanup_docker() {
     
     # Remove wasmbed-gateway images
     if docker images | grep -q wasmbed-gateway; then
-        echo "  🗑️  Removing wasmbed-gateway images..."
+        echo "    Removing wasmbed-gateway images..."
         docker images --format "table {{.Repository}}:{{.Tag}}" | grep wasmbed-gateway | xargs -r docker rmi -f || true
-        echo -e "${GREEN}  ✅ Docker images cleaned up${NC}"
+        echo -e "${GREEN}   Docker images cleaned up${NC}"
     else
-        echo "  ℹ️  No wasmbed-gateway images found"
+        echo "    No wasmbed-gateway images found"
     fi
 }
 
 cleanup_kubeconfig() {
-    echo -e "${BLUE}🔧 Cleaning up kubeconfig...${NC}"
+    echo -e "${BLUE} Cleaning up kubeconfig...${NC}"
     if [ -n "${KUBECONFIG:-}" ]; then
-        echo "  ⚠️  Unsetting KUBECONFIG environment variable"
+        echo "    Unsetting KUBECONFIG environment variable"
         unset KUBECONFIG || true
     fi
-    echo -e "${GREEN}  ✅ Kubeconfig cleaned up${NC}"
+    echo -e "${GREEN}   Kubeconfig cleaned up${NC}"
 }
 
 cleanup_build_artifacts() {
-    echo -e "${BLUE}🧹 Cleaning up build artifacts...${NC}"
+    echo -e "${BLUE} Cleaning up build artifacts...${NC}"
     
     # Remove Nix build results
     if [ -L "result" ]; then
-        echo "  🗑️  Removing Nix build result symlink..."
+        echo "    Removing Nix build result symlink..."
         rm -f result
     fi
     
     # Clean Cargo build cache
-    echo "  🗑️  Cleaning Cargo build cache..."
+    echo "    Cleaning Cargo build cache..."
     cargo clean || true
     
-    echo -e "${GREEN}  ✅ Build artifacts cleaned up${NC}"
+    echo -e "${GREEN}   Build artifacts cleaned up${NC}"
 }
 
 main() {
@@ -72,7 +72,7 @@ main() {
     echo ""
     
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${YELLOW}⏹️  Cleanup cancelled${NC}"
+        echo -e "${YELLOW}  Cleanup cancelled${NC}"
         exit 0
     fi
     
@@ -83,7 +83,7 @@ main() {
     cleanup_build_artifacts
     
     echo ""
-    echo -e "${GREEN}🎉 Cleanup completed successfully!${NC}"
+    echo -e "${GREEN} Cleanup completed successfully!${NC}"
     echo -e "${BLUE}You can now run ./scripts/setup.sh to rebuild the environment.${NC}"
 }
 

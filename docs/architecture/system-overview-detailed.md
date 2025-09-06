@@ -1,10 +1,10 @@
 # Wasmbed Platform - Complete Architecture Documentation
 
-## 🎯 **Overview**
+##  **Overview**
 
 This document provides a comprehensive overview of the Wasmbed platform architecture, including detailed component descriptions, communication flows, and integration patterns.
 
-## 🏗️ **System Architecture**
+##  **System Architecture**
 
 ### **High-Level Architecture**
 
@@ -102,7 +102,7 @@ The Kubernetes control plane serves as the central orchestration layer:
 6. **WASM Loading**: Device loads and initializes WASM module
 7. **Status Updates**: Application status updated to "Running"
 
-## 🔒 **Security Architecture**
+##  **Security Architecture**
 
 ### **Authentication**
 
@@ -122,7 +122,7 @@ The Kubernetes control plane serves as the central orchestration layer:
 - **At Rest**: Encrypted storage for sensitive data
 - **Key Exchange**: ECDHE key exchange for perfect forward secrecy
 
-## 📊 **Performance Characteristics**
+##  **Performance Characteristics**
 
 ### **Latency**
 
@@ -142,7 +142,7 @@ The Kubernetes control plane serves as the central orchestration layer:
 - **CPU per Application**: < 10%
 - **Network Bandwidth**: < 1Mbps per device
 
-## 🚀 **Scalability Patterns**
+##  **Scalability Patterns**
 
 ### **Horizontal Scaling**
 
@@ -156,7 +156,7 @@ The Kubernetes control plane serves as the central orchestration layer:
 - **Performance Tuning**: Optimized for specific workloads
 - **Caching**: Intelligent caching for frequently accessed data
 
-## 🔧 **Configuration Management**
+##  **Configuration Management**
 
 ### **Environment Variables**
 
@@ -219,7 +219,7 @@ spec:
             path: /usr/share/wasmbed/resources/dev-certs
 ```
 
-## 📈 **Monitoring and Observability**
+##  **Monitoring and Observability**
 
 ### **Metrics Collection**
 
@@ -256,7 +256,7 @@ spec:
 3. **Gradual Rollout**: Increase traffic to canary
 4. **Full Deployment**: Complete rollout if successful
 
-## 🛠️ **Development Patterns**
+##  **Development Patterns**
 
 ### **Microservices Architecture**
 

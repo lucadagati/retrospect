@@ -15,12 +15,12 @@ NC='\033[0m' # No Color
 CLUSTER_NAME="wasmbed"
 NAMESPACE="wasmbed"
 
-echo "🛠️  Wasmbed Development Helper"
+echo "  Wasmbed Development Helper"
 
 check_environment() {
     # Check if we're in Nix shell
     if [ -z "${IN_NIX_SHELL:-}" ]; then
-        echo -e "${YELLOW}⚠️  Not in Nix shell. Running 'nix develop' first...${NC}"
+        echo -e "${YELLOW}  Not in Nix shell. Running 'nix develop' first...${NC}"
         exec nix develop --command "$0" "$@"
     fi
     
@@ -57,25 +57,25 @@ rebuild_and_deploy() {
     echo "  ⏳ Waiting for rollout..."
     kubectl -n "$NAMESPACE" rollout status statefulset/wasmbed-gateway --timeout=300s
     
-    echo -e "${GREEN}✅ Gateway updated successfully!${NC}"
+    echo -e "${GREEN} Gateway updated successfully!${NC}"
 }
 
 run_tests() {
-    echo -e "${BLUE}🧪 Running tests...${NC}"
+    echo -e "${BLUE} Running tests...${NC}"
     
-    echo "  📋 Cargo tests..."
+    echo "   Cargo tests..."
     cargo test
     
-    echo "  🔍 Clippy checks..."
+    echo "   Clippy checks..."
     cargo clippy -- -D warnings
     
     echo "  🎨 Format check..."
     cargo fmt --check
     
-    echo "  🧪 System tests..."
+    echo "   System tests..."
     ./scripts/test.sh
     
-    echo -e "${GREEN}✅ All tests passed!${NC}"
+    echo -e "${GREEN} All tests passed!${NC}"
 }
 
 port_forward() {
@@ -90,9 +90,9 @@ port_forward() {
     kubectl -n "$NAMESPACE" port-forward service/wasmbed-gateway-service 4423:4423 &
     local pf_pid=$!
     
-    echo "  ✅ Port forward started (PID: $pf_pid)"
-    echo "  💡 Gateway accessible at: https://localhost:4423"
-    echo "  ⏹️  To stop: kill $pf_pid"
+    echo "   Port forward started (PID: $pf_pid)"
+    echo "   Gateway accessible at: https://localhost:4423"
+    echo "    To stop: kill $pf_pid"
     
     # Save PID for cleanup
     echo $pf_pid > /tmp/wasmbed-port-forward.pid
@@ -116,27 +116,27 @@ shell_into_pod() {
 }
 
 generate_certs() {
-    echo -e "${BLUE}🔐 Generating development certificates...${NC}"
+    echo -e "${BLUE} Generating development certificates...${NC}"
     
     # Check if certificates already exist
     if [ -f "resources/dev-certs/server-ca.der" ]; then
-        echo "  ⚠️  Certificates already exist. Regenerate? (y/N)"
+        echo "    Certificates already exist. Regenerate? (y/N)"
         read -n 1 -r
         echo ""
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "  ⏹️  Certificate generation cancelled"
+            echo "    Certificate generation cancelled"
             return
         fi
     fi
     
-    echo "  🏗️  Generating server CA..."
+    echo "    Generating server CA..."
     cargo run -p wasmbed-cert-tool -- \
         generate-ca server \
         --common-name "Wasmbed Gateway Server Development CA" \
         --out-key resources/dev-certs/server-ca.key \
         --out-cert resources/dev-certs/server-ca.der
     
-    echo "  🏗️  Generating client CA..."
+    echo "    Generating client CA..."
     cargo run -p wasmbed-cert-tool -- \
         generate-ca client \
         --common-name "Wasmbed Gateway Client Development CA" \
@@ -161,11 +161,11 @@ generate_certs() {
         --out-key resources/dev-certs/client-0.key \
         --out-cert resources/dev-certs/client-0.der
     
-    echo -e "${GREEN}✅ Certificates generated successfully!${NC}"
+    echo -e "${GREEN} Certificates generated successfully!${NC}"
 }
 
 run_client() {
-    echo -e "${BLUE}🤝 Running test client...${NC}"
+    echo -e "${BLUE} Running test client...${NC}"
     
     # Ensure port forward is running
     if ! pgrep -f "kubectl.*port-forward.*wasmbed-gateway-service" > /dev/null; then
@@ -174,7 +174,7 @@ run_client() {
         sleep 3
     fi
     
-    echo "  🚀 Connecting to gateway..."
+    echo "   Connecting to gateway..."
     cargo run -p wasmbed-gateway-test-client -- \
         --address 127.0.0.1:4423 \
         --server-ca resources/dev-certs/server-ca.der \
@@ -183,7 +183,7 @@ run_client() {
 }
 
 show_help() {
-    echo -e "${BLUE}🛠️  Wasmbed Development Helper${NC}"
+    echo -e "${BLUE}  Wasmbed Development Helper${NC}"
     echo ""
     echo "Usage: $0 [command]"
     echo ""

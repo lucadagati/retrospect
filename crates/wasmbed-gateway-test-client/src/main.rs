@@ -138,10 +138,10 @@ impl ProtocolClient {
 }
 
 async fn test_application_deployment(client: &mut ProtocolClient, wasm_file: &str) -> Result<()> {
-    println!("🧪 Testing application deployment workflow...");
+    println!(" Testing application deployment workflow...");
     
     // Step 1: Send device info
-    println!("📊 Sending device info...");
+    println!(" Sending device info...");
     let device_info = ClientMessage::DeviceInfo {
         available_memory: 1024 * 1024, // 1MB
         cpu_arch: "riscv32imac".to_string(),
@@ -164,11 +164,11 @@ async fn test_application_deployment(client: &mut ProtocolClient, wasm_file: &st
             }
             
             // Step 3: Simulate deployment process
-            println!("🚀 Simulating deployment process...");
+            println!(" Simulating deployment process...");
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             
             // Step 4: Send deployment acknowledgment
-            println!("✅ Sending deployment acknowledgment...");
+            println!(" Sending deployment acknowledgment...");
             client.send(ClientMessage::ApplicationDeployAck {
                 app_id: app_id.clone(),
                 success: true,
@@ -176,7 +176,7 @@ async fn test_application_deployment(client: &mut ProtocolClient, wasm_file: &st
             }).await?;
             
             // Step 5: Send application status (running)
-            println!("📊 Sending application status (running)...");
+            println!(" Sending application status (running)...");
             let metrics = wasmbed_protocol::ApplicationMetrics {
                 memory_usage: 1024, // 1KB
                 cpu_usage: 5.0, // 5%
@@ -192,7 +192,7 @@ async fn test_application_deployment(client: &mut ProtocolClient, wasm_file: &st
             
         },
         ServerMessage::RequestDeviceInfo => {
-            println!("📊 Received device info request...");
+            println!(" Received device info request...");
             let device_info = ClientMessage::DeviceInfo {
                 available_memory: 1024 * 1024, // 1MB
                 cpu_arch: "riscv32imac".to_string(),
@@ -206,12 +206,12 @@ async fn test_application_deployment(client: &mut ProtocolClient, wasm_file: &st
         }
     }
     
-    println!("🎉 Application deployment test completed successfully!");
+    println!(" Application deployment test completed successfully!");
     Ok(())
 }
 
 async fn test_enrollment(client: &mut ProtocolClient) -> Result<()> {
-    println!("🧪 Testing enrollment workflow...");
+    println!(" Testing enrollment workflow...");
     
     // Step 1: Send enrollment request
     println!("📝 Sending enrollment request...");
@@ -221,7 +221,7 @@ async fn test_enrollment(client: &mut ProtocolClient) -> Result<()> {
     let response = client.recv().await?;
     match response {
         ServerMessage::EnrollmentAccepted => {
-            println!("✅ Enrollment request accepted");
+            println!(" Enrollment request accepted");
         },
         _ => {
             return Err(Error::msg(format!("Unexpected response: {:?}", response)));
@@ -249,14 +249,14 @@ async fn test_enrollment(client: &mut ProtocolClient) -> Result<()> {
     }
     
     // Step 5: Send enrollment acknowledgment
-    println!("✅ Sending enrollment acknowledgment...");
+    println!(" Sending enrollment acknowledgment...");
     client.send(ClientMessage::EnrollmentAcknowledgment).await?;
     
     // Step 6: Wait for enrollment completed
     let response = client.recv().await?;
     match response {
         ServerMessage::EnrollmentCompleted => {
-            println!("🎉 Enrollment completed successfully!");
+            println!(" Enrollment completed successfully!");
         },
         _ => {
             return Err(Error::msg(format!("Unexpected response: {:?}", response)));
@@ -341,7 +341,7 @@ async fn main() -> Result<()> {
             let response = client.recv().await?;
             match response {
                 ServerMessage::HeartbeatAck => {
-                    println!("✅ Heartbeat acknowledged");
+                    println!(" Heartbeat acknowledged");
                 },
                 _ => {
                     return Err(Error::msg(format!("Unexpected response: {:?}", response)));
@@ -353,6 +353,6 @@ async fn main() -> Result<()> {
         }
     }
 
-    println!("🎯 Test completed successfully!");
+    println!(" Test completed successfully!");
     Ok(())
 }

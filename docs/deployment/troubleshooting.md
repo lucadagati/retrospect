@@ -1,10 +1,10 @@
 # Deployment and Troubleshooting Guide
 
-## 🎯 Overview
+##  Overview
 
 This guide provides comprehensive instructions for deploying Wasmbed in various environments and troubleshooting common issues.
 
-## 🚀 Installation Guide
+##  Installation Guide
 
 ### Prerequisites
 
@@ -123,7 +123,7 @@ kubectl logs -n wasmbed deployment/wasmbed-gateway
 kubectl logs -n wasmbed deployment/wasmbed-k8s-controller
 ```
 
-## 🔧 Configuration
+##  Configuration
 
 ### Environment Variables
 
@@ -213,7 +213,7 @@ openssl rsa -in /etc/letsencrypt/live/gateway.yourdomain.com/privkey.pem \
   -outform DER -out gateway.key
 ```
 
-## 🔍 Monitoring
+##  Monitoring
 
 ### Health Checks
 
@@ -331,7 +331,7 @@ data:
 }
 ```
 
-## 🛠️ Troubleshooting
+##  Troubleshooting
 
 ### Common Issues
 
@@ -590,7 +590,7 @@ kubectl create secret tls wasmbed-gateway-tls \
 kubectl rollout restart deployment/wasmbed-gateway -n wasmbed
 ```
 
-## 🔧 Maintenance
+##  Maintenance
 
 ### Backup and Recovery
 

@@ -20,11 +20,11 @@ print_status() {
     local status=$1
     local message=$2
     if [ "$status" = "SUCCESS" ]; then
-        echo -e "${GREEN}✅ SUCCESS${NC}: $message"
+        echo -e "${GREEN} SUCCESS${NC}: $message"
     elif [ "$status" = "ERROR" ]; then
-        echo -e "${RED}❌ ERROR${NC}: $message"
+        echo -e "${RED} ERROR${NC}: $message"
     else
-        echo -e "${YELLOW}⚠️  WARN${NC}: $message"
+        echo -e "${YELLOW}  WARN${NC}: $message"
     fi
 }
 
@@ -34,7 +34,7 @@ command_exists() {
 }
 
 # Check prerequisites
-echo "📋 Checking prerequisites..."
+echo " Checking prerequisites..."
 
 if ! command_exists kubectl; then
     print_status "ERROR" "kubectl not found"
@@ -52,7 +52,7 @@ print_status "SUCCESS" "Prerequisites check passed"
 mkdir -p "$BACKUP_DIR"
 
 # Step 1: Backup current state
-echo "📋 Step 1: Creating backup of current state..."
+echo " Step 1: Creating backup of current state..."
 
 # Backup CRDs
 kubectl get crd | grep wasmbed > "$BACKUP_DIR/crds_$TIMESTAMP.txt" 2>/dev/null || true
@@ -69,7 +69,7 @@ kubectl get configmaps -n "$NAMESPACE" -o yaml > "$BACKUP_DIR/configmaps_$TIMEST
 print_status "SUCCESS" "Backup created in $BACKUP_DIR"
 
 # Step 2: Check cluster health
-echo "📋 Step 2: Checking cluster health..."
+echo " Step 2: Checking cluster health..."
 
 NODES=$(kubectl get nodes --no-headers | wc -l)
 if [ "$NODES" -gt 0 ]; then
@@ -80,7 +80,7 @@ else
 fi
 
 # Step 3: Restore namespace if needed
-echo "📋 Step 3: Ensuring namespace exists..."
+echo " Step 3: Ensuring namespace exists..."
 
 if ! kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
     print_status "WARN" "Namespace $NAMESPACE not found, creating..."
@@ -91,7 +91,7 @@ else
 fi
 
 # Step 4: Restore CRDs
-echo "📋 Step 4: Restoring CRDs..."
+echo " Step 4: Restoring CRDs..."
 
 # Generate and apply Device CRD
 if command_exists cargo; then
@@ -103,7 +103,7 @@ else
 fi
 
 # Step 5: Restore RBAC
-echo "📋 Step 5: Restoring RBAC..."
+echo " Step 5: Restoring RBAC..."
 
 # Apply RBAC resources
 kubectl apply -f resources/k8s/010-namespace.yaml 2>/dev/null || true
@@ -114,14 +114,14 @@ kubectl apply -f resources/k8s/040-role-bindings.yaml 2>/dev/null || true
 print_status "SUCCESS" "RBAC restored"
 
 # Step 6: Restore services
-echo "📋 Step 6: Restoring services..."
+echo " Step 6: Restoring services..."
 
 kubectl apply -f resources/k8s/100-service-gateway.yaml 2>/dev/null || true
 
 print_status "SUCCESS" "Services restored"
 
 # Step 7: Restore deployments
-echo "📋 Step 7: Restoring deployments..."
+echo " Step 7: Restoring deployments..."
 
 kubectl apply -f resources/k8s/111-statefulset-gateway.yaml 2>/dev/null || true
 kubectl apply -f resources/k8s/controller-deployment.yaml 2>/dev/null || true
@@ -129,14 +129,14 @@ kubectl apply -f resources/k8s/controller-deployment.yaml 2>/dev/null || true
 print_status "SUCCESS" "Deployments restored"
 
 # Step 8: Restore network policies
-echo "📋 Step 8: Restoring network policies..."
+echo " Step 8: Restoring network policies..."
 
 kubectl apply -f resources/k8s/network-policies.yaml 2>/dev/null || true
 
 print_status "SUCCESS" "Network policies restored"
 
 # Step 9: Wait for pods to be ready
-echo "📋 Step 9: Waiting for pods to be ready..."
+echo " Step 9: Waiting for pods to be ready..."
 
 # Wait for gateway pods
 kubectl rollout status statefulset/wasmbed-gateway -n "$NAMESPACE" --timeout=300s 2>/dev/null || true
@@ -147,7 +147,7 @@ kubectl rollout status deployment/wasmbed-k8s-controller -n "$NAMESPACE" --timeo
 print_status "SUCCESS" "Pods are ready"
 
 # Step 10: Verify recovery
-echo "📋 Step 10: Verifying recovery..."
+echo " Step 10: Verifying recovery..."
 
 # Check pod status
 PODS=$(kubectl get pods -n "$NAMESPACE" --no-headers | wc -l)
@@ -176,7 +176,7 @@ else
 fi
 
 # Step 11: Run basic tests
-echo "📋 Step 11: Running basic tests..."
+echo " Step 11: Running basic tests..."
 
 # Test if we can create a device
 if command_exists cargo; then
@@ -198,20 +198,20 @@ spec:
 fi
 
 echo ""
-echo "🎉 Disaster recovery completed!"
+echo " Disaster recovery completed!"
 echo ""
-echo "📊 Recovery Summary:"
+echo " Recovery Summary:"
 echo "- Backup created in: $BACKUP_DIR"
 echo "- Namespace: $NAMESPACE"
 echo "- Pods running: $RUNNING_PODS/$PODS"
 echo "- Services: $SERVICES"
 echo "- CRDs: $CRDS"
 echo ""
-echo "🔍 Next steps:"
+echo " Next steps:"
 echo "1. Run: ./scripts/test.sh"
 echo "2. Run: ./scripts/security-scan.sh"
 echo "3. Verify application functionality"
 echo "4. Check logs: kubectl logs -n $NAMESPACE -l app=wasmbed-gateway"
 echo ""
-echo "📁 Backup files:"
+echo " Backup files:"
 ls -la "$BACKUP_DIR"/*"$TIMESTAMP"* 2>/dev/null || echo "No backup files found"

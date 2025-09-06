@@ -1,79 +1,79 @@
 # Wasmbed Scripts
 
-Questa directory contiene tutti gli script per gestire la piattaforma Wasmbed, organizzati per categoria.
+This directory contains all scripts for managing the Wasmbed platform, organized by category.
 
-## 📁 Struttura
+## Structure
 
-### 🚀 Setup & Deployment (`setup/`)
-Script per configurare e deployare la piattaforma:
-- `01-setup-platform.sh` - Setup iniziale della piattaforma
-- `02-deploy-to-k8s.sh` - Deploy su Kubernetes
-- `03-build-images.sh` - Build delle immagini Docker
-- `04-cleanup-platform.sh` - Pulizia della piattaforma
-- `20-dev-environment.sh` - Setup ambiente di sviluppo
+### Setup & Deployment (`setup/`)
+Scripts for configuring and deploying the platform:
+- `01-setup-platform.sh` - Initial platform setup
+- `02-deploy-to-k8s.sh` - Deploy to Kubernetes
+- `03-build-images.sh` - Build Docker images
+- `04-cleanup-platform.sh` - Platform cleanup
+- `20-dev-environment.sh` - Development environment setup
 
-### 🧪 Testing (`testing/`)
-Script per eseguire test:
-- `05-test-complete.sh` - Test completo del sistema
-- `06-test-unit.sh` - Test unitari
-- `07-test-integration.sh` - Test di integrazione
-- `08-test-end-to-end.sh` - Test end-to-end
-- `09-test-security.sh` - Test di sicurezza
-- `run-all-tests.sh` - Esegue tutti i test
+### Testing (`testing/`)
+Scripts for running tests:
+- `05-test-complete.sh` - Complete system tests
+- `06-test-unit.sh` - Unit tests
+- `07-test-integration.sh` - Integration tests
+- `08-test-end-to-end.sh` - End-to-end tests
+- `09-test-security.sh` - Security tests
+- `run-all-tests.sh` - Run all tests
 
-### 🔐 Security (`security/`)
-Script per gestione sicurezza:
-- `10-security-scan.sh` - Scansione di sicurezza
-- `11-security-hardening.sh` - Hardening di sicurezza
-- `12-certificate-rotate.sh` - Rotazione certificati
-- `generate-certs.sh` - Generazione certificati
+### Security (`security/`)
+Scripts for security management:
+- `10-security-scan.sh` - Security scanning
+- `11-security-hardening.sh` - Security hardening
+- `12-certificate-rotate.sh` - Certificate rotation
+- `generate-certs.sh` - Certificate generation
 
-### 📊 Monitoring & Maintenance (`monitoring/`)
-Script per monitoraggio e manutenzione:
-- `13-monitor-platform.sh` - Monitoraggio piattaforma
-- `14-show-logs.sh` - Visualizzazione log
-- `15-show-status.sh` - Stato del sistema
-- `16-health-check.sh` - Health check
-- `17-backup-platform.sh` - Backup piattaforma
-- `18-restore-platform.sh` - Restore piattaforma
+### Monitoring & Maintenance (`monitoring/`)
+Scripts for monitoring and maintenance:
+- `13-monitor-platform.sh` - Platform monitoring
+- `14-show-logs.sh` - Log viewing
+- `15-show-status.sh` - System status
+- `16-health-check.sh` - Health checks
+- `17-backup-platform.sh` - Platform backup
+- `18-restore-platform.sh` - Platform restore
 - `19-disaster-recovery.sh` - Disaster recovery
 
-### 🛠️ Development (`development/`)
-Script per sviluppo:
-- `21-build-all.sh` - Build completo
-- `22-lint-code.sh` - Linting del codice
-- `23-generate-docs.sh` - Generazione documentazione
+### Development (`development/`)
+Scripts for development:
+- `21-build-all.sh` - Complete build
+- `22-lint-code.sh` - Code linting
+- `23-generate-docs.sh` - Documentation generation
 
-## 🚀 Utilizzo Rapido
+## Quick Usage
 
-### Setup Iniziale
+### Initial Setup
 ```bash
 ./scripts/setup/01-setup-platform.sh
 ```
 
-### Test Completo
+### Complete Testing
 ```bash
 ./scripts/testing/run-all-tests.sh
 ```
 
-### Deploy su Kubernetes
+### Deploy to Kubernetes
 ```bash
 ./scripts/setup/02-deploy-to-k8s.sh
 ```
 
-### Monitoraggio
+### Monitoring
 ```bash
 ./scripts/monitoring/13-monitor-platform.sh
 ```
 
-## 📋 Prerequisiti
+## Prerequisites
 
 - Rust 1.88+
 - Docker
 - kubectl
-- k3d (per sviluppo locale)
-- Nix (opzionale, per ambiente di sviluppo)
+- k3d (for local development)
+- Nix (optional, for development environment)
 
-## 🔧 Configurazione
+## Configuration
 
-Gli script utilizzano variabili d'ambiente per la configurazione. Vedi `docs/development/setup.md` per dettagli.
+Scripts use environment variables for configuration. See `docs/development/setup.md` for details.

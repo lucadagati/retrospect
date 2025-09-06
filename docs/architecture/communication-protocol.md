@@ -1,10 +1,10 @@
 # Protocol Design
 
-## 🎯 Overview
+##  Overview
 
 The Wasmbed protocol defines the communication between the Gateway MPU and MCU devices. It uses CBOR (Concise Binary Object Representation) for efficient binary serialization and TLS 1.3 for secure communication.
 
-## 🔧 Protocol Stack
+##  Protocol Stack
 
 ```
 ┌─────────────────────────────────────┐
@@ -19,7 +19,7 @@ The Wasmbed protocol defines the communication between the Gateway MPU and MCU d
 └─────────────────────────────────────┘
 ```
 
-## 📋 Message Format
+##  Message Format
 
 ### Envelope Structure
 
@@ -183,7 +183,7 @@ pub struct ApplicationConfig {
 }
 ```
 
-## 🔐 Security Model
+##  Security Model
 
 ### TLS Configuration
 
@@ -210,7 +210,7 @@ pub struct TlsConfig {
 - **Message Signing**: Optional message signing for integrity
 - **Replay Protection**: Timestamp-based replay protection
 
-## 📊 Protocol Statistics
+##  Protocol Statistics
 
 ### Message Sizes
 
@@ -228,7 +228,7 @@ pub struct TlsConfig {
 - **Memory Usage**: < 1KB per connection state
 - **CPU Usage**: < 1% for protocol processing
 
-## 🔧 Implementation Details
+##  Implementation Details
 
 ### CBOR Serialization
 
@@ -280,7 +280,7 @@ pub enum ErrorCode {
 }
 ```
 
-## 🚀 Protocol Versioning
+##  Protocol Versioning
 
 ### Version Compatibility
 
@@ -312,7 +312,7 @@ let server_version = ProtocolVersion { major: 1, minor: 1, patch: 0 };
 let negotiated_version = negotiate_version(client_version, server_version);
 ```
 
-## 🔍 Debugging and Monitoring
+##  Debugging and Monitoring
 
 ### Protocol Logging
 
@@ -351,7 +351,7 @@ pub struct ProtocolMetrics {
 }
 ```
 
-## 🧪 Testing
+##  Testing
 
 ### Unit Tests
 
@@ -413,7 +413,7 @@ async fn test_heartbeat_performance() {
 }
 ```
 
-## 📋 Protocol Specification
+##  Protocol Specification
 
 ### Message Format Specification
 

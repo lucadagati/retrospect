@@ -1,10 +1,10 @@
 # Controller Implementation
 
-## 🎯 Overview
+##  Overview
 
 The Wasmbed Application Controller is a Kubernetes controller that manages the lifecycle of WASM applications on MCU devices. It implements continuous reconciliation, health monitoring, and error recovery.
 
-## 🏗️ Architecture
+##  Architecture
 
 ### Controller Structure
 
@@ -100,7 +100,7 @@ stateDiagram-v2
     Failed --> Creating: Retry Requested
 ```
 
-## 🔧 Implementation Details
+##  Implementation Details
 
 ### 1. Creating Phase
 
@@ -242,7 +242,7 @@ async fn handle_running_phase(&self, app: &Application) -> Result<()> {
 }
 ```
 
-## 🔐 Error Handling
+##  Error Handling
 
 ### Error Policy
 
@@ -311,7 +311,7 @@ async fn deploy_to_device_with_retry(
 }
 ```
 
-## 🔍 Health Monitoring
+##  Health Monitoring
 
 ### Health Endpoints
 
@@ -358,7 +358,7 @@ let server_handle = tokio::spawn(async move {
 });
 ```
 
-## 📊 Metrics and Monitoring
+##  Metrics and Monitoring
 
 ### Controller Metrics
 
@@ -387,7 +387,7 @@ recorder.publish(Event {
 }).await?;
 ```
 
-## 🚀 Main Function
+##  Main Function
 
 ### Controller Initialization
 
@@ -470,7 +470,7 @@ async fn main() -> Result<()> {
 }
 ```
 
-## 🧪 Testing
+##  Testing
 
 ### Unit Tests
 
@@ -517,7 +517,7 @@ async fn test_full_reconciliation_cycle() {
 }
 ```
 
-## 🔧 Configuration
+##  Configuration
 
 ### Environment Variables
 
@@ -585,7 +585,7 @@ spec:
           periodSeconds: 5
 ```
 
-## 🔍 Debugging
+##  Debugging
 
 ### Logging
 

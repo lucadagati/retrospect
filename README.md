@@ -5,19 +5,19 @@
 [![Kubernetes](https://img.shields.io/badge/kubernetes-1.28+-blue.svg)](https://kubernetes.io/)
 [![WebAssembly](https://img.shields.io/badge/webassembly-wasm-purple.svg)](https://webassembly.org/)
 
-Una piattaforma completa per il deployment e l'esecuzione di applicazioni WebAssembly su dispositivi IoT edge, utilizzando Kubernetes come control plane e Gateway come intermediari per la comunicazione con i dispositivi MCU.
+A complete platform for deploying and executing WebAssembly applications on IoT edge devices, using Kubernetes as control plane and Gateways as intermediaries for communication with MCU devices.
 
-## 🚀 Caratteristiche Principali
+## Key Features
 
-- **🌐 Kubernetes Integration**: Orchestrazione completa tramite Custom Resource Definitions (CRDs)
-- **🔒 Security First**: TLS 1.3, Ed25519 signatures, AES-256-GCM encryption
-- **⚡ High Performance**: Runtime WASM ottimizzato per dispositivi MCU
-- **📱 Multi-Platform**: Supporto per ESP32 e RISC-V (HiFive1)
-- **🔧 Easy Deployment**: Script automatizzati per setup e testing
-- **📊 Comprehensive Monitoring**: Metriche dettagliate e alerting
-- **🧪 Extensive Testing**: Test end-to-end completi
+- **Kubernetes Integration**: Complete orchestration through Custom Resource Definitions (CRDs)
+- **Security First**: TLS 1.3, Ed25519 signatures, AES-256-GCM encryption
+- **High Performance**: Optimized WASM runtime for MCU devices
+- **Multi-Platform**: Support for ESP32 and RISC-V (HiFive1)
+- **Easy Deployment**: Automated scripts for setup and testing
+- **Comprehensive Monitoring**: Detailed metrics and alerting
+- **Extensive Testing**: Complete end-to-end tests
 
-## 🏗️ Architettura
+## Architecture
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -31,109 +31,108 @@ Una piattaforma completa per il deployment e l'esecuzione di applicazioni WebAss
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-## 📋 Prerequisiti
+## Prerequisites
 
 - **Rust** 1.75+
-- **Kubernetes** 1.28+ (k3d consigliato)
-- **QEMU** per emulazione RISC-V
-- **Docker** per containerizzazione
-- **OpenSSL** per generazione certificati
+- **Kubernetes** 1.28+ (k3d recommended)
+- **QEMU** for RISC-V emulation
+- **Docker** for containerization
+- **OpenSSL** for certificate generation
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1. Clona il repository
+### 1. Clone the repository
 ```bash
 git clone https://github.com/your-org/wasmbed.git
 cd wasmbed
 ```
 
-### 2. Installa le dipendenze
+### 2. Install dependencies
 ```bash
-# Installa Rust (se non già installato)
+# Install Rust (if not already installed)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Installa k3d
+# Install k3d
 curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 
-# Installa QEMU
+# Install QEMU
 sudo apt-get install qemu-system-misc
 ```
 
-### 3. Genera certificati TLS
+### 3. Generate TLS certificates
 ```bash
-./scripts/generate-certs.sh
+./scripts/security/generate-certs.sh
 ```
 
-### 4. Avvia la piattaforma
+### 4. Start the platform
 ```bash
-# Compila tutto
+# Build everything
 cargo build --workspace
 
-# Avvia cluster Kubernetes
+# Start Kubernetes cluster
 k3d cluster create wasmbed-test
 
 # Deploy Gateway
-kubectl apply -f gateway-deployment.yaml
+kubectl apply -f resources/k8s/111-statefulset-gateway.yaml
 
 # Deploy test resources
-kubectl apply -f test-device.yaml
-kubectl apply -f test-wasm-app.yaml
+kubectl apply -f resources/k8s/crds/
 ```
 
-### 5. Testa il sistema
+### 5. Test the system
 ```bash
-# Esegui tutti i test
-./scripts/run-all-tests.sh
+# Run all tests
+./scripts/testing/run-all-tests.sh
 
-# Oppure testa manualmente
+# Or test manually
 cargo test --workspace
 ```
 
-## 📚 Documentazione
+## Documentation
 
-- **[API Documentation](docs/API_DOCUMENTATION.md)**: Documentazione completa delle API
-- **[Architecture](docs/ARCHITECTURE.md)**: Architettura dettagliata della piattaforma
-- **[Examples](examples/)**: Esempi di utilizzo e configurazione
-- **[Tests](tests/)**: Suite di test completa
+- **[API Documentation](docs/API_DOCUMENTATION.md)**: Complete API documentation
+- **[Architecture](docs/ARCHITECTURE.md)**: Detailed platform architecture
+- **[Examples](apps/)**: Usage examples and configuration
+- **[Scripts](scripts/README.md)**: Automation scripts documentation
 
-## 🔧 Componenti
+## Components
 
 ### Kubernetes Control Plane
-- **Device CRD**: Gestione dispositivi IoT
-- **Application CRD**: Gestione applicazioni WASM
-- **Controller**: Orchestrazione automatica
-- **Monitoring**: Metriche e alerting
+- **Device CRD**: IoT device management
+- **Application CRD**: WASM application management
+- **Controller**: Automatic orchestration
+- **Monitoring**: Metrics and alerting
 
 ### Gateway (MPU)
-- **HTTP API**: RESTful API per gestione
-- **TLS/CBOR**: Comunicazione sicura ed efficiente
-- **Security**: Autenticazione e autorizzazione
-- **Monitoring**: Raccolta metriche sistema
+- **HTTP API**: RESTful API for management
+- **TLS/CBOR**: Secure and efficient communication
+- **Security**: Authentication and authorization
+- **Monitoring**: System metrics collection
 
 ### MCU Devices
-- **RISC-V (HiFive1)**: Runtime WASM personalizzato per `no_std`
-- **ESP32**: Runtime WASM basato su `wasmi`
-- **Firmware**: Gestione applicazioni e comunicazione
-- **Hardware**: Interfaccia con periferiche
+- **RISC-V (HiFive1)**: Custom WASM runtime for `no_std`
+- **ESP32**: WASM runtime based on `wasmi`
+- **Firmware**: Application management and communication
+- **Hardware**: Peripheral interface
 
-## 🧪 Testing
+## Testing
 
-### Test Unitari
+### Unit Tests
 ```bash
 cargo test --workspace --lib
 ```
 
-### Test di Integrazione
+### Integration Tests
 ```bash
 cargo test --manifest-path tests/Cargo.toml
 ```
 
-### Test End-to-End
+### End-to-End Tests
 ```bash
-./scripts/run-all-tests.sh
+./scripts/testing/run-all-tests.sh
 ```
 
-### Test Manuali
+### Manual Tests
 ```bash
 # Test Gateway
 curl -k https://localhost:8443/health
@@ -146,43 +145,43 @@ kubectl get applications -n wasmbed
 qemu-system-riscv32 -machine sifive_e -kernel target/riscv32imac-unknown-none-elf/debug/wasmbed-firmware-hifive1-qemu -nographic
 ```
 
-## 🔒 Sicurezza
+## Security
 
-### Certificati TLS
+### TLS Certificates
 - **CA Certificate**: `/etc/wasmbed/ca-cert.pem`
 - **Server Certificate**: `/etc/wasmbed/server-cert.pem`
 - **Server Private Key**: `/etc/wasmbed/server-key.pem`
 
-### Crittografia
-- **TLS 1.3**: Comunicazione sicura
-- **Ed25519**: Firma digitale messaggi
-- **AES-256-GCM**: Crittografia dati sensibili
+### Encryption
+- **TLS 1.3**: Secure communication
+- **Ed25519**: Digital message signing
+- **AES-256-GCM**: Sensitive data encryption
 
-### Autenticazione
-- **Certificate-based**: Autenticazione basata su certificati
-- **Public Key**: Verifica identità dispositivi
-- **RBAC**: Controllo accessi basato su ruoli
+### Authentication
+- **Certificate-based**: Certificate-based authentication
+- **Public Key**: Device identity verification
+- **RBAC**: Role-based access control
 
-## 📊 Monitoring
+## Monitoring
 
-### Metriche Sistema
-- **Devices**: Totale, online, offline
-- **Applications**: Totale, running, stopped
-- **Performance**: Latenza, throughput, errori
+### System Metrics
+- **Devices**: Total, online, offline
+- **Applications**: Total, running, stopped
+- **Performance**: Latency, throughput, errors
 
-### Metriche Dispositivo
-- **CPU Usage**: Utilizzo processore
-- **Memory Usage**: Utilizzo memoria
-- **Network**: Traffico di rete
-- **Power**: Consumo energetico
+### Device Metrics
+- **CPU Usage**: Processor utilization
+- **Memory Usage**: Memory utilization
+- **Network**: Network traffic
+- **Power**: Energy consumption
 
 ### Alerting
-- **Health Checks**: Verifica stato componenti
-- **Error Tracking**: Tracciamento errori
-- **Performance**: Degradazione performance
-- **Security**: Eventi di sicurezza
+- **Health Checks**: Component status verification
+- **Error Tracking**: Error tracking
+- **Performance**: Performance degradation
+- **Security**: Security events
 
-## 🚀 Deployment
+## Deployment
 
 ### Kubernetes
 ```yaml
@@ -228,52 +227,52 @@ EXPOSE 8080 8443
 CMD ["wasmbed-gateway"]
 ```
 
-## 🤝 Contribuire
+## Contributing
 
-1. **Fork** il repository
-2. **Crea** un branch per la feature (`git checkout -b feature/amazing-feature`)
-3. **Commit** le modifiche (`git commit -m 'Add amazing feature'`)
-4. **Push** al branch (`git push origin feature/amazing-feature`)
-5. **Apri** una Pull Request
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
+3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
+4. **Push** to the branch (`git push origin feature/amazing-feature`)
+5. **Open** a Pull Request
 
 ### Guidelines
-- Segui le convenzioni di codice Rust
-- Aggiungi test per nuove funzionalità
-- Aggiorna la documentazione
-- Mantieni la compatibilità con le versioni esistenti
+- Follow Rust code conventions
+- Add tests for new features
+- Update documentation
+- Maintain compatibility with existing versions
 
-## 📄 Licenza
+## License
 
-Questo progetto è rilasciato sotto licenza [AGPL-3.0](LICENSE).
+This project is released under the [AGPL-3.0](LICENSE) license.
 
-## 🆘 Supporto
+## Support
 
 - **Issues**: [GitHub Issues](https://github.com/your-org/wasmbed/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/your-org/wasmbed/discussions)
 - **Documentation**: [docs/](docs/)
-- **Examples**: [examples/](examples/)
+- **Examples**: [apps/](apps/)
 
-## 🗺️ Roadmap
+## Roadmap
 
-### v0.2.0 (Prossima)
-- [ ] Supporto ESP32 completo con wasmi
-- [ ] Dashboard web per monitoring
-- [ ] API GraphQL per query avanzate
-- [ ] Supporto protocolli IoT standard
+### v0.2.0 (Next)
+- [ ] Complete ESP32 support with wasmi
+- [ ] Web dashboard for monitoring
+- [ ] GraphQL API for advanced queries
+- [ ] Support for standard IoT protocols
 
-### v0.3.0 (Futuro)
+### v0.3.0 (Future)
 - [ ] Multi-cloud deployment
 - [ ] Edge-to-edge communication
 - [ ] Machine learning integration
 - [ ] 5G network support
 
-## 🙏 Ringraziamenti
+## Acknowledgments
 
-- **Rust Community** per l'ecosistema eccellente
-- **Kubernetes** per l'orchestrazione
-- **WebAssembly** per il runtime universale
-- **Contributors** per il supporto e feedback
+- **Rust Community** for the excellent ecosystem
+- **Kubernetes** for orchestration
+- **WebAssembly** for the universal runtime
+- **Contributors** for support and feedback
 
 ---
 
-**Wasmbed** - Portando WebAssembly all'edge computing 🚀
+**Wasmbed** - Bringing WebAssembly to edge computing

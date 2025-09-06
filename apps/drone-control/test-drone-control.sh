@@ -23,17 +23,17 @@ print_status() {
     local status=$1
     local message=$2
     if [ "$status" = "SUCCESS" ]; then
-        echo -e "${GREEN}✅ SUCCESS${NC}: $message"
+        echo -e "${GREEN} SUCCESS${NC}: $message"
     elif [ "$status" = "ERROR" ]; then
-        echo -e "${RED}❌ ERROR${NC}: $message"
+        echo -e "${RED} ERROR${NC}: $message"
     else
-        echo -e "${YELLOW}⚠️  INFO${NC}: $message"
+        echo -e "${YELLOW}  INFO${NC}: $message"
     fi
 }
 
 # Check if cluster is accessible
 check_cluster() {
-    echo "🔍 Checking Kubernetes cluster..."
+    echo " Checking Kubernetes cluster..."
     if kubectl cluster-info >/dev/null 2>&1; then
         print_status "SUCCESS" "Kubernetes cluster is accessible"
     else
@@ -44,7 +44,7 @@ check_cluster() {
 
 # Check drone device status
 check_drone_device() {
-    echo "📱 Checking drone device status..."
+    echo " Checking drone device status..."
     if kubectl get device "$DRONE_DEVICE" -n wasmbed >/dev/null 2>&1; then
         print_status "SUCCESS" "Drone device '$DRONE_DEVICE' exists"
         
@@ -74,7 +74,7 @@ check_drone_app() {
 
 # Test gateway connectivity
 test_gateway() {
-    echo "🌐 Testing gateway connectivity..."
+    echo " Testing gateway connectivity..."
     if timeout 5 bash -c "</dev/tcp/127.0.0.1/30423" 2>/dev/null; then
         print_status "SUCCESS" "Gateway is accessible on port 30423"
     else
@@ -137,7 +137,7 @@ test_micoros_topics() {
 
 # Test FastDDS communication
 test_fastdds() {
-    echo "🚀 Testing FastDDS communication..."
+    echo " Testing FastDDS communication..."
     
     echo "   Domain ID: 0"
     echo "   Participant: drone_control_node"
@@ -149,7 +149,7 @@ test_fastdds() {
 
 # Run comprehensive test
 run_comprehensive_test() {
-    echo "🧪 Running comprehensive drone control test..."
+    echo " Running comprehensive drone control test..."
     
     # Test sequence
     check_cluster
@@ -161,16 +161,16 @@ run_comprehensive_test() {
     simulate_drone_commands
     
     echo ""
-    echo "🎉 Drone Control Test Completed Successfully!"
+    echo " Drone Control Test Completed Successfully!"
     echo ""
-    echo "📊 Test Summary:"
-    echo "   ✅ Kubernetes cluster accessible"
-    echo "   ✅ Drone device registered"
-    echo "   ✅ Drone application deployed"
-    echo "   ✅ Gateway connectivity working"
-    echo "   ✅ microROS topics configured"
-    echo "   ✅ FastDDS communication ready"
-    echo "   ✅ Control commands simulated"
+    echo " Test Summary:"
+    echo "    Kubernetes cluster accessible"
+    echo "    Drone device registered"
+    echo "    Drone application deployed"
+    echo "    Gateway connectivity working"
+    echo "    microROS topics configured"
+    echo "    FastDDS communication ready"
+    echo "    Control commands simulated"
     echo ""
     echo "🚁 The drone control system is ready for operation!"
 }

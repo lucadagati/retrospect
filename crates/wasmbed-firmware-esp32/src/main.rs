@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
     // Initialize logging
     env_logger::init();
     
-    info!("🚀 Starting Wasmbed ESP32 Firmware");
+    info!(" Starting Wasmbed ESP32 Firmware");
     
     // Create device UUID
     let device_uuid = DeviceUuid::new();

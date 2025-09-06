@@ -1,10 +1,10 @@
 # System Architecture Overview
 
-## 🎯 Introduction
+##  Introduction
 
 Wasmbed is a distributed IoT device management platform that bridges the gap between Kubernetes orchestration and microcontroller (MCU) devices. This document provides a comprehensive overview of the system architecture, components, and their interactions.
 
-## 🏗️ High-Level Architecture
+##  High-Level Architecture
 
 ```mermaid
 graph TB
@@ -48,7 +48,7 @@ graph TB
     GATEWAY --> MCU3
 ```
 
-## 🔧 Core Components
+##  Core Components
 
 ### 1. Kubernetes Control Plane
 
@@ -238,7 +238,7 @@ sequenceDiagram
     end
 ```
 
-## 🔐 Security Architecture
+##  Security Architecture
 
 ### 1. TLS Communication
 
@@ -281,7 +281,7 @@ graph TB
 - **Memory Protection**: Each application has isolated memory space
 - **Resource Limits**: CPU and memory limits enforced per application
 
-## 📊 Performance Characteristics
+##  Performance Characteristics
 
 ### Scalability
 - **Devices per Gateway**: Up to 1000 concurrent devices
@@ -298,7 +298,7 @@ graph TB
 - **Controller Memory**: ~100MB base + 10KB per application
 - **MCU Memory**: ~1MB firmware + application memory
 
-## 🔧 Configuration
+##  Configuration
 
 ### Gateway Configuration
 ```yaml
@@ -335,7 +335,7 @@ controller:
     path: "/health"
 ```
 
-## 🚀 Deployment Architecture
+##  Deployment Architecture
 
 ### Development Environment
 ```mermaid
@@ -374,7 +374,7 @@ graph TB
     MONITORING --> K8S_PROD
 ```
 
-## 🔍 Monitoring and Observability
+##  Monitoring and Observability
 
 ### Metrics
 - **Device Metrics**: Connection count, heartbeat latency, error rates
@@ -412,7 +412,7 @@ graph TB
 6. **Monitoring**: Device and application status monitored
 7. **Disconnection**: Device disconnects or fails
 
-## 🎯 Future Architecture Considerations
+##  Future Architecture Considerations
 
 ### Planned Enhancements
 - **Multi-Gateway Support**: Load balancing across multiple gateways

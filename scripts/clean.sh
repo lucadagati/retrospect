@@ -1,10 +1,10 @@
 #!/bin/bash
-# Script di convenienza per pulizia
+# Convenience script for cleanup
 set -euo pipefail
 
-echo "🧹 Wasmbed - Pulizia Sistema"
-echo "==========================="
-echo "Pulizia piattaforma..."
+echo "Wasmbed - System Cleanup"
+echo "========================"
+echo "Cleaning platform..."
 ./scripts/setup/04-cleanup-platform.sh
 
-echo "✅ Pulizia completata!"
+echo "Cleanup completed!"

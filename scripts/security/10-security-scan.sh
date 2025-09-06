@@ -2,7 +2,7 @@
 # Security scanning script for Wasmbed production hardening
 set -e
 
-echo "🔒 Starting Wasmbed security scan..."
+echo "Starting Wasmbed security scan..."
 
 # Colors for output
 RED='\033[0;31m'
@@ -15,16 +15,16 @@ print_status() {
     local status=$1
     local message=$2
     if [ "$status" = "PASS" ]; then
-        echo -e "${GREEN}✅ PASS${NC}: $message"
+        echo -e "${GREEN}PASS${NC}: $message"
     elif [ "$status" = "FAIL" ]; then
-        echo -e "${RED}❌ FAIL${NC}: $message"
+        echo -e "${RED}FAIL${NC}: $message"
     else
-        echo -e "${YELLOW}⚠️  WARN${NC}: $message"
+        echo -e "${YELLOW}WARN${NC}: $message"
     fi
 }
 
 # 1. Check if cluster is accessible
-echo "📋 Checking cluster accessibility..."
+echo "Checking cluster accessibility..."
 if kubectl cluster-info >/dev/null 2>&1; then
     print_status "PASS" "Kubernetes cluster is accessible"
 else
@@ -33,7 +33,7 @@ else
 fi
 
 # 2. Check namespace security
-echo "📋 Checking namespace security..."
+echo "Checking namespace security..."
 if kubectl get namespace wasmbed >/dev/null 2>&1; then
     print_status "PASS" "Wasmbed namespace exists"
 else
@@ -41,7 +41,7 @@ else
 fi
 
 # 3. Check RBAC configuration
-echo "📋 Checking RBAC configuration..."
+echo "Checking RBAC configuration..."
 if kubectl get clusterrole,clusterrolebinding | grep wasmbed >/dev/null 2>&1; then
     print_status "PASS" "RBAC roles and bindings configured"
 else
@@ -49,7 +49,7 @@ else
 fi
 
 # 4. Check network policies
-echo "📋 Checking network policies..."
+echo "Checking network policies..."
 if kubectl get networkpolicies -n wasmbed >/dev/null 2>&1; then
     print_status "PASS" "Network policies configured"
 else
@@ -58,7 +58,7 @@ else
 fi
 
 # 5. Check pod security
-echo "📋 Checking pod security..."
+echo "Checking pod security..."
 PODS=$(kubectl get pods -n wasmbed -o jsonpath='{.items[*].metadata.name}')
 for pod in $PODS; do
     if kubectl get pod $pod -n wasmbed -o jsonpath='{.spec.securityContext.runAsNonRoot}' | grep -q "true"; then
@@ -69,7 +69,7 @@ for pod in $PODS; do
 done
 
 # 6. Check secrets
-echo "📋 Checking secrets..."
+echo "Checking secrets..."
 if kubectl get secrets -n wasmbed >/dev/null 2>&1; then
     print_status "PASS" "Secrets are properly configured"
 else
@@ -77,7 +77,7 @@ else
 fi
 
 # 7. Check TLS certificates
-echo "📋 Checking TLS certificates..."
+echo "Checking TLS certificates..."
 if [ -f "resources/dev-certs/ca.der" ]; then
     print_status "PASS" "CA certificate exists"
 else
@@ -85,7 +85,7 @@ else
 fi
 
 # 8. Check container images
-echo "📋 Checking container images..."
+echo "Checking container images..."
 GATEWAY_IMAGE=$(kubectl get statefulset wasmbed-gateway -n wasmbed -o jsonpath='{.spec.template.spec.containers[0].image}')
 CONTROLLER_IMAGE=$(kubectl get deployment wasmbed-k8s-controller -n wasmbed -o jsonpath='{.spec.template.spec.containers[0].image}')
 
@@ -102,7 +102,7 @@ else
 fi
 
 # 9. Check resource limits
-echo "📋 Checking resource limits..."
+echo "Checking resource limits..."
 PODS=$(kubectl get pods -n wasmbed -o jsonpath='{.items[*].metadata.name}')
 for pod in $PODS; do
     MEMORY_LIMIT=$(kubectl get pod $pod -n wasmbed -o jsonpath='{.spec.containers[0].resources.limits.memory}')
@@ -116,7 +116,7 @@ for pod in $PODS; do
 done
 
 # 10. Check health endpoints
-echo "📋 Checking health endpoints..."
+echo "Checking health endpoints..."
 if kubectl port-forward -n wasmbed deployment/wasmbed-k8s-controller 8080:8080 --address=localhost >/dev/null 2>&1 &
 then
     PF_PID=$!
@@ -134,7 +134,7 @@ else
 fi
 
 # 11. Check for exposed secrets
-echo "📋 Checking for exposed secrets..."
+echo "Checking for exposed secrets..."
 if kubectl get secrets -n wasmbed -o yaml | grep -i "password\|key\|token" >/dev/null 2>&1; then
     print_status "WARN" "Potential secrets found in YAML output"
 else
@@ -142,7 +142,7 @@ else
 fi
 
 # 12. Check pod status
-echo "📋 Checking pod status..."
+echo "Checking pod status..."
 PODS=$(kubectl get pods -n wasmbed -o jsonpath='{.items[*].status.phase}')
 for pod_status in $PODS; do
     if [ "$pod_status" = "Running" ]; then
@@ -153,9 +153,9 @@ for pod_status in $PODS; do
 done
 
 echo ""
-echo "🔒 Security scan completed!"
+echo " Security scan completed!"
 echo ""
-echo "📊 Summary:"
+echo " Summary:"
 echo "- Check the output above for any FAIL or WARN items"
 echo "- Address any security issues before production deployment"
 echo "- Consider running additional security tools like:"
@@ -164,6 +164,6 @@ echo "  - kube-bench (Kubernetes security benchmarking)"
 echo "  - falco (runtime security monitoring)"
 
 # Exit with error if any FAIL items were found
-if grep -q "❌ FAIL" <<< "$(cat /dev/stdin)"; then
+if grep -q "FAIL" <<< "$(cat /dev/stdin)"; then
     exit 1
 fi

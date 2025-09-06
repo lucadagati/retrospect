@@ -1,10 +1,10 @@
 #!/bin/bash
-# Script di convenienza per test
+# Convenience script for testing
 set -euo pipefail
 
-echo "🧪 Wasmbed - Test Completo"
+echo "Wasmbed - Complete Testing"
 echo "=========================="
-echo "Esecuzione test completi..."
+echo "Running complete tests..."
 ./scripts/testing/run-all-tests.sh
 
-echo "✅ Test completati!"
+echo "Testing completed!"

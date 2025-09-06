@@ -1,6 +1,6 @@
 # PX4 Integration with Wasmbed Platform
 
-## 🎯 Overview
+##  Overview
 
 This document describes how the Wasmbed platform integrates with PX4 autopilot systems for drone control using microROS and FastDDS middleware.
 
@@ -25,7 +25,7 @@ This document describes how the Wasmbed platform integrates with PX4 autopilot s
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-## 🔧 Technical Integration
+##  Technical Integration
 
 ### **1. microROS Bridge**
 
@@ -77,7 +77,7 @@ MAVLink commands are translated to microROS messages:
 /fmu/out/actuator_outputs        # Actuator outputs
 ```
 
-## 🚀 WASM Application Features
+##  WASM Application Features
 
 ### **Core Functions**
 
@@ -122,7 +122,7 @@ PX4 → microROS → WASM App → Wasmbed Gateway → Kubernetes Controller
 PX4 Sensors → UORB → microROS → FastDDS → WASM App → Gateway → K8s
 ```
 
-## 🧪 Testing
+##  Testing
 
 ### **Test Commands**
 
@@ -148,7 +148,7 @@ PX4 Sensors → UORB → microROS → FastDDS → WASM App → Gateway → K8s
 
 ### **Test Results**
 
-✅ **All tests passed successfully:**
+ **All tests passed successfully:**
 
 - PX4 device registered
 - PX4 application deployed
@@ -158,7 +158,7 @@ PX4 Sensors → UORB → microROS → FastDDS → WASM App → Gateway → K8s
 - Sensor data integration
 - Flight sequence simulated
 
-## 📊 Performance Metrics
+##  Performance Metrics
 
 ### **WASM Application**
 
@@ -174,7 +174,7 @@ PX4 Sensors → UORB → microROS → FastDDS → WASM App → Gateway → K8s
 - **Throughput**: 1000 messages/second
 - **Reliability**: 99.9% (with FastDDS QoS)
 
-## 🔒 Security
+##  Security
 
 ### **Authentication**
 
@@ -188,7 +188,7 @@ PX4 Sensors → UORB → microROS → FastDDS → WASM App → Gateway → K8s
 - Device-specific permissions
 - Application isolation
 
-## 🚀 Deployment
+##  Deployment
 
 ### **Prerequisites**
 
@@ -238,7 +238,7 @@ PX4 Sensors → UORB → microROS → FastDDS → WASM App → Gateway → K8s
 - [FastDDS Documentation](https://fast-dds.docs.eprosima.com/)
 - [MAVLink Protocol](https://mavlink.io/)
 
-## 🎉 Conclusion
+##  Conclusion
 
 The Wasmbed platform successfully integrates with PX4 autopilot systems, providing:
 

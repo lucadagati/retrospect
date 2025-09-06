@@ -23,17 +23,17 @@ print_status() {
     local status=$1
     local message=$2
     if [ "$status" = "SUCCESS" ]; then
-        echo -e "${GREEN}✅ SUCCESS${NC}: $message"
+        echo -e "${GREEN} SUCCESS${NC}: $message"
     elif [ "$status" = "ERROR" ]; then
-        echo -e "${RED}❌ ERROR${NC}: $message"
+        echo -e "${RED} ERROR${NC}: $message"
     else
-        echo -e "${YELLOW}⚠️  INFO${NC}: $message"
+        echo -e "${YELLOW}  INFO${NC}: $message"
     fi
 }
 
 # Check PX4 integration status
 check_px4_integration() {
-    echo "🔍 Checking PX4 integration status..."
+    echo " Checking PX4 integration status..."
     
     if kubectl get device "$PX4_DEVICE" -n wasmbed >/dev/null 2>&1; then
         print_status "SUCCESS" "PX4 device '$PX4_DEVICE' exists"
@@ -89,7 +89,7 @@ test_px4_micoros_topics() {
 
 # Test PX4 MAVLink commands
 test_px4_mavlink_commands() {
-    echo "🚀 Testing PX4 MAVLink commands..."
+    echo " Testing PX4 MAVLink commands..."
     
     local commands=(
         "ARM:400"
@@ -114,7 +114,7 @@ test_px4_mavlink_commands() {
 
 # Test FastDDS communication
 test_px4_fastdds() {
-    echo "🌐 Testing FastDDS communication with PX4..."
+    echo " Testing FastDDS communication with PX4..."
     
     echo "   Domain ID: 0"
     echo "   Participant: px4_drone_control_node"
@@ -156,7 +156,7 @@ simulate_px4_flight() {
 
 # Test PX4 sensor data
 test_px4_sensors() {
-    echo "📊 Testing PX4 sensor data..."
+    echo " Testing PX4 sensor data..."
     
     local sensors=(
         "GPS:Position and velocity"
@@ -181,7 +181,7 @@ test_px4_sensors() {
 
 # Run comprehensive PX4 test
 run_px4_comprehensive_test() {
-    echo "🧪 Running comprehensive PX4 integration test..."
+    echo " Running comprehensive PX4 integration test..."
     
     # Test sequence
     check_px4_integration
@@ -192,16 +192,16 @@ run_px4_comprehensive_test() {
     simulate_px4_flight
     
     echo ""
-    echo "🎉 PX4 Integration Test Completed Successfully!"
+    echo " PX4 Integration Test Completed Successfully!"
     echo ""
-    echo "📊 Test Summary:"
-    echo "   ✅ PX4 device registered"
-    echo "   ✅ PX4 application deployed"
-    echo "   ✅ microROS topics configured"
-    echo "   ✅ MAVLink commands compatible"
-    echo "   ✅ FastDDS communication ready"
-    echo "   ✅ Sensor data integration"
-    echo "   ✅ Flight sequence simulated"
+    echo " Test Summary:"
+    echo "    PX4 device registered"
+    echo "    PX4 application deployed"
+    echo "    microROS topics configured"
+    echo "    MAVLink commands compatible"
+    echo "    FastDDS communication ready"
+    echo "    Sensor data integration"
+    echo "    Flight sequence simulated"
     echo ""
     echo "🚁 The PX4 drone control system is ready for operation!"
     echo ""

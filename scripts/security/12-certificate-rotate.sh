@@ -32,20 +32,20 @@ convert_cert() {
     elif [[ "$cert_type" == "private_key" ]]; then
         # For private keys, we need to try different formats
         if openssl rsa -in "$der_file" -inform DER -out "$pem_file" -outform PEM 2>/dev/null; then
-            echo "    ✅ Converted as RSA key"
+            echo "    PASS: Converted as RSA key"
         elif openssl ec -in "$der_file" -inform DER -out "$pem_file" -outform PEM 2>/dev/null; then
-            echo "    ✅ Converted as EC key"
+            echo "    PASS: Converted as EC key"
         else
-            echo "    ❌ Failed to convert private key"
+            echo "    FAIL: Failed to convert private key"
             return 1
         fi
     fi
     
-    echo "    ✅ Conversion successful"
+    echo "    PASS: Conversion successful"
 }
 
 main() {
-    echo -e "${BLUE}📁 Converting certificates...${NC}"
+    echo -e "${BLUE}Converting certificates...${NC}"
     
     # Convert CA certificates
     convert_cert "$CERT_DIR/server-ca.der" "$PEM_DIR/server-ca.pem" "certificate"
@@ -60,9 +60,9 @@ main() {
     convert_cert "$CERT_DIR/client-0.key" "$PEM_DIR/client-0-key.pem" "private_key"
     
     echo ""
-    echo -e "${GREEN}🎉 Certificate conversion completed!${NC}"
+    echo -e "${GREEN}Certificate conversion completed!${NC}"
     echo ""
-    echo -e "${BLUE}📁 PEM certificates available in: $PEM_DIR${NC}"
+    echo -e "${BLUE}PEM certificates available in: $PEM_DIR${NC}"
     echo "  - server-ca.pem"
     echo "  - client-ca.pem"
     echo "  - server-0-cert.pem"
@@ -70,7 +70,7 @@ main() {
     echo "  - client-0-cert.pem"
     echo "  - client-0-key.pem"
     echo ""
-    echo -e "${YELLOW}💡 Note: Private keys are now in PEM format for easier testing${NC}"
+    echo -e "${YELLOW}Note: Private keys are now in PEM format for easier testing${NC}"
 }
 
 main "$@"
