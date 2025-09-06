@@ -19,16 +19,172 @@ A complete platform for deploying and executing WebAssembly applications on IoT 
 
 ## Architecture
 
+### High-Level System Architecture
+
+```mermaid
+graph TB
+    subgraph "Kubernetes Control Plane"
+        K8S[Kubernetes API Server]
+        CRD[Custom Resource Definitions]
+        CTRL[Wasmbed Controller]
+        MON[Monitoring System]
+    end
+    
+    subgraph "Gateway Layer"
+        GW[Wasmbed Gateway]
+        API[HTTP API Server]
+        TLS[TLS/CBOR Handler]
+        SEC[Security Manager]
+    end
+    
+    subgraph "MCU Devices"
+        ESP32[ESP32 Device]
+        RISC[RISC-V HiFive1]
+        WASM[WASM Runtime]
+        FW[Firmware]
+    end
+    
+    subgraph "Applications"
+        MICRO[microROS App]
+        PX4[PX4 DDS Bridge]
+        CUSTOM[Custom WASM Apps]
+    end
+    
+    K8S --> CRD
+    CRD --> CTRL
+    CTRL --> GW
+    GW --> API
+    API --> TLS
+    TLS --> SEC
+    
+    GW --> ESP32
+    GW --> RISC
+    ESP32 --> WASM
+    RISC --> WASM
+    WASM --> FW
+    
+    WASM --> MICRO
+    MICRO --> PX4
+    WASM --> CUSTOM
+    
+    MON --> GW
+    MON --> ESP32
+    MON --> RISC
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Kubernetes    │    │     Gateway     │    │   MCU Devices   │
-│   Control Plane │◄──►│      (MPU)      │◄──►│   (ESP32/RISC-V)│
-│                 │    │                 │    │                 │
-│ • Device CRDs   │    │ • HTTP API      │    │ • WASM Runtime  │
-│ • App CRDs      │    │ • TLS/CBOR      │    │ • Firmware      │
-│ • Controller    │    │ • Security      │    │ • Hardware      │
-│ • Monitoring    │    │ • Monitoring    │    │ • Communication│
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+
+### Component Interaction Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant K8S as Kubernetes API
+    participant GW as Wasmbed Gateway
+    participant MCU as MCU Device
+    participant WASM as WASM Runtime
+    
+    User->>K8S: Deploy Application
+    K8S->>GW: Create Application CRD
+    GW->>MCU: TLS Connection
+    MCU->>GW: Device Registration
+    GW->>MCU: Send WASM Binary
+    MCU->>WASM: Load Application
+    WASM->>MCU: Execute microROS
+    MCU->>GW: Status Updates
+    GW->>K8S: Update Application Status
+    K8S->>User: Deployment Complete
+```
+
+### Data Flow Architecture
+
+```mermaid
+flowchart LR
+    subgraph "Input Sources"
+        PX4[PX4 Autopilot]
+        SENSORS[Sensor Data]
+        USER[User Commands]
+    end
+    
+    subgraph "Processing Layer"
+        DDS[DDS Communication]
+        WASM[WASM Runtime]
+        MICRO[microROS Bridge]
+    end
+    
+    subgraph "Output Destinations"
+        ACTUATORS[Actuators]
+        DISPLAY[Display Systems]
+        LOGS[Logging System]
+    end
+    
+    PX4 --> DDS
+    SENSORS --> WASM
+    USER --> WASM
+    
+    DDS --> MICRO
+    MICRO --> WASM
+    WASM --> ACTUATORS
+    WASM --> DISPLAY
+    WASM --> LOGS
+```
+
+### Security Architecture
+
+```mermaid
+graph TD
+    subgraph "Certificate Authority"
+        CA[CA Certificate]
+        SERVER[Server Certificates]
+        CLIENT[Client Certificates]
+    end
+    
+    subgraph "TLS Communication"
+        TLS1[TLS 1.3 Handshake]
+        TLS2[Certificate Validation]
+        TLS3[Encrypted Channel]
+    end
+    
+    subgraph "Device Security"
+        PK[Public Key Auth]
+        SIG[Digital Signatures]
+        ENC[AES-256-GCM Encryption]
+    end
+    
+    CA --> SERVER
+    CA --> CLIENT
+    SERVER --> TLS1
+    CLIENT --> TLS1
+    TLS1 --> TLS2
+    TLS2 --> TLS3
+    
+    TLS3 --> PK
+    PK --> SIG
+    SIG --> ENC
+```
+
+### microROS Application Flow
+
+```mermaid
+stateDiagram-v2
+    [*] --> DeviceRegistration
+    DeviceRegistration --> CertificateValidation
+    CertificateValidation --> TLSConnection
+    TLSConnection --> ApplicationDeployment
+    
+    ApplicationDeployment --> WASMLoading
+    WASMLoading --> microROSInit
+    microROSInit --> DDSConnection
+    
+    DDSConnection --> PX4Communication
+    PX4Communication --> DataProcessing
+    DataProcessing --> CommandExecution
+    
+    CommandExecution --> StatusReporting
+    StatusReporting --> PX4Communication
+    
+    PX4Communication --> ErrorHandling
+    ErrorHandling --> DDSConnection
+    
+    DDSConnection --> [*]
 ```
 
 ## Prerequisites
@@ -38,6 +194,88 @@ A complete platform for deploying and executing WebAssembly applications on IoT 
 - **QEMU** for RISC-V emulation
 - **Docker** for containerization
 - **OpenSSL** for certificate generation
+
+## Script Workflow
+
+### Complete Automation Flow
+
+```mermaid
+flowchart TD
+    START([Start]) --> DEPLOY[./deploy-complete.sh]
+    
+    DEPLOY --> CHECK{Prerequisites OK?}
+    CHECK -->|No| ERROR1[Install Dependencies]
+    ERROR1 --> CHECK
+    CHECK -->|Yes| CLUSTER[Create k3d Cluster]
+    
+    CLUSTER --> CERTS[Generate TLS Certificates]
+    CERTS --> BUILD[Build Gateway Image]
+    BUILD --> DEPLOY_K8S[Deploy Kubernetes Resources]
+    DEPLOY_K8S --> DEVICES[Create MCU Devices]
+    DEVICES --> VERIFY[Verify Deployment]
+    
+    VERIFY --> RUN[./run-microROS-app.sh]
+    RUN --> CREATE_APP[Create microROS Application]
+    CREATE_APP --> DEPLOY_APP[Deploy to MCU Devices]
+    DEPLOY_APP --> MONITOR[Monitor Application]
+    
+    MONITOR --> CLEANUP[./cleanup-all.sh]
+    CLEANUP --> CONFIRM{Confirm Cleanup?}
+    CONFIRM -->|No| CANCEL[Cancel Cleanup]
+    CONFIRM -->|Yes| REMOVE[Remove All Resources]
+    REMOVE --> RESET[Reset Environment]
+    RESET --> END([End])
+    CANCEL --> MONITOR
+```
+
+### Script Dependencies
+
+```mermaid
+graph LR
+    subgraph "Scripts"
+        DEPLOY[deploy-complete.sh]
+        RUN[run-microROS-app.sh]
+        CLEANUP[cleanup-all.sh]
+    end
+    
+    subgraph "Prerequisites"
+        DOCKER[Docker]
+        K3D[k3d]
+        KUBECTL[kubectl]
+        CARGO[Cargo]
+        OPENSSL[OpenSSL]
+        QEMU[QEMU]
+    end
+    
+    subgraph "Outputs"
+        CLUSTER[k3d Cluster]
+        CERTS[TLS Certificates]
+        IMAGES[Docker Images]
+        K8S_RESOURCES[K8s Resources]
+        MCU_DEVICES[MCU Devices]
+        MICRO_APP[microROS App]
+    end
+    
+    DOCKER --> DEPLOY
+    K3D --> DEPLOY
+    KUBECTL --> DEPLOY
+    CARGO --> DEPLOY
+    OPENSSL --> DEPLOY
+    QEMU --> DEPLOY
+    
+    DEPLOY --> CLUSTER
+    DEPLOY --> CERTS
+    DEPLOY --> IMAGES
+    DEPLOY --> K8S_RESOURCES
+    DEPLOY --> MCU_DEVICES
+    
+    CLUSTER --> RUN
+    MCU_DEVICES --> RUN
+    RUN --> MICRO_APP
+    
+    MICRO_APP --> CLEANUP
+    CLEANUP --> CLUSTER
+```
 
 ## Quick Start
 
@@ -83,23 +321,151 @@ cd retrospect
 
 ## Components
 
-### Kubernetes Control Plane
-- **Device CRD**: IoT device management
-- **Application CRD**: WASM application management
-- **Controller**: Automatic orchestration
-- **Monitoring**: Metrics and alerting
+### Component Architecture
 
-### Gateway (MPU)
-- **HTTP API**: RESTful API for management
-- **TLS/CBOR**: Secure and efficient communication
-- **Security**: Authentication and authorization
-- **Monitoring**: System metrics collection
+```mermaid
+graph TB
+    subgraph "Kubernetes Control Plane"
+        subgraph "Core Components"
+            API[Kubernetes API Server]
+            ETCD[etcd Storage]
+            SCHED[Scheduler]
+        end
+        
+        subgraph "Wasmbed Resources"
+            DEVICE_CRD[Device CRD]
+            APP_CRD[Application CRD]
+            CONTROLLER[Wasmbed Controller]
+        end
+        
+        subgraph "RBAC"
+            SA[Service Account]
+            ROLE[Cluster Role]
+            BINDING[Role Binding]
+        end
+    end
+    
+    subgraph "Gateway Layer"
+        subgraph "Core Gateway"
+            GW_MAIN[Gateway Main]
+            HTTP_API[HTTP API Server]
+            CBOR_TLS[CBOR/TLS Handler]
+        end
+        
+        subgraph "Security"
+            TLS_MGR[TLS Manager]
+            CERT_MGR[Certificate Manager]
+            AUTH[Authentication]
+        end
+        
+        subgraph "Communication"
+            DEVICE_CLIENT[Device Client]
+            K8S_CLIENT[K8s Client]
+            PROTOCOL[Protocol Handler]
+        end
+    end
+    
+    subgraph "MCU Devices"
+        subgraph "Hardware"
+            ESP32_HW[ESP32 Hardware]
+            RISC_HW[RISC-V Hardware]
+            PERIPHERALS[Peripherals]
+        end
+        
+        subgraph "Firmware"
+            BOOTLOADER[Bootloader]
+            RUNTIME[WASM Runtime]
+            DRIVERS[Device Drivers]
+        end
+        
+        subgraph "Applications"
+            MICRO_ROS[microROS Bridge]
+            PX4_BRIDGE[PX4 DDS Bridge]
+            CUSTOM_APPS[Custom Apps]
+        end
+    end
+    
+    API --> DEVICE_CRD
+    API --> APP_CRD
+    DEVICE_CRD --> CONTROLLER
+    APP_CRD --> CONTROLLER
+    
+    CONTROLLER --> GW_MAIN
+    GW_MAIN --> HTTP_API
+    HTTP_API --> CBOR_TLS
+    
+    CBOR_TLS --> TLS_MGR
+    TLS_MGR --> CERT_MGR
+    CERT_MGR --> AUTH
+    
+    CBOR_TLS --> DEVICE_CLIENT
+    DEVICE_CLIENT --> K8S_CLIENT
+    K8S_CLIENT --> PROTOCOL
+    
+    PROTOCOL --> ESP32_HW
+    PROTOCOL --> RISC_HW
+    
+    ESP32_HW --> BOOTLOADER
+    RISC_HW --> BOOTLOADER
+    BOOTLOADER --> RUNTIME
+    RUNTIME --> DRIVERS
+    
+    RUNTIME --> MICRO_ROS
+    MICRO_ROS --> PX4_BRIDGE
+    RUNTIME --> CUSTOM_APPS
+```
 
-### MCU Devices
-- **RISC-V (HiFive1)**: Custom WASM runtime for `no_std`
-- **ESP32**: WASM runtime based on `wasmi`
-- **Firmware**: Application management and communication
-- **Hardware**: Peripheral interface
+### Data Structures
+
+```mermaid
+classDiagram
+    class Device {
+        +String deviceId
+        +String publicKey
+        +String deviceType
+        +String[] capabilities
+        +DeviceStatus status
+        +String[] applications
+        +DateTime lastSeen
+    }
+    
+    class Application {
+        +String name
+        +String wasmBinary
+        +String[] targetDevices
+        +Object config
+        +ApplicationStatus status
+        +String[] deployedDevices
+        +DateTime lastDeployed
+    }
+    
+    class GatewayReference {
+        +String namespace
+        +String name
+        +String endpoint
+        +String[] capabilities
+    }
+    
+    class PublicKey {
+        +String algorithm
+        +String keyData
+        +DateTime validFrom
+        +DateTime validTo
+    }
+    
+    class DeviceStatusUpdate {
+        +String deviceId
+        +String state
+        +Object metrics
+        +DateTime timestamp
+    }
+    
+    Device --> Application : deploys
+    Application --> Device : targets
+    Device --> PublicKey : has
+    Device --> DeviceStatusUpdate : generates
+    Application --> GatewayReference : uses
+```
 
 ## Testing Status
 
