@@ -25,17 +25,21 @@ spec:
             - containerPort: 4423
               name: wasmbed-gateway
           volumeMounts:
-            - name: wasmbed-certs
+            - name: wasmbed-tls-secret
               mountPath: /etc/wasmbed-gateway/certs
+              readOnly: true
+            - name: wasmbed-ca-secret
+              mountPath: /etc/wasmbed-gateway/ca
+              readOnly: true
           env:
             - name: WASMBED_GATEWAY_BIND_ADDR
               value: 0.0.0.0:4423
             - name: WASMBED_GATEWAY_PRIVATE_KEY
-              value: /etc/wasmbed-gateway/certs/server-0.key
+              value: /etc/wasmbed-gateway/certs/tls.key
             - name: WASMBED_GATEWAY_CERTIFICATE
-              value: /etc/wasmbed-gateway/certs/server-0.der
+              value: /etc/wasmbed-gateway/certs/tls.crt
             - name: WASMBED_GATEWAY_CLIENT_CA
-              value: /etc/wasmbed-gateway/certs/client-ca.der
+              value: /etc/wasmbed-gateway/ca/ca-cert.pem
             - name: WASMBED_GATEWAY_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -49,6 +53,9 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
       volumes:
-        - name: wasmbed-certs
-          hostPath:
-            path: /usr/share/wasmbed/resources/dev-certs
+        - name: wasmbed-tls-secret
+          secret:
+            secretName: wasmbed-tls-secret-rsa
+        - name: wasmbed-ca-secret
+          secret:
+            secretName: wasmbed-ca-secret-rsa
