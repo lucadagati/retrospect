@@ -43,49 +43,35 @@ A complete platform for deploying and executing WebAssembly applications on IoT 
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/your-org/wasmbed.git
-cd wasmbed
+git clone https://github.com/lucadagati/retrospect.git
+cd retrospect
 ```
 
-### 2. Install dependencies
+### 2. Deploy complete platform
 ```bash
-# Install Rust (if not already installed)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Install k3d
-curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-
-# Install QEMU
-sudo apt-get install qemu-system-misc
+# Deploy entire Wasmbed platform with 4 MCU devices
+./deploy-complete.sh
 ```
 
-### 3. Generate TLS certificates
+### 3. Run microROS application
 ```bash
-./scripts/security/generate-certs.sh
+# Deploy and run microROS application for PX4 DDS communication
+./run-microROS-app.sh
+
+# Monitor application in real-time
+./run-microROS-app.sh --monitor
+
+# Check application status
+./run-microROS-app.sh --status
 ```
 
-### 4. Start the platform
+### 4. Clean up everything
 ```bash
-# Build everything
-cargo build --workspace
+# Complete cleanup (removes all components)
+./cleanup-all.sh
 
-# Start Kubernetes cluster
-k3d cluster create wasmbed-test
-
-# Deploy Gateway
-kubectl apply -f resources/k8s/111-statefulset-gateway.yaml
-
-# Deploy test resources
-kubectl apply -f resources/k8s/crds/
-```
-
-### 5. Test the system
-```bash
-# Run all tests
-./scripts/testing/run-all-tests.sh
-
-# Or test manually
-cargo test --workspace
+# Force cleanup without confirmation
+./cleanup-all.sh --force
 ```
 
 ## Documentation
@@ -161,46 +147,42 @@ The platform has been comprehensively tested with the following results:
 
 ## Testing
 
-### Integration Tests
+### Automated Testing
 ```bash
-# Test complete platform deployment
-./scripts/testing/run-all-tests.sh
+# Complete platform deployment test
+./deploy-complete.sh
 
-# Test individual components
-kubectl apply -f resources/k8s/crds/
-kubectl apply -f resources/k8s/
+# microROS application test
+./run-microROS-app.sh --monitor
+
+# Complete cleanup test
+./cleanup-all.sh --force
 ```
 
-### Security Tests
+### Manual Testing
 ```bash
-# Run security scan
-./scripts/security/10-security-scan.sh
-
-# Test certificate generation
-./scripts/security/generate-certs.sh
-```
-
-### Unit Tests
-```bash
+# Unit tests
 cargo test --workspace --lib
-```
 
-### End-to-End Tests
-```bash
-./scripts/testing/run-all-tests.sh
-```
+# Build verification
+cargo build --workspace
 
-### Manual Tests
-```bash
-# Test Gateway
-curl -k https://localhost:8443/health
-
-# Test Kubernetes
+# Component testing
+kubectl get pods -n wasmbed
 kubectl get devices -n wasmbed
 kubectl get applications -n wasmbed
+```
 
-# Test QEMU
-qemu-system-riscv32 -machine sifive_e -kernel target/riscv32imac-unknown-none-elf/debug/wasmbed-firmware-hifive1-qemu -nographic
+### Component Verification
+```bash
+# Check Gateway health
+curl -k https://localhost:8443/health
+
+# Verify DDS communication
+kubectl logs -l app=wasmbed-gateway -n wasmbed --tail=20
+
+# Test device connectivity
+kubectl describe devices -n wasmbed
 ```
 
 ## Security
@@ -241,48 +223,41 @@ qemu-system-riscv32 -machine sifive_e -kernel target/riscv32imac-unknown-none-el
 
 ## Deployment
 
-### Kubernetes
-```yaml
-# Namespace
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: wasmbed
+### Automated Deployment
+```bash
+# Complete platform deployment
+./deploy-complete.sh
 
----
-# Gateway Deployment
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: wasmbed-gateway
-  namespace: wasmbed
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: wasmbed-gateway
-  template:
-    spec:
-      containers:
-      - name: gateway
-        image: wasmbed-gateway:latest
-        ports:
-        - containerPort: 8080
-        - containerPort: 8443
+# microROS application deployment
+./run-microROS-app.sh
+
+# Complete cleanup
+./cleanup-all.sh
 ```
 
-### Docker
-```dockerfile
-FROM rust:1.75-slim as builder
-WORKDIR /app
-COPY . .
-RUN cargo build --release
+### Manual Deployment
+```bash
+# Create cluster
+k3d cluster create wasmbed-platform --port "8080:80@loadbalancer" --port "8443:443@loadbalancer"
 
-FROM debian:bookworm-slim
-COPY --from=builder /app/target/release/wasmbed-gateway /usr/local/bin/
-COPY certs/ /etc/wasmbed/
-EXPOSE 8080 8443
-CMD ["wasmbed-gateway"]
+# Deploy CRDs
+kubectl apply -f resources/k8s/crds/
+
+# Deploy Gateway
+kubectl apply -f resources/k8s/
+
+# Create devices
+kubectl apply -f - <<EOF
+apiVersion: wasmbed.github.io/v1
+kind: Device
+metadata:
+  name: test-device
+  namespace: wasmbed
+spec:
+  deviceId: "test-device-001"
+  deviceType: "riscv-hifive1"
+  capabilities: ["wasm-execution", "tls-client"]
+EOF
 ```
 
 ## Contributing
