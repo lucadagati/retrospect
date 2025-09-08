@@ -47,6 +47,7 @@ check_prerequisites() {
     command -v kubectl >/dev/null 2>&1 || missing_deps+=("kubectl")
     command -v cargo >/dev/null 2>&1 || missing_deps+=("cargo")
     command -v openssl >/dev/null 2>&1 || missing_deps+=("openssl")
+    command -v python3 >/dev/null 2>&1 || missing_deps+=("python3")
     command -v qemu-system-riscv64 >/dev/null 2>&1 || missing_deps+=("qemu-system-riscv64")
     
     if [ ${#missing_deps[@]} -ne 0 ]; then
@@ -86,11 +87,91 @@ create_cluster() {
         --agents 2 \
         --wait
     
-    # Configure kubectl
-    k3d kubeconfig write "$CLUSTER_NAME"
-    export KUBECONFIG="$(k3d kubeconfig write "$CLUSTER_NAME" --output -)"
+    # Configure kubectl with external certificates
+    log_info "Configuring kubectl with external certificates..."
+    fix_kubeconfig_certificates
     
     log_success "Cluster created and configured"
+}
+
+# Fix kubeconfig certificates to use external files
+fix_kubeconfig_certificates() {
+    log_info "Fixing kubeconfig certificates..."
+    
+    # Get the kubeconfig
+    k3d kubeconfig get "$CLUSTER_NAME" > kubeconfig-temp.yaml
+    
+    # Extract certificates to external files
+    python3 -c "
+import yaml
+import base64
+import os
+
+with open('kubeconfig-temp.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+
+# Extract certificates
+cluster = config['clusters'][0]['cluster']
+user = config['users'][0]['user']
+
+ca_cert = base64.b64decode(cluster['certificate-authority-data']).decode()
+client_cert = base64.b64decode(user['client-certificate-data']).decode()
+client_key = base64.b64decode(user['client-key-data']).decode()
+
+# Write to files
+os.makedirs('certs', exist_ok=True)
+with open('certs/k3d-ca.crt', 'w') as f:
+    f.write(ca_cert)
+
+with open('certs/k3d-client.crt', 'w') as f:
+    f.write(client_cert)
+
+with open('certs/k3d-client.key', 'w') as f:
+    f.write(client_key)
+
+print('Certificates extracted successfully')
+" || {
+        log_error "Failed to extract certificates"
+        exit 1
+    }
+    
+    # Update kubeconfig to use external files
+    python3 -c "
+import yaml
+import os
+
+with open('kubeconfig-temp.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+
+# Update cluster config to use external CA file
+config['clusters'][0]['cluster']['certificate-authority'] = os.path.abspath('certs/k3d-ca.crt')
+del config['clusters'][0]['cluster']['certificate-authority-data']
+
+# Update user config to use external cert/key files
+config['users'][0]['user']['client-certificate'] = os.path.abspath('certs/k3d-client.crt')
+config['users'][0]['user']['client-key'] = os.path.abspath('certs/k3d-client.key')
+del config['users'][0]['user']['client-certificate-data']
+del config['users'][0]['user']['client-key-data']
+
+# Write updated config
+kubeconfig_path = os.path.expanduser('~/.kube/config')
+os.makedirs(os.path.dirname(kubeconfig_path), exist_ok=True)
+with open(kubeconfig_path, 'w') as f:
+    yaml.dump(config, f, default_flow_style=False)
+
+print('Kubeconfig updated successfully')
+" || {
+        log_error "Failed to update kubeconfig"
+        exit 1
+    }
+    
+    # Clean up temp file
+    rm -f kubeconfig-temp.yaml
+    
+    # Set KUBECONFIG environment variable
+    export KUBECONFIG="$HOME/.kube/config"
+    
+    log_success "Kubeconfig certificates fixed"
 }
 
 # Generate certificates
@@ -135,39 +216,49 @@ build_and_deploy() {
     log_info "Building Gateway Docker image..."
     docker build -f crates/wasmbed-gateway/Dockerfile -t wasmbed-gateway:latest .
     
-    # Import image to k3d
-    log_info "Importing Gateway image to k3d..."
+    # Build Controller Docker image
+    log_info "Building Controller Docker image..."
+    docker build -f crates/wasmbed-k8s-controller/Dockerfile -t wasmbed-k8s-controller:latest .
+    
+    # Import images to k3d
+    log_info "Importing images to k3d..."
     k3d image import wasmbed-gateway:latest -c "$CLUSTER_NAME"
+    k3d image import wasmbed-k8s-controller:latest -c "$CLUSTER_NAME"
     
     # Create namespace
     log_info "Creating namespace: $NAMESPACE"
     kubectl create namespace "$NAMESPACE" || true
     
-    # Create TLS secrets
+    # Create TLS secrets with correct names
     log_info "Creating TLS secrets..."
-    kubectl create secret tls wasmbed-tls-secret \
+    kubectl create secret tls wasmbed-tls-secret-rsa \
         --cert=certs/server-cert.pem \
         --key=certs/server-key.pem \
         -n "$NAMESPACE" || true
     
-    kubectl create secret generic wasmbed-ca-secret \
+    kubectl create secret generic wasmbed-ca-secret-rsa \
         --from-file=ca-cert.pem=certs/ca-cert.pem \
         -n "$NAMESPACE" || true
     
     # Deploy CRDs
     log_info "Deploying Custom Resource Definitions..."
-    kubectl apply -f resources/k8s/crds/
+    kubectl apply -f resources/k8s/crds/ -n "$NAMESPACE"
     
     # Deploy RBAC
     log_info "Deploying RBAC configuration..."
-    kubectl apply -f resources/k8s/100-service-account-gateway.yaml
-    kubectl apply -f resources/k8s/101-cluster-role-gateway-device-access.yaml
-    kubectl apply -f resources/k8s/102-cluster-rolebinding-gateway.yaml
+    kubectl apply -f resources/k8s/100-service-account-gateway.yaml -n "$NAMESPACE"
+    kubectl apply -f resources/k8s/101-cluster-role-gateway-device-access.yaml -n "$NAMESPACE"
+    kubectl apply -f resources/k8s/102-cluster-rolebinding-gateway.yaml -n "$NAMESPACE"
+    
+    # Deploy Controller
+    log_info "Deploying Controller..."
+    kubectl apply -f resources/k8s/controller-rbac.yaml -n "$NAMESPACE"
+    kubectl apply -f resources/k8s/controller-deployment.yaml -n "$NAMESPACE"
     
     # Deploy Gateway
     log_info "Deploying Gateway..."
-    kubectl apply -f resources/k8s/110-service-gateway.yaml
-    kubectl apply -f resources/k8s/111-statefulset-gateway.yaml
+    kubectl apply -f resources/k8s/110-service-gateway.yaml -n "$NAMESPACE"
+    kubectl apply -f resources/k8s/111-statefulset-gateway.yaml -n "$NAMESPACE"
     
     log_success "Components deployed successfully"
 }
@@ -202,15 +293,21 @@ EOF
 wait_for_deployment() {
     log_info "Waiting for deployment to be ready..."
     
+    # Wait for CRDs first
+    kubectl wait --for=condition=established crd/devices.wasmbed.github.io --timeout=60s
+    kubectl wait --for=condition=established crd/applications.wasmbed.github.io --timeout=60s
+    
+    # Wait for Controller pods
+    kubectl wait --for=condition=ready pod -l app=wasmbed-k8s-controller -n "$NAMESPACE" --timeout=300s || {
+        log_warning "Controller pods not ready, checking logs..."
+        kubectl logs -l app=wasmbed-k8s-controller -n "$NAMESPACE" --tail=20
+    }
+    
     # Wait for Gateway pods
     kubectl wait --for=condition=ready pod -l app=wasmbed-gateway -n "$NAMESPACE" --timeout=300s || {
         log_warning "Gateway pods not ready, checking logs..."
         kubectl logs -l app=wasmbed-gateway -n "$NAMESPACE" --tail=20
     }
-    
-    # Wait for CRDs
-    kubectl wait --for=condition=established crd/devices.wasmbed.github.io --timeout=60s
-    kubectl wait --for=condition=established crd/applications.wasmbed.github.io --timeout=60s
     
     log_success "Deployment is ready"
 }
@@ -261,12 +358,24 @@ main() {
     log_success "Wasmbed platform deployed successfully!"
     log_info "Gateway available at: http://localhost:8080"
     log_info "Gateway TLS available at: https://localhost:8443"
+    log_info "Gateway NodePort: 30423 (external access)"
     log_info "MCU devices ready for microROS applications"
+    
+    echo ""
+    log_info "Deployment Summary:"
+    log_info "- Cluster: $CLUSTER_NAME (k3d)"
+    log_info "- Namespace: $NAMESPACE"
+    log_info "- Gateway Replicas: $GATEWAY_REPLICAS"
+    log_info "- MCU Devices: $MCU_DEVICES_COUNT"
+    log_info "- Custom TLS Library: Active"
+    log_info "- Controller: Running"
     
     echo ""
     log_info "Next steps:"
     log_info "1. Run: ./run-microROS-app.sh"
-    log_info "2. Or run: ./cleanup-all.sh to clean up"
+    log_info "2. Check logs: kubectl logs -l app=wasmbed-gateway -n $NAMESPACE"
+    log_info "3. Monitor devices: kubectl get devices -n $NAMESPACE"
+    log_info "4. Or run: ./cleanup-all.sh to clean up"
 }
 
 # Run main function

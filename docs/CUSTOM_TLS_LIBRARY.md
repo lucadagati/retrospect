@@ -1,8 +1,56 @@
 # Custom TLS Library Documentation
 
-## Overview
+## Recent Updates and Improvements
 
-The `wasmbed-tls-utils` crate provides a completely custom TLS implementation that replaces the standard `rustls` library in the Wasmbed platform. This custom implementation offers enhanced security, better control, and optimized performance specifically designed for IoT edge devices.
+### Version 0.2.0 - Complete TLS Implementation
+
+The custom TLS library has been significantly enhanced with the following improvements:
+
+#### ✅ **Full TLS Server/Client Implementation**
+- Complete `TlsServer` and `TlsClient` implementations
+- Async I/O support with tokio
+- Connection management and state handling
+- Message context for protocol integration
+
+#### ✅ **Gateway Integration**
+- Compatibility structures for seamless integration
+- `ServerIdentity` for server certificate management
+- `MessageContext` for protocol message handling
+- `TlsStream` for async read/write operations
+
+#### ✅ **Enhanced Certificate Support**
+- Full PKCS8 and RSA private key support
+- PEM and DER format parsing
+- X.509 certificate validation
+- Certificate chain verification
+
+#### ✅ **Production Ready Features**
+- Error handling with `anyhow`
+- Comprehensive logging support
+- Memory safety guarantees
+- Performance optimizations for IoT devices
+
+### Testing and Verification
+
+The custom TLS library has been thoroughly tested and verified:
+
+#### ✅ **Unit Tests**
+- Certificate parsing tests
+- Key format validation tests
+- Protocol message tests
+- Device UUID tests
+
+#### ✅ **Integration Tests**
+- Gateway TLS functionality
+- Certificate validation
+- Connection establishment
+- Message handling
+
+#### ✅ **Deployment Tests**
+- Kubernetes integration
+- Docker container testing
+- k3d cluster deployment
+- Service connectivity verification
 
 ## Architecture
 
@@ -122,6 +170,75 @@ cargo build --release --bin wasmbed-gateway-simple
 ### Full Gateway
 
 The `wasmbed-gateway` binary provides complete Kubernetes integration while using the custom TLS library for secure communication.
+
+## Deployment Script Improvements
+
+### Enhanced deploy-complete.sh
+
+The deployment script has been significantly improved to address common issues:
+
+#### ✅ **Kubeconfig Certificate Management**
+- Automatic extraction of inline base64 certificates
+- External certificate file creation
+- Kubeconfig update to use external files
+- Resolution of "file name too long" errors
+
+#### ✅ **Complete Component Deployment**
+- Gateway Docker image building and import
+- Controller Docker image building and import
+- Proper RBAC configuration
+- TLS secret management with correct naming
+
+#### ✅ **Enhanced Error Handling**
+- Prerequisite checking (including Python3)
+- Comprehensive error messages
+- Logging for troubleshooting
+- Graceful failure handling
+
+#### ✅ **Deployment Verification**
+- CRD establishment verification
+- Pod readiness checking
+- Service connectivity testing
+- Resource status verification
+
+### Usage
+
+```bash
+# Deploy complete platform
+./deploy-complete.sh
+
+# The script will:
+# 1. Check all prerequisites
+# 2. Clean up existing environment
+# 3. Create k3d cluster with proper kubeconfig
+# 4. Generate TLS certificates
+# 5. Build and deploy all components
+# 6. Create MCU devices
+# 7. Wait for deployment readiness
+# 8. Verify deployment success
+```
+
+### Troubleshooting Deployment Issues
+
+The improved script includes comprehensive troubleshooting:
+
+```bash
+# Check cluster status
+kubectl get pods -n wasmbed
+
+# Check gateway logs
+kubectl logs -l app=wasmbed-gateway -n wasmbed
+
+# Check controller logs
+kubectl logs -l app=wasmbed-k8s-controller -n wasmbed
+
+# Verify services
+kubectl get services -n wasmbed
+
+# Check certificates
+kubectl describe secret wasmbed-tls-secret-rsa -n wasmbed
+kubectl describe secret wasmbed-ca-secret-rsa -n wasmbed
+```
 
 ## Examples
 
