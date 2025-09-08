@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Network Connectivity Testing**: Built-in network connectivity verification
 - **Docker Image Management**: Enhanced Docker image building and import
 - **Error Recovery**: Automatic error recovery and pod restart capabilities
+- **Workflow Compliance Analysis**: Complete analysis of PlantUML workflow compliance
+- **Implementation Roadmap**: Detailed roadmap for completing missing features
+- **Compliance Matrix**: Visual representation of implementation status
 
 ### Changed
 - **Gateway TLS Implementation**: Replaced rustls with custom TLS library
@@ -51,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Service Configuration**: Improved service configuration and connectivity
 - **Documentation Structure**: Enhanced documentation with troubleshooting guides
 - **Script Organization**: Better organized and more robust deployment scripts
+- **Roadmap Structure**: Reorganized roadmap with priority-based implementation plan
+- **Compliance Documentation**: Added detailed workflow compliance analysis
 
 ### Fixed
 - **Certificate Parsing**: Fixed private key parsing issues
@@ -68,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docker Image Import**: Resolved Docker image import issues
 - **Namespace Management**: Fixed namespace creation and management
 - **Resource Dependencies**: Resolved resource dependency issues
+- **Documentation Gaps**: Identified and documented missing workflow features
 
 ### Security
 - **Enhanced Security**: Custom TLS implementation provides better security control
@@ -80,6 +86,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Network Security**: Enhanced network security and connectivity
 - **Certificate Rotation**: Better certificate rotation and management
 - **Access Control**: Improved access control and permissions
+
+### Planned (v0.2.0)
+- **Pairing Mode Management**: Admin API for secure device enrollment control
+- **Heartbeat Timeout Detection**: Automatic device health monitoring
+- **MCU Feedback Integration**: Bidirectional communication for deployment feedback
+- **Enhanced Device States**: Complete state transition management
+- **Image Pull and Validation**: WASM image registry integration
+- **Certificate Management**: Automated certificate rotation and validation
+- **Comprehensive Metrics**: Device and application performance monitoring
+- **Alerting System**: Proactive system health and security alerts
 
 ## [0.1.0] - 2025-01-08
 
