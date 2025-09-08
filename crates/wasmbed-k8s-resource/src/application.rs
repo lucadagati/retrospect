@@ -150,7 +150,7 @@ pub struct ApplicationStatus {
 }
 
 /// Application phase
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
 pub enum ApplicationPhase {
     /// Application is being created
     Creating,
@@ -168,6 +168,43 @@ pub enum ApplicationPhase {
     Stopped,
     /// Application is being deleted
     Deleting,
+}
+
+impl ApplicationPhase {
+    /// Validate state transition from current phase to new phase
+    pub fn validate_transition(current_phase: ApplicationPhase, new_phase: ApplicationPhase) -> bool {
+        match (current_phase, new_phase) {
+            // Valid transitions
+            (ApplicationPhase::Creating, ApplicationPhase::Deploying) => true,
+            (ApplicationPhase::Deploying, ApplicationPhase::Running) => true,
+            (ApplicationPhase::Deploying, ApplicationPhase::PartiallyRunning) => true,
+            (ApplicationPhase::Deploying, ApplicationPhase::Failed) => true,
+            (ApplicationPhase::PartiallyRunning, ApplicationPhase::Running) => true,
+            (ApplicationPhase::PartiallyRunning, ApplicationPhase::Failed) => true,
+            (ApplicationPhase::Running, ApplicationPhase::Stopping) => true,
+            (ApplicationPhase::Running, ApplicationPhase::PartiallyRunning) => true,
+            (ApplicationPhase::Running, ApplicationPhase::Failed) => true,
+            (ApplicationPhase::Stopping, ApplicationPhase::Stopped) => true,
+            (ApplicationPhase::Stopping, ApplicationPhase::Failed) => true,
+            (ApplicationPhase::Stopped, ApplicationPhase::Deploying) => true,
+            (ApplicationPhase::Failed, ApplicationPhase::Deploying) => true,
+            (ApplicationPhase::Failed, ApplicationPhase::Deleting) => true,
+            (ApplicationPhase::Stopped, ApplicationPhase::Deleting) => true,
+            (ApplicationPhase::Running, ApplicationPhase::Deleting) => true,
+            (ApplicationPhase::PartiallyRunning, ApplicationPhase::Deleting) => true,
+            
+            // Self-transitions are valid
+            (a, b) if a == b => true,
+            
+            // Invalid transitions
+            _ => false,
+        }
+    }
+    
+    /// Get the default phase for new applications
+    pub fn default() -> Self {
+        ApplicationPhase::Creating
+    }
 }
 
 /// Device application status
@@ -194,7 +231,7 @@ pub struct DeviceApplicationStatus {
 }
 
 /// Device application phase
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
 pub enum DeviceApplicationPhase {
     /// Application is being deployed
     Deploying,
@@ -204,6 +241,32 @@ pub enum DeviceApplicationPhase {
     Failed,
     /// Application is stopped
     Stopped,
+}
+
+impl DeviceApplicationPhase {
+    /// Validate state transition from current phase to new phase
+    pub fn validate_transition(current_phase: DeviceApplicationPhase, new_phase: DeviceApplicationPhase) -> bool {
+        match (current_phase, new_phase) {
+            // Valid transitions
+            (DeviceApplicationPhase::Deploying, DeviceApplicationPhase::Running) => true,
+            (DeviceApplicationPhase::Deploying, DeviceApplicationPhase::Failed) => true,
+            (DeviceApplicationPhase::Running, DeviceApplicationPhase::Stopped) => true,
+            (DeviceApplicationPhase::Running, DeviceApplicationPhase::Failed) => true,
+            (DeviceApplicationPhase::Stopped, DeviceApplicationPhase::Deploying) => true,
+            (DeviceApplicationPhase::Failed, DeviceApplicationPhase::Deploying) => true,
+            
+            // Self-transitions are valid
+            (a, b) if a == b => true,
+            
+            // Invalid transitions
+            _ => false,
+        }
+    }
+    
+    /// Get the default phase for new device applications
+    pub fn default() -> Self {
+        DeviceApplicationPhase::Deploying
+    }
 }
 
 /// Application metrics

@@ -39,6 +39,27 @@ impl DeviceStatusUpdate {
         self
     }
 
+    /// Validate state transition from current phase to new phase
+    pub fn validate_transition(current_phase: DevicePhase, new_phase: DevicePhase) -> bool {
+        match (current_phase, new_phase) {
+            // Valid transitions
+            (DevicePhase::Pending, DevicePhase::Enrolling) => true,
+            (DevicePhase::Enrolling, DevicePhase::Enrolled) => true,
+            (DevicePhase::Enrolled, DevicePhase::Connected) => true,
+            (DevicePhase::Connected, DevicePhase::Disconnected) => true,
+            (DevicePhase::Connected, DevicePhase::Unreachable) => true,
+            (DevicePhase::Disconnected, DevicePhase::Connected) => true,
+            (DevicePhase::Unreachable, DevicePhase::Connected) => true,
+            (DevicePhase::Unreachable, DevicePhase::Disconnected) => true,
+            
+            // Self-transitions are valid
+            (a, b) if a == b => true,
+            
+            // Invalid transitions
+            _ => false,
+        }
+    }
+
     pub fn gateway(mut self, gateway: Option<GatewayReference>) -> Self {
         self.gateway = Some(gateway);
         self
@@ -60,10 +81,23 @@ impl DeviceStatusUpdate {
             .connected_since(Some(Utc::now()))
     }
 
+    pub fn mark_enrolling(self) -> Self {
+        self.phase(DevicePhase::Enrolling)
+    }
+
+    pub fn mark_enrolled(self) -> Self {
+        self.phase(DevicePhase::Enrolled)
+    }
+
     pub fn mark_disconnected(self) -> Self {
         self.phase(DevicePhase::Disconnected)
             .gateway(None)
             .connected_since(None)
+    }
+
+    pub fn mark_unreachable(self) -> Self {
+        self.phase(DevicePhase::Unreachable)
+            .gateway(None)
     }
 
     pub fn update_heartbeat(self) -> Self {

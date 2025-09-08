@@ -277,15 +277,16 @@ impl ApplicationController {
             match self.deploy_to_device_with_retry(app, &device, &wasm_bytes).await {
                 Ok(_) => {
                     deployed_count += 1;
+                    // Mark as deploying initially - MCU feedback will update to Running/Failed
                     device_statuses.insert(device.name_any(), 
                         DeviceApplicationStatus {
-                            status: DeviceApplicationPhase::Running,
+                            status: DeviceApplicationPhase::Deploying,
                             last_heartbeat: Some(chrono::Utc::now().to_rfc3339()),
                             metrics: None,
                             error: None,
                             restart_count: 0,
                         });
-                    info!("Successfully deployed {} to device {}", app_name, device.name_any());
+                    info!("Deployment request sent for {} to device {}", app_name, device.name_any());
                 },
                 Err(e) => {
                     failed_count += 1;
@@ -304,15 +305,36 @@ impl ApplicationController {
 
         // Update status in Kubernetes based on deployment results
         if failed_count == 0 {
-            self.update_application_status_with_devices(app, ApplicationPhase::Running, 
-                "All devices deployed successfully", device_statuses).await?;
+            // Check if all deployments are still in progress
+            let all_deploying = device_statuses.values()
+                .all(|s| matches!(s.status, DeviceApplicationPhase::Deploying));
+            
+            if all_deploying {
+                // All deployments are still in progress, keep in Deploying phase
+                self.update_application_status_with_devices(app, ApplicationPhase::Deploying, 
+                    "Deployment requests sent, waiting for MCU feedback", device_statuses).await?;
+            } else {
+                // Some deployments have completed, check if all are running
+                let running_count = device_statuses.values()
+                    .filter(|s| matches!(s.status, DeviceApplicationPhase::Running))
+                    .count();
+                
+                if running_count == deployed_count {
+                    self.update_application_status_with_devices(app, ApplicationPhase::Running, 
+                        "All devices deployed successfully", device_statuses).await?;
+                } else {
+                    self.update_application_status_with_devices(app, ApplicationPhase::PartiallyRunning, 
+                        &format!("Deployed to {} devices, {} still deploying", running_count, deployed_count - running_count), 
+                        device_statuses).await?;
+                }
+            }
         } else if deployed_count > 0 {
             self.update_application_status_with_devices(app, ApplicationPhase::PartiallyRunning, 
-                &format!("Deployed to {} devices, {} failed", deployed_count, failed_count), 
+                &format!("Deployment requests sent to {} devices, {} failed", deployed_count, failed_count), 
                 device_statuses).await?;
         } else {
             self.update_application_status_with_devices(app, ApplicationPhase::Failed, 
-                &format!("Failed to deploy to any devices ({} failed)", failed_count), 
+                &format!("Failed to send deployment requests to any devices ({} failed)", failed_count), 
                 device_statuses).await?;
         }
 
@@ -522,6 +544,13 @@ impl ApplicationController {
     async fn update_application_status(&self, app: &Application, phase: ApplicationPhase, message: &str) -> Result<()> {
         let apps_api: Api<Application> = Api::all(self.client.clone());
         
+        // Validate state transition
+        let current_phase = app.status().as_ref().map(|s| s.phase).unwrap_or(ApplicationPhase::Creating);
+        if !ApplicationPhase::validate_transition(current_phase, phase) {
+            warn!("Invalid state transition from {:?} to {:?} for application {}", current_phase, phase, app.name_any());
+            // Still proceed with the update but log the invalid transition
+        }
+        
         let status = ApplicationStatus {
             phase: phase.clone(),
             device_statuses: Some(BTreeMap::new()),
@@ -555,6 +584,13 @@ impl ApplicationController {
     async fn update_application_status_with_devices(&self, app: &Application, phase: ApplicationPhase, 
         message: &str, device_statuses: BTreeMap<String, DeviceApplicationStatus>) -> Result<()> {
         let apps_api: Api<Application> = Api::all(self.client.clone());
+        
+        // Validate state transition
+        let current_phase = app.status().as_ref().map(|s| s.phase).unwrap_or(ApplicationPhase::Creating);
+        if !ApplicationPhase::validate_transition(current_phase, phase) {
+            warn!("Invalid state transition from {:?} to {:?} for application {}", current_phase, phase, app.name_any());
+            // Still proceed with the update but log the invalid transition
+        }
         
         // Calculate statistics
         let total_devices = device_statuses.len() as u32;

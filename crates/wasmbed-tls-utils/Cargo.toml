@@ -36,6 +36,9 @@ tokio-util = "0.7"
 # For protocol types
 wasmbed-protocol = { path = "../wasmbed-protocol", features = ["alloc"] }
 
+# For CBOR message parsing
+minicbor = "1.1"
+
 [[example]]
 name = "tls-utils-example"
 path = "examples/tls-utils-example.rs"

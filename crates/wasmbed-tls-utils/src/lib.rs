@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use rustls_pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use x509_parser::parse_x509_certificate;
 use log::warn;
-use std::collections::HashMap;
+// use std::collections::HashMap; // Not used in current implementation
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -13,6 +13,7 @@ use std::fmt;
 use std::pin::Pin;
 use std::task::{Context as TaskContext, Poll};
 use tokio::io::{ReadBuf, AsyncRead, AsyncWrite};
+use minicbor;
 
 // Re-export protocol types for compatibility
 pub use wasmbed_protocol::{ClientMessage, ServerMessage};
@@ -113,10 +114,64 @@ impl MessageContext {
     }
 }
 
+/// Enhanced Message Context with PublicKey support for gateway
+pub struct MessageContextWithKey {
+    pub public_key: Vec<u8>,
+    pub connection_id: String,
+    pub message: Option<ClientMessage>,
+    pub reply_fn: Option<Box<dyn Fn(ServerMessage) -> Result<()> + Send + Sync>>,
+}
+
+impl MessageContextWithKey {
+    /// Create a new MessageContextWithKey
+    pub fn new(public_key: Vec<u8>, connection_id: String) -> Self {
+        Self {
+            public_key,
+            connection_id,
+            message: None,
+            reply_fn: None,
+        }
+    }
+
+    /// Get the client message
+    pub fn message(&self) -> Option<&ClientMessage> {
+        self.message.as_ref()
+    }
+
+    /// Get the client public key
+    pub fn client_public_key(&self) -> &Vec<u8> {
+        &self.public_key
+    }
+
+    /// Reply to the client
+    pub fn reply(&self, message: ServerMessage) -> Result<()> {
+        if let Some(reply_fn) = &self.reply_fn {
+            reply_fn(message)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Set the message
+    pub fn set_message(&mut self, message: ClientMessage) {
+        self.message = Some(message);
+    }
+
+    /// Set the reply function
+    pub fn set_reply_fn(&mut self, reply_fn: Box<dyn Fn(ServerMessage) -> Result<()> + Send + Sync>) {
+        self.reply_fn = Some(reply_fn);
+    }
+}
+
 /// Callback types for compatibility
 pub type OnClientConnect = Box<dyn Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = AuthorizationResult> + Send>> + Send + Sync>;
 pub type OnClientDisconnect = Box<dyn Fn(Vec<u8>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
 pub type OnClientMessage = Box<dyn Fn(MessageContext) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
+
+/// Enhanced callback types for gateway with PublicKey support
+pub type OnClientConnectWithKey = Box<dyn Fn(Vec<u8>) -> std::pin::Pin<Box<dyn std::future::Future<Output = AuthorizationResult> + Send>> + Send + Sync>;
+pub type OnClientDisconnectWithKey = Box<dyn Fn(Vec<u8>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
+pub type OnClientMessageWithKey = Box<dyn Fn(MessageContextWithKey) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
 
 /// Server Configuration for compatibility
 pub struct ServerConfig {
@@ -129,9 +184,25 @@ pub struct ServerConfig {
     pub shutdown: tokio_util::sync::CancellationToken,
 }
 
+/// Enhanced Server Configuration for gateway with PublicKey support
+pub struct GatewayServerConfig {
+    pub bind_addr: std::net::SocketAddr,
+    pub identity: ServerIdentity,
+    pub client_ca: CertificateDer<'static>,
+    pub on_client_connect: Arc<OnClientConnectWithKey>,
+    pub on_client_disconnect: Arc<OnClientDisconnectWithKey>,
+    pub on_client_message: Arc<OnClientMessageWithKey>,
+    pub shutdown: tokio_util::sync::CancellationToken,
+}
+
 /// Custom TLS Server that implements the same interface as rustls
 pub struct Server {
     config: ServerConfig,
+}
+
+/// Enhanced TLS Server for gateway with PublicKey support
+pub struct GatewayServer {
+    config: GatewayServerConfig,
 }
 
 /// TLS Stream wrapper for AsyncRead/AsyncWrite
@@ -841,5 +912,89 @@ YF7yXpmHoluHsRUoqg9xrqqyOHrmmmSKuKfah2Q=
 invalid
 -----END PUBLIC KEY-----";
         assert!(TlsUtils::parse_private_key(wrong_pem).is_err());
+    }
+}
+
+impl GatewayServer {
+    /// Create a new GatewayServer
+    pub fn new(config: GatewayServerConfig) -> Self {
+        Self { config }
+    }
+
+    /// Run the gateway server
+    pub async fn run(&self) -> Result<()> {
+        let listener = tokio::net::TcpListener::bind(self.config.bind_addr).await?;
+        log::info!("Gateway TLS Server listening on {}", self.config.bind_addr);
+
+        loop {
+            match listener.accept().await {
+                Ok((stream, addr)) => {
+                    log::info!("New connection from {}", addr);
+                    let tls_stream = TlsStream::new(stream);
+                    self.handle_connection(tls_stream).await?;
+                }
+                Err(e) => {
+                    log::error!("Failed to accept connection: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Handle a new TLS connection with PublicKey support
+    async fn handle_connection(&self, mut tls_stream: TlsStream) -> Result<()> {
+        // Extract public key from TLS connection
+        let public_key = tls_stream.peer_public_key().cloned().unwrap_or_else(|| vec![]);
+        
+        // Call on_client_connect callback with public key
+        let auth_result = (self.config.on_client_connect)(public_key.clone()).await;
+        match auth_result {
+            AuthorizationResult::Authorized => {
+                log::info!("Client authorized with public key: {} bytes", public_key.len());
+            }
+            AuthorizationResult::Unauthorized => {
+                log::warn!("Client unauthorized with public key: {} bytes", public_key.len());
+                return Ok(());
+            }
+        }
+
+        // Handle the connection
+        loop {
+            let mut buffer = [0; 1024];
+            match tls_stream.read(&mut buffer).await {
+                Ok(0) => {
+                    log::info!("Connection closed by client");
+                    break;
+                }
+                Ok(n) => {
+                    log::debug!("Received {} bytes", n);
+                    
+                    // Create message context with public key
+                    let mut ctx = MessageContextWithKey::new(
+                        public_key.clone(),
+                        "gateway-connection".to_string(),
+                    );
+                    
+                    // Parse CBOR message if possible
+                    if let Ok(client_message) = minicbor::decode::<ClientMessage>(&buffer[..n]) {
+                        ctx.set_message(client_message);
+                    }
+                    
+                    // Call on_client_message callback
+                    (self.config.on_client_message)(ctx).await;
+                    
+                    // Echo back the data
+                    tls_stream.write_all(&buffer[..n]).await?;
+                }
+                Err(e) => {
+                    log::error!("Error reading from connection: {}", e);
+                    break;
+                }
+            }
+        }
+        
+        // Call on_client_disconnect callback
+        (self.config.on_client_disconnect)(public_key.clone()).await;
+        
+        Ok(())
     }
 }

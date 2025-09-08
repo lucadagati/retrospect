@@ -21,7 +21,7 @@ use tracing::{debug, error, info, warn};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use minicbor;
-use rustls::ServerConfig;
+use wasmbed_tls_utils::{TlsServer};
 
 use wasmbed_k8s_resource::{Application, Device, DeviceApplicationPhase, ApplicationConfig};
 use wasmbed_protocol::{ServerMessage, DeviceUuid};
@@ -30,12 +30,15 @@ use wasmbed_types::PublicKey;
 /// HTTP API server for Gateway-Controller communication with CBOR/TLS support
 #[derive(Clone)]
 pub struct HttpApiServer {
-    device_connections: Arc<RwLock<HashMap<String, DeviceConnection>>>,
-    applications: Arc<RwLock<HashMap<String, DeployedApplication>>>,
-    device_api: Api<Device>,
-    application_api: Api<Application>,
-    tls_config: Arc<ServerConfig>,
-    cbor_tls_listener: Option<Arc<TcpListener>>,
+    pub device_connections: Arc<RwLock<HashMap<String, DeviceConnection>>>,
+    pub applications: Arc<RwLock<HashMap<String, DeployedApplication>>>,
+    pub device_api: Api<Device>,
+    pub application_api: Api<Application>,
+    pub tls_config: Arc<TlsServer>, // Custom TLS server implementation
+    pub cbor_tls_listener: Option<Arc<TcpListener>>,
+    pub pairing_mode: Arc<RwLock<bool>>,
+    pub pairing_timeout_seconds: Arc<RwLock<u64>>,
+    pub heartbeat_timeout_seconds: Arc<RwLock<u64>>,
 }
 
 /// Active device connection information with TLS support
@@ -133,21 +136,27 @@ pub struct DeviceInfo {
 impl HttpApiServer {
     /// Create a new HTTP API server with CBOR/TLS support
     pub fn new(device_api: Api<Device>, application_api: Api<Application>) -> Result<Self> {
-        // Create a placeholder TLS configuration for CBOR/TLS listener
-        let tls_config = ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(
-                vec![rustls::pki_types::CertificateDer::from(vec![0u8; 100])],
-                rustls::pki_types::PrivateKeyDer::from(rustls::pki_types::PrivatePkcs8KeyDer::from(vec![0u8; 100]))
-            )?;
+        // Create a placeholder TLS server for CBOR/TLS listener
+        // TODO: Load actual certificates from configuration
+        let bind_addr = "0.0.0.0:8443".parse().unwrap();
+        
+        // Create placeholder certificates (in production, load from files)
+        let server_cert = rustls_pki_types::CertificateDer::from(vec![0u8; 100]);
+        let server_key = rustls_pki_types::PrivatePkcs8KeyDer::from(vec![0u8; 100]);
+        let ca_cert = rustls_pki_types::CertificateDer::from(vec![0u8; 100]);
+        
+        let tls_server = TlsServer::new(bind_addr, server_cert, server_key, ca_cert);
         
         Ok(Self {
             device_connections: Arc::new(RwLock::new(HashMap::new())),
             applications: Arc::new(RwLock::new(HashMap::new())),
             device_api,
             application_api,
-            tls_config: Arc::new(tls_config),
+            tls_config: Arc::new(tls_server),
             cbor_tls_listener: None,
+            pairing_mode: Arc::new(RwLock::new(false)),
+            pairing_timeout_seconds: Arc::new(RwLock::new(300)),
+            heartbeat_timeout_seconds: Arc::new(RwLock::new(90)),
         })
     }
     
@@ -246,6 +255,12 @@ impl HttpApiServer {
             .route("/api/v1/devices/:device_id/stop/:app_id", post(stop_application))
             .route("/api/v1/devices/:device_id/status/:app_id", get(get_application_status))
             .route("/api/v1/devices/:device_id/applications", get(get_device_applications))
+            .route("/api/v1/admin/pairing-mode", get(get_pairing_mode))
+            .route("/api/v1/admin/pairing-mode", post(set_pairing_mode))
+            .route("/api/v1/admin/pairing-timeout", get(get_pairing_timeout))
+            .route("/api/v1/admin/pairing-timeout", post(set_pairing_timeout))
+            .route("/api/v1/admin/heartbeat-timeout", get(get_heartbeat_timeout))
+            .route("/api/v1/admin/heartbeat-timeout", post(set_heartbeat_timeout))
             .route("/health", get(health_check))
             .route("/ready", get(readiness_check))
             .with_state(state)
@@ -480,7 +495,7 @@ impl Clone for CborTlsHandler {
 
 impl CborTlsHandler {
     /// Handle incoming CBOR/TLS connection
-    pub async fn handle_connection(&self, stream: TcpStream, _tls_config: Arc<ServerConfig>) -> Result<()> {
+    pub async fn handle_connection(&self, stream: TcpStream, _tls_config: Arc<TlsServer>) -> Result<()> {
         info!("Handling new CBOR/TLS connection");
         
         // In a real implementation, you would:
@@ -583,4 +598,102 @@ impl CborTlsHandler {
         
         Ok(())
     }
+}
+
+/// Admin API handlers for pairing mode management
+
+/// Get current pairing mode status
+async fn get_pairing_mode(State(server): State<Arc<HttpApiServer>>) -> Json<serde_json::Value> {
+    let pairing_mode = *server.pairing_mode.read().await;
+    Json(serde_json::json!({
+        "pairing_mode": pairing_mode,
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    }))
+}
+
+/// Set pairing mode status
+#[derive(Deserialize)]
+struct PairingModeRequest {
+    enabled: bool,
+}
+
+async fn set_pairing_mode(
+    State(server): State<Arc<HttpApiServer>>,
+    Json(request): Json<PairingModeRequest>,
+) -> Json<serde_json::Value> {
+    let mut pairing_mode = server.pairing_mode.write().await;
+    *pairing_mode = request.enabled;
+    
+    info!("Pairing mode {} by admin API", if request.enabled { "enabled" } else { "disabled" });
+    
+    Json(serde_json::json!({
+        "success": true,
+        "pairing_mode": request.enabled,
+        "message": format!("Pairing mode {}", if request.enabled { "enabled" } else { "disabled" }),
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    }))
+}
+
+/// Get current pairing timeout
+async fn get_pairing_timeout(State(server): State<Arc<HttpApiServer>>) -> Json<serde_json::Value> {
+    let timeout = *server.pairing_timeout_seconds.read().await;
+    Json(serde_json::json!({
+        "pairing_timeout_seconds": timeout,
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    }))
+}
+
+/// Set pairing timeout
+#[derive(Deserialize)]
+struct PairingTimeoutRequest {
+    timeout_seconds: u64,
+}
+
+async fn set_pairing_timeout(
+    State(server): State<Arc<HttpApiServer>>,
+    Json(request): Json<PairingTimeoutRequest>,
+) -> Json<serde_json::Value> {
+    let mut timeout = server.pairing_timeout_seconds.write().await;
+    *timeout = request.timeout_seconds;
+    
+    info!("Pairing timeout set to {} seconds by admin API", request.timeout_seconds);
+    
+    Json(serde_json::json!({
+        "success": true,
+        "pairing_timeout_seconds": request.timeout_seconds,
+        "message": format!("Pairing timeout set to {} seconds", request.timeout_seconds),
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    }))
+}
+
+/// Get current heartbeat timeout
+async fn get_heartbeat_timeout(State(server): State<Arc<HttpApiServer>>) -> Json<serde_json::Value> {
+    let timeout = *server.heartbeat_timeout_seconds.read().await;
+    Json(serde_json::json!({
+        "heartbeat_timeout_seconds": timeout,
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    }))
+}
+
+/// Set heartbeat timeout
+#[derive(Deserialize)]
+struct HeartbeatTimeoutRequest {
+    timeout_seconds: u64,
+}
+
+async fn set_heartbeat_timeout(
+    State(server): State<Arc<HttpApiServer>>,
+    Json(request): Json<HeartbeatTimeoutRequest>,
+) -> Json<serde_json::Value> {
+    let mut timeout = server.heartbeat_timeout_seconds.write().await;
+    *timeout = request.timeout_seconds;
+    
+    info!("Heartbeat timeout set to {} seconds by admin API", request.timeout_seconds);
+    
+    Json(serde_json::json!({
+        "success": true,
+        "heartbeat_timeout_seconds": request.timeout_seconds,
+        "message": format!("Heartbeat timeout set to {} seconds", request.timeout_seconds),
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    }))
 }
