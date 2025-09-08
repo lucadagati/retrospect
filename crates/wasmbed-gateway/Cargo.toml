@@ -43,6 +43,9 @@ features = [ "alloc" ]
 [dependencies.wasmbed-protocol-server]
 path = "../wasmbed-protocol-server"
 
+[dependencies.wasmbed-tls-utils]
+path = "../wasmbed-tls-utils"
+
 [dependencies.wasmbed-types]
 path = "../wasmbed-types"
 features = [ "k8s" ]
@@ -78,14 +81,12 @@ features = ["net"]
 [dependencies.serde_cbor]
 version = "0.11"
 
-[dependencies.rustls]
-version = "0.23"
-
-[dependencies.rustls-pemfile]
-version = "2.0"
-
 [dependencies.minicbor]
 version = "1.0"
 
 [dependencies.pem]
 version = "3.0"
+
+[[bin]]
+name = "wasmbed-gateway-simple"
+path = "src/main_simple.rs"

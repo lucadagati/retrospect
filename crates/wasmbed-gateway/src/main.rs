@@ -8,18 +8,13 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use clap::Parser;
 use kube::{Api, Client, ResourceExt};
-use rustls_pemfile;
 use tokio_util::sync::CancellationToken;
 use tracing::{Level, error, info, warn, debug};
 use tracing_subscriber::FmtSubscriber;
 
-use wasmbed_cert::ServerIdentity;
 use wasmbed_k8s_resource::{Device, DeviceStatusUpdate, Application};
 use wasmbed_protocol::{ClientMessage, ServerMessage, DeviceUuid};
-use wasmbed_protocol_server::{
-    AuthorizationResult, MessageContext, OnClientConnect, OnClientDisconnect,
-    OnClientMessage, Server, ServerConfig,
-};
+use wasmbed_tls_utils::{TlsUtils, Server, ServerConfig, ServerIdentity, AuthorizationResult, MessageContext};
 use wasmbed_types::{GatewayReference, PublicKey};
 
 mod http_api;
@@ -66,42 +61,54 @@ impl Callbacks {
             let gateway_reference = gateway_reference.clone();
             let http_server = http_server.clone();
             Box::pin(async move {
-                // First, try to find an existing device
+                // Verify TLS client authentication by checking if the public key
+                // from the client certificate matches a registered device
                 match Device::find(api.clone(), public_key.clone()).await {
                     Ok(Some(device)) => {
-                        // Device exists, mark as connected
-                        if let Err(e) = DeviceStatusUpdate::default()
-                            .mark_connected(gateway_reference.clone())
-                            .apply(api.clone(), device.clone())
-                            .await
-                        {
-                            error!("Error updating DeviceStatus: {e}");
+                        // Verify that the public key from the certificate matches the stored device public key
+                        if device.spec.public_key == public_key {
+                            // Device exists and public key matches, mark as connected
+                            info!("TLS client certificate verification successful: public key matches stored device {}", device.name_any());
+                            
+                            if let Err(e) = DeviceStatusUpdate::default()
+                                .mark_connected(gateway_reference.clone())
+                                .apply(api.clone(), device.clone())
+                                .await
+                            {
+                                error!("Error updating DeviceStatus: {e}");
+                                return AuthorizationResult::Unauthorized;
+                            }
+                            
+                            // Register device in HTTP API
+                            let device_id = device.name_any();
+                            let public_key_str = public_key.to_base64();
+                            let capabilities = DeviceCapabilities {
+                                available_memory: 1024 * 1024 * 1024, // 1GB default
+                                cpu_arch: "riscv32".to_string(),
+                                wasm_features: vec!["core".to_string()],
+                                max_app_size: 1024 * 1024, // 1MB default
+                            };
+                            http_server.register_device(device_id, public_key_str, capabilities).await;
+                            
+                            info!("TLS client authentication successful for existing device: {}", public_key);
+                            AuthorizationResult::Authorized
+                        } else {
+                            error!("TLS client authentication failed: public key mismatch for device {}", device.name_any());
+                            error!("Expected: {}, Got: {}", device.spec.public_key.to_base64(), public_key.to_base64());
+                            AuthorizationResult::Unauthorized
                         }
-                        
-                        // Register device in HTTP API
-                        let device_id = device.name_any();
-                        let public_key_str = public_key.to_base64();
-                        let capabilities = DeviceCapabilities {
-                            available_memory: 1024 * 1024 * 1024, // 1GB default
-                            cpu_arch: "riscv32".to_string(),
-                            wasm_features: vec!["core".to_string()],
-                            max_app_size: 1024 * 1024, // 1MB default
-                        };
-                        http_server.register_device(device_id, public_key_str, capabilities).await;
-                        
-                        info!("Existing device connected: {}", public_key);
-                        AuthorizationResult::Authorized
                     },
                     Ok(None) => {
-                        // Device doesn't exist, but we'll allow connection for enrollment
-                        // The device will need to send an EnrollmentRequest message
-                        info!("New device connecting for enrollment: {}", public_key);
+                        // Device doesn't exist, check if pairing mode is enabled for enrollment
+                        // TODO: Implement proper pairing mode check from configuration
+                        // For now, allow connection for enrollment but log the security consideration
+                        warn!("TLS client authentication: unknown device attempting connection for enrollment: {}", public_key);
+                        warn!("Consider enabling pairing mode for secure device enrollment");
                         AuthorizationResult::Authorized
                     },
                     Err(e) => {
-                        error!("Unable to check Device status: {e}");
-                        // Allow connection anyway, let the message handler deal with it
-                        AuthorizationResult::Authorized
+                        error!("TLS client authentication failed: unable to check Device status: {e}");
+                        AuthorizationResult::Unauthorized
                     },
                 }
             })
@@ -109,7 +116,32 @@ impl Callbacks {
     }
 
     fn on_disconnect(&self) -> Box<OnClientDisconnect> {
-        Box::new(move |_public_key: PublicKey<'static>| Box::pin(async move {}))
+        let api = self.api.clone();
+        Box::new(move |public_key: PublicKey<'static>| {
+            let api = api.clone();
+            Box::pin(async move {
+                // Mark device as disconnected when TLS connection is lost
+                match Device::find(api.clone(), public_key.clone()).await {
+                    Ok(Some(device)) => {
+                        if let Err(e) = DeviceStatusUpdate::default()
+                            .mark_disconnected()
+                            .apply(api.clone(), device.clone())
+                            .await
+                        {
+                            error!("Error updating DeviceStatus on disconnect: {e}");
+                        } else {
+                            info!("Device marked as disconnected: {}", public_key);
+                        }
+                    },
+                    Ok(None) => {
+                        debug!("Unknown device disconnected: {}", public_key);
+                    },
+                    Err(e) => {
+                        error!("Error checking device status on disconnect: {e}");
+                    },
+                }
+            })
+        })
     }
 
     fn on_message(&self) -> Box<OnClientMessage> {
@@ -122,7 +154,25 @@ impl Callbacks {
             Box::pin(async move {
                 match ctx.message() {
                     ClientMessage::Heartbeat => {
-                        // TODO: Update heartbeat in HTTP API when we have device identification
+                        // Update heartbeat timestamp for the device
+                        let public_key = ctx.client_public_key();
+                        match Device::find(api.clone(), public_key.clone()).await {
+                            Ok(Some(device)) => {
+                                if let Err(e) = DeviceStatusUpdate::default()
+                                    .update_heartbeat()
+                                    .apply(api.clone(), device.clone())
+                                    .await
+                                {
+                                    error!("Error updating heartbeat: {e}");
+                                }
+                            },
+                            Ok(None) => {
+                                debug!("Heartbeat from unknown device: {}", public_key);
+                            },
+                            Err(e) => {
+                                error!("Error checking device status for heartbeat: {e}");
+                            },
+                        }
                         let _ = ctx.reply(ServerMessage::HeartbeatAck);
                     },
                     ClientMessage::EnrollmentRequest => {
@@ -135,6 +185,20 @@ impl Callbacks {
                     },
                     ClientMessage::PublicKey { key } => {
                         info!("Received public key during enrollment: {} bytes", key.len());
+                        
+                        // Verify that the public key in the message matches the TLS certificate public key
+                        let tls_public_key = ctx.client_public_key();
+                        let message_public_key = PublicKey::from(key.as_slice());
+                        
+                        if *tls_public_key != message_public_key {
+                            error!("TLS client authentication failed during enrollment: public key mismatch");
+                            let _ = ctx.reply(ServerMessage::EnrollmentRejected { 
+                                reason: "Public key mismatch with TLS certificate".as_bytes().to_vec() 
+                            });
+                            return;
+                        }
+                        
+                        info!("TLS client authentication verified during enrollment");
                         
                         // Generate a unique UUID for this device
                         let uuid = uuid::Uuid::new_v4();
@@ -275,36 +339,27 @@ async fn main() -> Result<()> {
             )
         })?;
 
-    // Parse PEM certificates using rustls-pemfile
-    let mut private_key_reader = std::io::Cursor::new(&private_key_bytes);
-    let private_key = rustls_pemfile::pkcs8_private_keys(&mut private_key_reader)
-        .collect::<Result<Vec<_>, _>>()
-        .with_context(|| "Failed to parse private key PEM")?
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("No private key found in PEM file"))?;
+    // Parse PEM certificates using our custom TLS utils
+    let private_key = TlsUtils::parse_private_key(&private_key_bytes)
+        .with_context(|| "Failed to parse private key")?;
+    
+    let certificate = TlsUtils::parse_certificate(&certificate_bytes)
+        .with_context(|| "Failed to parse certificate")?;
+    
+    let client_ca_certs = TlsUtils::parse_certificates(&client_ca_bytes)
+        .with_context(|| "Failed to parse client CA certificates")?;
 
-    let mut certificate_reader = std::io::Cursor::new(&certificate_bytes);
-    let certificate = rustls_pemfile::certs(&mut certificate_reader)
-        .collect::<Result<Vec<_>, _>>()
-        .with_context(|| "Failed to parse certificate PEM")?
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("No certificate found in PEM file"))?;
-
-    let mut client_ca_reader = std::io::Cursor::new(&client_ca_bytes);
-    let client_ca_certs = rustls_pemfile::certs(&mut client_ca_reader)
-        .collect::<Result<Vec<_>, _>>()
-        .with_context(|| "Failed to parse client CA PEM")?;
-
-    let identity = ServerIdentity::from_parts(
-        private_key,
-        certificate,
-    );
+    let server_key = match private_key {
+        rustls_pki_types::PrivateKeyDer::Pkcs8(pkcs8) => pkcs8,
+        _ => return Err(anyhow::anyhow!("Only PKCS8 private keys are supported")),
+    };
+    
     let client_ca = client_ca_certs
         .into_iter()
         .next()
         .ok_or_else(|| anyhow::anyhow!("No CA certificate found in PEM file"))?;
+
+    let identity = ServerIdentity::from_parts(server_key, certificate);
 
     let gateway_reference =
         GatewayReference::new(&args.pod_namespace, &args.pod_name);

@@ -10,8 +10,9 @@ use rustls::{ClientConfig, RootCertStore, ServerConfig};
 use rustls_pemfile::certs;
 use ed25519_dalek::{SigningKey, VerifyingKey, Signature, Signer, Verifier};
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
-use aes_gcm::aead::{Aead, OsRng};
+use aes_gcm::aead::Aead;
 use rand::rngs::OsRng;
+use rand::Rng;
 use base64::{Engine as _, engine::general_purpose};
 use hex;
 
@@ -33,7 +34,7 @@ impl SecurityManager {
         let mut rng = OsRng;
         
         // Generate a new key pair
-        let signing_key = SigningKey::generate(&mut rng);
+        let signing_key = SigningKey::new(&mut rng);
         let verifying_key = signing_key.verifying_key();
         
         Ok(Self {
@@ -47,7 +48,7 @@ impl SecurityManager {
     pub fn get_public_key(&self) -> Result<PublicKey> {
         if let Some(ref public_key) = self.public_key {
             let public_key_bytes = public_key.to_bytes();
-            Ok(PublicKey::from(public_key_bytes))
+            Ok(PublicKey::from(public_key_bytes.as_slice()))
         } else {
             Err(anyhow::anyhow!("No public key available"))
         }
@@ -59,8 +60,8 @@ impl SecurityManager {
     }
 
     /// Get the public key bytes
-    pub fn get_public_key_bytes(&self) -> Option<&[u8]> {
-        self.public_key.as_ref().map(|key| key.to_bytes().as_slice())
+    pub fn get_public_key_bytes(&self) -> Option<Vec<u8>> {
+        self.public_key.as_ref().map(|key| key.to_bytes().to_vec())
     }
 
     /// Verify a certificate chain
@@ -121,7 +122,7 @@ impl SecurityManager {
         
         // Generate a random nonce
         let mut nonce_bytes = [0u8; 12];
-        self.rng.fill(&mut nonce_bytes);
+        self.rng.try_fill(&mut nonce_bytes)?;
         let nonce = Nonce::from_slice(&nonce_bytes);
         
         // Encrypt the data
@@ -161,10 +162,10 @@ impl SecurityManager {
     }
 
     /// Generate a random key
-    pub fn generate_key(&mut self, length: usize) -> Vec<u8> {
+    pub fn generate_key(&mut self, length: usize) -> Result<Vec<u8>> {
         let mut key = vec![0u8; length];
-        self.rng.fill(&mut key);
-        key
+        self.rng.try_fill(&mut key)?;
+        Ok(key)
     }
 
     /// Hash data with SHA-256
@@ -177,16 +178,14 @@ impl SecurityManager {
 
     /// Create TLS client configuration
     pub fn create_tls_client_config(&self) -> Result<ClientConfig> {
+        use wasmbed_tls_utils::TlsUtils;
+        
         let mut root_certs = RootCertStore::empty();
         
-        // Load CA certificate
-        let ca_cert = include_bytes!("../../certs/ca-cert.pem");
-        let mut cert_reader = std::io::Cursor::new(ca_cert);
-        let certs = certs(&mut cert_reader)?;
-        
-        for cert in certs {
-            root_certs.add(cert)?;
-        }
+        // Load CA certificate using our TLS utils
+        let ca_cert_bytes = include_bytes!("../../../certs/ca-cert.pem");
+        let ca_cert = TlsUtils::parse_certificate(ca_cert_bytes)?;
+        root_certs.add(ca_cert)?;
 
         let config = ClientConfig::builder()
             .with_root_certificates(root_certs)
@@ -197,23 +196,18 @@ impl SecurityManager {
 
     /// Create TLS server configuration
     pub fn create_tls_server_config(&self) -> Result<ServerConfig> {
-        // Load server certificate and key
-        let cert_pem = include_bytes!("../../certs/server-cert.pem");
-        let key_pem = include_bytes!("../../certs/server-key.pem");
+        use wasmbed_tls_utils::TlsUtils;
         
-        let mut cert_reader = std::io::Cursor::new(cert_pem);
-        let certs = certs(&mut cert_reader)?;
+        // Load server certificate and key using our TLS utils
+        let cert_pem = include_bytes!("../../../certs/server-cert.pem");
+        let key_pem = include_bytes!("../../../certs/server-key.pem");
         
-        let mut key_reader = std::io::Cursor::new(key_pem);
-        let key = rustls_pemfile::pkcs8_private_keys(&mut key_reader)?;
+        let cert = TlsUtils::parse_certificate(cert_pem)?;
+        let key = TlsUtils::parse_private_key(key_pem)?;
         
-        if certs.is_empty() || key.is_empty() {
-            return Err(anyhow::anyhow!("Invalid certificate or key"));
-        }
-
         let config = ServerConfig::builder()
             .with_no_client_auth()
-            .with_single_cert(certs, key[0].clone())?;
+            .with_single_cert(vec![cert], key)?;
 
         Ok(config)
     }
@@ -231,7 +225,7 @@ impl SecurityManager {
 
     /// Validate key pair
     pub fn validate_key_pair(&self) -> Result<bool> {
-        if let (Some(ref private_key), Some(ref public_key)) = (&self.private_key, &self.public_key) {
+        if let (Some(private_key), Some(public_key)) = (&self.private_key, &self.public_key) {
             let test_data = b"test data for validation";
             let signature = private_key.sign(test_data);
             let is_valid = public_key.verify(test_data, &signature).is_ok();

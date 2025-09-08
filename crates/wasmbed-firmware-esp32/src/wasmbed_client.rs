@@ -22,7 +22,7 @@ pub struct WasmbedClient {
     /// Device UUID
     device_uuid: DeviceUuid,
     /// Public key for authentication
-    public_key: Option<PublicKey>,
+    public_key: Option<PublicKey<'static>>,
     /// Gateway hostname
     gateway_host: String,
     /// Gateway port
@@ -69,14 +69,10 @@ impl WasmbedClient {
         // Create TLS configuration
         let mut root_certs = RootCertStore::empty();
         
-        // Load CA certificate
-        let ca_cert = include_bytes!("../../certs/ca-cert.pem");
-        let mut cert_reader = std::io::Cursor::new(ca_cert);
-        let certs = certs(&mut cert_reader)?;
-        
-        for cert in certs {
-            root_certs.add(cert)?;
-        }
+        // Load CA certificate using our TLS utils
+        let ca_cert_bytes = include_bytes!("../../../certs/ca-cert.pem");
+        let ca_cert = wasmbed_tls_utils::TlsUtils::parse_certificate(ca_cert_bytes)?;
+        root_certs.add(ca_cert)?;
 
         let config = RustlsClientConfig::builder()
             .with_root_certificates(root_certs)
@@ -87,8 +83,8 @@ impl WasmbedClient {
         let mut connection = ClientConnection::new(Arc::new(config), server_name)?;
         
         // Establish TLS connection
-        let stream = TcpStream::connect(format!("{}:{}", self.gateway_host, self.gateway_port))?;
-        connection.complete_io(stream)?;
+        let mut stream = TcpStream::connect(format!("{}:{}", self.gateway_host, self.gateway_port))?;
+        connection.complete_io(&mut stream)?;
         
         self.tls_connection = Some(Arc::new(connection));
         self.connected = true;

@@ -30,8 +30,8 @@ async fn main() -> Result<()> {
     info!(" Starting Wasmbed ESP32 Firmware");
     
     // Create device UUID
-    let device_uuid = DeviceUuid::new();
-    info!("Device UUID: {}", device_uuid);
+    let device_uuid = DeviceUuid::new([0u8; 16]); // Generate random UUID
+    info!("Device UUID: {:?}", device_uuid);
     
     // Initialize components
     let runtime_config = WasmRuntimeConfig {

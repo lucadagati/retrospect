@@ -20,6 +20,7 @@ wasmi = "0.17"
 # Protocol and types
 wasmbed-protocol = { path = "../wasmbed-protocol", features = ["alloc"] }
 wasmbed-types = { path = "../wasmbed-types", features = ["alloc", "cert"] }
+wasmbed-tls-utils = { path = "../wasmbed-tls-utils" }
 
 # Async runtime (simplified)
 tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "time", "net"] }

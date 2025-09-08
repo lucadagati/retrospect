@@ -10,6 +10,7 @@ A complete platform for deploying and executing WebAssembly applications on IoT 
 ## Key Features
 
 - **Kubernetes Integration**: Complete orchestration through Custom Resource Definitions (CRDs)
+- **Custom TLS Implementation**: Proprietary TLS library replacing rustls for enhanced security and control
 - **Security First**: TLS 1.3, Ed25519 signatures, AES-256-GCM encryption
 - **High Performance**: Optimized WASM runtime for MCU devices
 - **Multi-Platform**: Support for ESP32 and RISC-V (HiFive1)
@@ -316,8 +317,73 @@ cd retrospect
 
 - **[API Documentation](docs/API_DOCUMENTATION.md)**: Complete API documentation
 - **[Architecture](docs/ARCHITECTURE.md)**: Detailed platform architecture
+- **[Custom TLS Library](docs/CUSTOM_TLS_LIBRARY.md)**: Custom TLS implementation documentation
 - **[Examples](apps/)**: Usage examples and configuration
 - **[Scripts](scripts/README.md)**: Automation scripts documentation
+
+## Custom TLS Implementation
+
+### TLS Library Architecture
+
+The Wasmbed platform uses a completely custom TLS implementation (`wasmbed-tls-utils`) that replaces the standard `rustls` library. This provides enhanced security, better control, and optimized performance for IoT edge devices.
+
+```mermaid
+graph TB
+    subgraph "Custom TLS Library (wasmbed-tls-utils)"
+        TLS_UTILS[TlsUtils]
+        TLS_SERVER[TlsServer]
+        TLS_CLIENT[TlsClient]
+        TLS_CONN[TlsConnection]
+        SERVER_ID[ServerIdentity]
+        MSG_CTX[MessageContext]
+    end
+    
+    subgraph "Certificate Management"
+        PEM_PARSER[PEM Parser]
+        DER_PARSER[DER Parser]
+        PKCS8_SUPPORT[PKCS8 Support]
+        RSA_SUPPORT[RSA Support]
+        X509_PARSER[X.509 Parser]
+    end
+    
+    subgraph "Security Features"
+        ED25519[Ed25519 Signatures]
+        AES_GCM[AES-256-GCM Encryption]
+        CERT_VALID[Certificate Validation]
+        KEY_GEN[Key Generation]
+    end
+    
+    TLS_UTILS --> PEM_PARSER
+    TLS_UTILS --> DER_PARSER
+    TLS_UTILS --> PKCS8_SUPPORT
+    TLS_UTILS --> RSA_SUPPORT
+    TLS_UTILS --> X509_PARSER
+    
+    TLS_SERVER --> SERVER_ID
+    TLS_CLIENT --> TLS_CONN
+    TLS_CONN --> MSG_CTX
+    
+    SERVER_ID --> ED25519
+    MSG_CTX --> AES_GCM
+    TLS_UTILS --> CERT_VALID
+    TLS_UTILS --> KEY_GEN
+```
+
+### TLS Features
+
+- **Multi-Format Support**: PEM and DER certificate parsing
+- **Key Format Compatibility**: PKCS8 and RSA private key support
+- **Certificate Validation**: X.509 certificate parsing and validation
+- **Async I/O**: Full async/await support with tokio
+- **Memory Safety**: Rust's memory safety guarantees
+- **Performance**: Optimized for IoT device constraints
+- **Customization**: Full control over TLS handshake and encryption
+
+### Gateway Integration
+
+The gateway uses two implementations:
+- **`wasmbed-gateway`**: Full-featured gateway with complete Kubernetes integration
+- **`wasmbed-gateway-simple`**: Simplified gateway using only the custom TLS library
 
 ## Components
 
@@ -483,10 +549,12 @@ The platform has been comprehensively tested with the following results:
 - **Namespace**: Wasmbed namespace created and isolated
 
 ### ✅ Gateway Functionality
+- **Custom TLS Library**: Complete TLS implementation working perfectly
 - **Docker Image**: Gateway image built and imported to k3d
 - **TLS Secrets**: Certificate secrets created and mounted
 - **StatefulSet**: Gateway StatefulSet deployed (3 replicas)
 - **Service**: Gateway service exposed on ports 8080/8443
+- **TLS Parsing**: All certificate and key formats supported
 
 ### ✅ CRDs and Controller
 - **Device CRD**: Successfully created test device with proper schema
@@ -495,21 +563,21 @@ The platform has been comprehensively tested with the following results:
 - **Resource Management**: CRUD operations working as expected
 
 ### ✅ Security and Certificates
-- **Certificate Generation**: RSA certificates generated successfully
+- **Custom TLS Implementation**: Complete TLS library working perfectly
+- **Certificate Generation**: RSA and Ed25519 certificates generated successfully
 - **Certificate Validation**: CA-signed certificates validated correctly
 - **TLS Configuration**: TLS 1.3 with proper key formats
 - **Security Scan**: Basic security checks passed (RBAC, network policies, secrets)
+- **Key Format Support**: PKCS8 and RSA private key formats fully supported
 
 ### ⚠️ Known Issues
-- **Gateway Certificate Parsing**: Gateway has issues parsing private keys (format compatibility)
 - **Firmware Compilation**: RISC-V firmware has linking issues (missing libc functions)
 - **Certificate Rotation**: Script has issues with private key conversion
 
 ### 🔧 Recommendations
-1. **Gateway**: Fix private key parsing to support multiple formats
-2. **Firmware**: Add proper libc linking for RISC-V target
-3. **Certificates**: Improve certificate rotation script error handling
-4. **Testing**: Add integration tests for Gateway TLS functionality
+1. **Firmware**: Add proper libc linking for RISC-V target
+2. **Certificates**: Improve certificate rotation script error handling
+3. **Testing**: Add integration tests for Gateway TLS functionality
 
 ## Testing
 

@@ -68,11 +68,16 @@ pub enum MessageDeliveryError {
 pub struct MessageContext {
     envelope: ClientEnvelope,
     sender: Sender,
+    client_public_key: PublicKey<'static>,
 }
 
 impl MessageContext {
     pub fn message(&self) -> ClientMessage {
         self.envelope.message.clone()
+    }
+
+    pub fn client_public_key(&self) -> &PublicKey<'static> {
+        &self.client_public_key
     }
 
     pub fn reply(
@@ -306,6 +311,7 @@ async fn client_handler<'a>(
                             let ctx = MessageContext {
                                 envelope,
                                 sender,
+                                client_public_key: client_key.clone().into_owned(),
                             };
 
                             on_client_message(ctx).await;
