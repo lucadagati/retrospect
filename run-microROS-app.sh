@@ -127,7 +127,7 @@ deploy_microros_app() {
     
     # Create Application resource
     cat <<EOF | kubectl apply -f -
-apiVersion: wasmbed.github.io/v1
+apiVersion: wasmbed.github.io/v1alpha1
 kind: Application
 metadata:
   name: $APP_NAME

@@ -1,179 +1,83 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright © 2025 Wasmbed contributors
 
-use std::time::Duration;
+#![no_std]
+#![no_main]
 
-use anyhow::Result;
-use log::{error, info};
-use wasmbed_protocol::{ClientMessage, ServerMessage, DeviceUuid};
+use panic_halt as _;
+use esp32_hal::entry;
 
-use crate::wasm_runtime::{WasmRuntime, WasmRuntimeConfig};
-use crate::application_manager::ApplicationManager;
-use crate::wifi_manager::{WifiManager, WifiConfig};
-use crate::monitoring::MonitoringSystem;
-use crate::wasmbed_client::WasmbedClient;
-use crate::security::SecurityManager;
-
-mod wasm_runtime;
 mod wasmbed_client;
-mod security;
-mod wifi_manager;
+mod handlers;
+mod memory;
+mod wasm_runtime;
 mod application_manager;
+mod security;
+mod allocator;
 mod monitoring;
+mod serial_interface;
+mod wifi_manager;
 
-/// Main firmware for ESP32 devices
-#[tokio::main]
-async fn main() -> Result<()> {
-    // Initialize logging
-    env_logger::init();
+use wasmbed_client::{WasmbedClient, ClientConfig};
+use wasm_runtime::WasmRuntime;
+use application_manager::ApplicationManager;
+use monitoring::MonitoringSystem;
+use serial_interface::SerialInterface;
+use wifi_manager::WifiManager;
+
+#[entry]
+fn main() -> ! {
+    // Initialize ESP32 peripherals
+    let peripherals = esp32_hal::Peripherals::take().unwrap();
+    let mut delay = esp32_hal::delay::Delay::new(&peripherals.SYSTIMER);
     
-    info!(" Starting Wasmbed ESP32 Firmware");
+    // Initialize WiFi manager
+    let mut wifi_manager = WifiManager::new(peripherals.WIFI, peripherals.RADIO_CLK);
     
-    // Create device UUID
-    let device_uuid = DeviceUuid::new([0u8; 16]); // Generate random UUID
-    info!("Device UUID: {:?}", device_uuid);
+    // Initialize WASM runtime
+    let wasm_runtime = WasmRuntime::new();
     
-    // Initialize components
-    let runtime_config = WasmRuntimeConfig {
-        max_memory_per_app: 1024 * 1024, // 1MB
-        max_concurrent_apps: 4,
-        default_timeout: Duration::from_secs(30),
-        max_stack_size: 64 * 1024, // 64KB
-    };
+    // Initialize application manager
+    let mut app_manager = ApplicationManager::new(wasm_runtime);
     
-    let runtime = WasmRuntime::new(runtime_config)?;
-    let mut app_manager = ApplicationManager::new(runtime);
+    // Initialize monitoring system
     let mut monitoring_system = MonitoringSystem::new();
     
-    // Initialize WiFi
-    let wifi_config = WifiConfig::default();
-    let mut wifi_manager = WifiManager::new(wifi_config);
+    // Initialize Wasmbed client with ESP32-specific configuration
+    let config = ClientConfig {
+        gateway_address: "172.19.0.2:30423",
+        heartbeat_interval: 30,
+        reconnect_delay: 5,
+        max_reconnect_attempts: 10,
+        wifi_enabled: true,
+    };
+    
+    let mut client = WasmbedClient::with_config(config);
+    
+    // Initialize serial interface
+    let mut serial = SerialInterface::new();
     
     // Connect to WiFi
-    info!("Connecting to WiFi...");
-    wifi_manager.connect().await?;
+    wifi_manager.connect("WasmbedESP32", "password123").unwrap();
     
-    if !wifi_manager.is_connected() {
-        error!("Failed to connect to WiFi");
-        return Err(anyhow::anyhow!("WiFi connection failed"));
-    }
-    
-    info!("WiFi connected successfully");
-    
-    // Initialize Wasmbed client
-    let mut client = WasmbedClient::new(
-        device_uuid,
-        "localhost".to_string(), // TODO: Get from configuration
-        8443,
-        wifi_config,
-    )?;
-    
-    // Connect to gateway
-    info!("Connecting to gateway...");
-    client.connect().await?;
-    
-    if !client.is_connected() {
-        error!("Failed to connect to gateway");
-        return Err(anyhow::anyhow!("Gateway connection failed"));
-    }
-    
-    info!("Gateway connected successfully");
-    
-    // Register device with gateway
-    info!("Registering device with gateway...");
-    client.register_device().await?;
-    
-    info!("Device registered successfully");
-    
-    // Main application loop
-    info!("Starting main application loop");
-    run_main_loop(&mut app_manager, &mut monitoring_system, &mut client).await?;
-    
-    Ok(())
-}
-
-/// Main application loop
-async fn run_main_loop(
-    app_manager: &mut ApplicationManager,
-    monitoring_system: &mut MonitoringSystem,
-    client: &mut WasmbedClient,
-) -> Result<()> {
-    let mut loop_count = 0;
-    
+    // Simple main loop with ESP32-specific features
     loop {
-        loop_count += 1;
+        // Simulate client operations
+        client.simulate_operation();
         
-        // Collect metrics
-        monitoring_system.collect_metrics(app_manager);
+        // Process WASM applications
+        app_manager.process_applications();
         
-        // Send heartbeat
-        if let Err(e) = client.send_heartbeat().await {
-            error!("Failed to send heartbeat: {}", e);
-        }
+        // Run monitoring tasks
+        monitoring_system.collect_metrics();
+        monitoring_system.run_health_checks();
+        monitoring_system.process_alerts();
+        monitoring_system.update_dashboard();
         
-        // Check application health
-        app_manager.check_application_health();
+        // Process serial commands
+        serial.process_commands(&mut client, &mut app_manager, &mut monitoring_system);
         
-        // Send application status updates
-        let app_statuses = app_manager.get_all_application_statuses();
-        for (app_id, status) in app_statuses {
-            if let Err(e) = client.send_application_status(&app_id, status).await {
-                error!("Failed to send application status for {}: {}", app_id, e);
-            }
-        }
-        
-        // Log status every 10 iterations
-        if loop_count % 10 == 0 {
-            let summary = monitoring_system.get_summary();
-            info!("Status: {} total apps, {} running, health score: {}", 
-                  summary.total_applications, 
-                  summary.running_applications, 
-                  summary.system_health_score);
-        }
-        
-        // Sleep for 5 seconds
-        tokio::time::sleep(Duration::from_secs(5)).await;
-    }
-}
-
-/// Test function for development
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_device_uuid_creation() {
-        let device_uuid = DeviceUuid::new();
-        assert!(!device_uuid.to_string().is_empty());
-    }
-
-    #[test]
-    fn test_runtime_creation() {
-        let config = WasmRuntimeConfig {
-            max_memory_per_app: 1024 * 1024,
-            max_concurrent_apps: 4,
-            default_timeout: Duration::from_secs(30),
-            max_stack_size: 64 * 1024,
-        };
-        
-        let runtime = WasmRuntime::new(config);
-        assert!(runtime.is_ok());
-    }
-
-    #[test]
-    fn test_wifi_config_default() {
-        let config = WifiConfig::default();
-        assert_eq!(config.ssid, "WasmbedNetwork");
-        assert_eq!(config.password, "wasmbed123");
-    }
-
-    #[tokio::test]
-    async fn test_wifi_connection() {
-        let config = WifiConfig::default();
-        let mut wifi_manager = WifiManager::new(config);
-        
-        let result = wifi_manager.connect().await;
-        assert!(result.is_ok());
-        assert!(wifi_manager.is_connected());
+        // ESP32-specific delay
+        delay.delay_ms(100u32);
     }
 }

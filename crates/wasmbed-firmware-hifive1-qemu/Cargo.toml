@@ -16,6 +16,7 @@ test = false
 [dependencies]
 panic-halt = "1.0.0"
 riscv = "0.13.0"
+heapless = "0.8"
 
 [dependencies.riscv-rt]
 version = "0.13.0"

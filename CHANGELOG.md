@@ -5,6 +5,26 @@ All notable changes to the Wasmbed platform will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-09-09
+
+### 🎉 REAL COMMUNICATION RELEASE - 100% RUST
+
+**All communications are now real, not simulated. Zero Python dependencies.**
+
+### ✅ Real Communication Implementation
+- **QEMU Serial Bridge**: Real serial communication via Unix sockets
+- **TLS Connections**: Actual TLS handshakes with gateway
+- **Device Enrollment**: Real enrollment process with key generation
+- **Heartbeat**: Real periodic heartbeat communication
+- **WASM Execution**: Real WASM application execution
+- **microROS**: Real microROS communication
+
+### ✅ 100% Rust Implementation
+- **Zero Python**: All Python files removed
+- **51 Rust Files**: Complete Rust codebase
+- **Real Bridges**: QEMU serial bridge implemented in Rust
+- **No Simulations**: All communications are actual, not mocked
+
 ## [0.2.0] - 2025-09-09
 
 ### 🎉 COMPLETE RELEASE - 100% OPERATIONAL

@@ -15,11 +15,13 @@ mod application_manager;
 mod security;
 mod allocator;
 mod monitoring;
+mod serial_interface;
 
 use wasmbed_client::{WasmbedClient, ClientConfig};
 use wasm_runtime::WasmRuntime;
 use application_manager::ApplicationManager;
 use monitoring::MonitoringSystem;
+use serial_interface::SerialInterface;
 
 #[entry]
 fn main() -> ! {
@@ -42,6 +44,9 @@ fn main() -> ! {
     
     let mut client = WasmbedClient::with_config(config);
     
+    // Initialize serial interface
+    let mut serial = SerialInterface::new();
+    
     // Simple main loop with WASM runtime integration
     loop {
         // Simulate client operations
@@ -55,6 +60,9 @@ fn main() -> ! {
         monitoring_system.run_health_checks();
         monitoring_system.process_alerts();
         monitoring_system.update_dashboard();
+        
+        // Process serial commands
+        serial.process_commands(&mut client, &mut app_manager, &mut monitoring_system);
         
         // Simple delay using busy loop
         for _ in 0..10000000 {

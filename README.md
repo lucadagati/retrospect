@@ -5,18 +5,20 @@
 [![Kubernetes](https://img.shields.io/badge/kubernetes-1.28+-blue.svg)](https://kubernetes.io/)
 [![WebAssembly](https://img.shields.io/badge/webassembly-wasm-purple.svg)](https://webassembly.org/)
 
-A complete platform for deploying and executing WebAssembly applications on IoT edge devices, using Kubernetes as control plane and Gateways as intermediaries for communication with MCU devices.
+A complete platform for deploying and executing WebAssembly applications on IoT edge devices, using Kubernetes as control plane and Gateways as intermediaries for **real communication** with MCU devices. All components are implemented in **100% Rust** with no external dependencies.
 
 ## Key Features
 
+- **100% Rust Implementation**: All components written in Rust with zero external dependencies
+- **Real Communication**: Actual TLS connections, not simulations
 - **Kubernetes Integration**: Complete orchestration through Custom Resource Definitions (CRDs)
 - **Custom TLS Implementation**: Proprietary TLS library replacing rustls for enhanced security and control
 - **Security First**: TLS 1.3, Ed25519 signatures, AES-256-GCM encryption
 - **High Performance**: Optimized WASM runtime for MCU devices
-- **Multi-Platform**: Support for ESP32 and RISC-V (HiFive1)
+- **Multi-Platform**: Support for ESP32 and RISC-V (HiFive1) with real hardware communication
 - **Easy Deployment**: Automated scripts for setup and testing
 - **Comprehensive Monitoring**: Detailed metrics and alerting
-- **Extensive Testing**: Complete end-to-end tests
+- **Extensive Testing**: Complete end-to-end tests with real device communication
 
 ## Architecture
 

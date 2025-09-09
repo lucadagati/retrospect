@@ -1,293 +1,196 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright © 2025 Wasmbed contributors
 
-use std::sync::Arc;
-use std::time::SystemTime;
+extern crate alloc;
 
-use anyhow::Result;
-use log::{debug, info, warn};
-use rustls::{ClientConfig, RootCertStore, ServerConfig};
-use rustls_pemfile::certs;
-use ed25519_dalek::{SigningKey, VerifyingKey, Signature, Signer, Verifier};
-use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
-use aes_gcm::aead::Aead;
-use rand::rngs::OsRng;
-use rand::Rng;
-use base64::{Engine as _, engine::general_purpose};
-use hex;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
 
-use wasmbed_types::PublicKey;
+use crate::application_manager::ApplicationConfig;
 
-/// Security manager for ESP32 devices
+/// Security and isolation module for WASM applications
 pub struct SecurityManager {
-    /// Private key for signing
-    private_key: Option<SigningKey>,
-    /// Public key for verification
-    public_key: Option<VerifyingKey>,
-    /// Random number generator
-    rng: OsRng,
+    /// Application permissions
+    permissions: BTreeMap<String, ApplicationPermissions>,
+    /// Sandbox configuration
+    sandbox_config: SandboxConfig,
+    /// Security policies
+    policies: SecurityPolicies,
+}
+
+/// Application permissions
+#[derive(Debug, Clone)]
+pub struct ApplicationPermissions {
+    /// Network access
+    pub network_access: bool,
+    /// Filesystem access
+    pub filesystem_access: bool,
+    /// Device access
+    pub device_access: bool,
+    /// Memory access limits
+    pub memory_limit: usize,
+    /// CPU time limit
+    pub cpu_time_limit: u32,
+}
+
+impl Default for ApplicationPermissions {
+    fn default() -> Self {
+        Self {
+            network_access: false,
+            filesystem_access: false,
+            device_access: false,
+            memory_limit: 1024 * 1024, // 1MB
+            cpu_time_limit: 1000,      // 1 second
+        }
+    }
+}
+
+/// Sandbox configuration
+pub struct SandboxConfig {
+    /// Enable memory isolation
+    pub memory_isolation: bool,
+    /// Enable CPU time limiting
+    pub cpu_time_limiting: bool,
+    /// Enable network isolation
+    pub network_isolation: bool,
+    /// Enable device isolation
+    pub device_isolation: bool,
+}
+
+impl Default for SandboxConfig {
+    fn default() -> Self {
+        Self {
+            memory_isolation: true,
+            cpu_time_limiting: true,
+            network_isolation: true,
+            device_isolation: true,
+        }
+    }
+}
+
+/// Security policies
+pub struct SecurityPolicies {
+    /// Default permissions for new applications
+    pub default_permissions: ApplicationPermissions,
+    /// Maximum memory per application
+    pub max_memory_per_app: usize,
+    /// Maximum CPU time per application
+    pub max_cpu_time_per_app: u32,
+    /// Enable auto-restart on security violations
+    pub auto_restart_on_violation: bool,
+}
+
+impl Default for SecurityPolicies {
+    fn default() -> Self {
+        Self {
+            default_permissions: ApplicationPermissions::default(),
+            max_memory_per_app: 1024 * 1024, // 1MB
+            max_cpu_time_per_app: 1000,      // 1 second
+            auto_restart_on_violation: false,
+        }
+    }
 }
 
 impl SecurityManager {
     /// Create a new security manager
-    pub fn new() -> Result<Self> {
-        let mut rng = OsRng;
-        
-        // Generate a new key pair
-        let signing_key = SigningKey::new(&mut rng);
-        let verifying_key = signing_key.verifying_key();
-        
-        Ok(Self {
-            private_key: Some(signing_key),
-            public_key: Some(verifying_key),
-            rng,
-        })
-    }
-
-    /// Get the public key
-    pub fn get_public_key(&self) -> Result<PublicKey> {
-        if let Some(ref public_key) = self.public_key {
-            let public_key_bytes = public_key.to_bytes();
-            Ok(PublicKey::from(public_key_bytes.as_slice()))
-        } else {
-            Err(anyhow::anyhow!("No public key available"))
+    pub fn new() -> Self {
+        Self {
+            permissions: BTreeMap::new(),
+            sandbox_config: SandboxConfig::default(),
+            policies: SecurityPolicies::default(),
         }
     }
 
-    /// Get the private key bytes
-    pub fn get_private_key_bytes(&self) -> Option<Vec<u8>> {
-        self.private_key.as_ref().map(|key| key.to_bytes().to_vec())
+    /// Set permissions for an application
+    pub fn set_permissions(&mut self, app_id: &str, permissions: ApplicationPermissions) {
+        self.permissions.insert(String::from(app_id), permissions);
     }
 
-    /// Get the public key bytes
-    pub fn get_public_key_bytes(&self) -> Option<Vec<u8>> {
-        self.public_key.as_ref().map(|key| key.to_bytes().to_vec())
+    /// Get permissions for an application
+    pub fn get_permissions(&self, app_id: &str) -> ApplicationPermissions {
+        self.permissions.get(app_id)
+            .cloned()
+            .unwrap_or(self.policies.default_permissions.clone())
     }
 
-    /// Verify a certificate chain
-    pub fn verify_certificate_chain(&self, _cert_chain: &[u8]) -> Result<bool> {
-        // TODO: Implement certificate verification
-        // For now, always return true
-        Ok(true)
-    }
-
-    /// Sign data with the private key
-    pub fn sign_data<T>(&self, data: &T) -> Result<Vec<u8>>
-    where
-        T: serde::Serialize,
-    {
-        let signing_key = self.private_key
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("No private key available"))?;
-
-        // Serialize the data
-        let serialized = serde_json::to_vec(data)?;
-        
-        // Sign the data
-        let signature = signing_key.sign(&serialized);
-        
-        Ok(signature.to_bytes().to_vec())
-    }
-
-    /// Verify a signature
-    pub fn verify_signature<T>(&self, data: &T, signature: &[u8]) -> Result<bool>
-    where
-        T: serde::Serialize,
-    {
-        let verifying_key = self.public_key
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("No public key available"))?;
-
-        // Serialize the data
-        let serialized = serde_json::to_vec(data)?;
-        
-        // Parse the signature
-        let signature = Signature::from_bytes(signature.try_into()?);
-        
-        // Verify the signature
-        match verifying_key.verify(&serialized, &signature) {
-            Ok(_) => Ok(true),
-            Err(_) => Ok(false),
-        }
-    }
-
-    /// Encrypt data with AES-256-GCM
-    pub fn encrypt_data(&self, data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
-        if key.len() != 32 {
-            return Err(anyhow::anyhow!("Invalid key length for AES-256"));
+    /// Validate application deployment
+    pub fn validate_deployment(&self, app_id: &str, config: &ApplicationConfig) -> Result<(), SecurityError> {
+        // Check memory limit
+        if config.memory_limit as usize > self.policies.max_memory_per_app {
+            return Err(SecurityError::MemoryLimitExceeded(config.memory_limit as usize));
         }
 
-        let cipher_key = aes_gcm::Key::<Aes256Gcm>::from_slice(key);
-        let cipher = Aes256Gcm::new(cipher_key);
-        
-        // Generate a random nonce
-        let mut nonce_bytes = [0u8; 12];
-        self.rng.try_fill(&mut nonce_bytes)?;
-        let nonce = Nonce::from_slice(&nonce_bytes);
-        
-        // Encrypt the data
-        let ciphertext = cipher.encrypt(nonce, data)
-            .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
-        
-        // Combine nonce + ciphertext
-        let mut result = Vec::new();
-        result.extend_from_slice(&nonce_bytes);
-        result.extend_from_slice(&ciphertext);
-        
-        Ok(result)
-    }
-
-    /// Decrypt data with AES-256-GCM
-    pub fn decrypt_data(&self, encrypted_data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
-        if key.len() != 32 {
-            return Err(anyhow::anyhow!("Invalid key length for AES-256"));
+        // Check CPU time limit
+        if config.cpu_time_limit > self.policies.max_cpu_time_per_app {
+            return Err(SecurityError::CpuTimeLimitExceeded(config.cpu_time_limit));
         }
 
-        if encrypted_data.len() < 12 {
-            return Err(anyhow::anyhow!("Invalid encrypted data length"));
+        Ok(())
+    }
+
+    /// Validate function execution
+    pub fn validate_execution(&self, app_id: &str, function_name: &str) -> Result<(), SecurityError> {
+        let permissions = self.get_permissions(app_id);
+
+        // Check if function requires special permissions
+        if function_name.contains("network") && !permissions.network_access {
+            return Err(SecurityError::PermissionDenied(String::from("network access")));
         }
 
-        let cipher_key = aes_gcm::Key::<Aes256Gcm>::from_slice(key);
-        let cipher = Aes256Gcm::new(cipher_key);
-        
-        // Extract nonce and ciphertext
-        let nonce = Nonce::from_slice(&encrypted_data[..12]);
-        let ciphertext = &encrypted_data[12..];
-        
-        // Decrypt the data
-        let plaintext = cipher.decrypt(nonce, ciphertext)
-            .map_err(|e| anyhow::anyhow!("Decryption failed: {}", e))?;
-        
-        Ok(plaintext)
-    }
-
-    /// Generate a random key
-    pub fn generate_key(&mut self, length: usize) -> Result<Vec<u8>> {
-        let mut key = vec![0u8; length];
-        self.rng.try_fill(&mut key)?;
-        Ok(key)
-    }
-
-    /// Hash data with SHA-256
-    pub fn hash_data(&self, data: &[u8]) -> Vec<u8> {
-        use sha2::{Sha256, Digest};
-        let mut hasher = Sha256::new();
-        hasher.update(data);
-        hasher.finalize().to_vec()
-    }
-
-    /// Create TLS client configuration
-    pub fn create_tls_client_config(&self) -> Result<ClientConfig> {
-        use wasmbed_tls_utils::TlsUtils;
-        
-        let mut root_certs = RootCertStore::empty();
-        
-        // Load CA certificate using our TLS utils
-        let ca_cert_bytes = include_bytes!("../../../certs/ca-cert.pem");
-        let ca_cert = TlsUtils::parse_certificate(ca_cert_bytes)?;
-        root_certs.add(ca_cert)?;
-
-        let config = ClientConfig::builder()
-            .with_root_certificates(root_certs)
-            .with_no_client_auth();
-
-        Ok(config)
-    }
-
-    /// Create TLS server configuration
-    pub fn create_tls_server_config(&self) -> Result<ServerConfig> {
-        use wasmbed_tls_utils::TlsUtils;
-        
-        // Load server certificate and key using our TLS utils
-        let cert_pem = include_bytes!("../../../certs/server-cert.pem");
-        let key_pem = include_bytes!("../../../certs/server-key.pem");
-        
-        let cert = TlsUtils::parse_certificate(cert_pem)?;
-        let key = TlsUtils::parse_private_key(key_pem)?;
-        
-        let config = ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(vec![cert], key)?;
-
-        Ok(config)
-    }
-
-    /// Get key fingerprint
-    pub fn get_key_fingerprint(&self) -> Result<String> {
-        if let Some(ref public_key) = self.public_key {
-            let public_key_bytes = public_key.to_bytes();
-            let hash = self.hash_data(&public_key_bytes);
-            Ok(hex::encode(&hash[..8])) // First 8 bytes as fingerprint
-        } else {
-            Err(anyhow::anyhow!("No public key available"))
+        if function_name.contains("filesystem") && !permissions.filesystem_access {
+            return Err(SecurityError::PermissionDenied(String::from("filesystem access")));
         }
+
+        if function_name.contains("device") && !permissions.device_access {
+            return Err(SecurityError::PermissionDenied(String::from("device access")));
+        }
+
+        Ok(())
     }
 
-    /// Validate key pair
-    pub fn validate_key_pair(&self) -> Result<bool> {
-        if let (Some(private_key), Some(public_key)) = (&self.private_key, &self.public_key) {
-            let test_data = b"test data for validation";
-            let signature = private_key.sign(test_data);
-            let is_valid = public_key.verify(test_data, &signature).is_ok();
-            Ok(is_valid)
-        } else {
-            Ok(false)
+    /// Check memory usage
+    pub fn check_memory_usage(&self, app_id: &str, current_usage: usize) -> Result<(), SecurityError> {
+        let permissions = self.get_permissions(app_id);
+
+        if current_usage > permissions.memory_limit {
+            return Err(SecurityError::MemoryLimitExceeded(current_usage));
         }
+
+        Ok(())
+    }
+
+    /// Check CPU time usage
+    pub fn check_cpu_time_usage(&self, app_id: &str, current_usage: u32) -> Result<(), SecurityError> {
+        let permissions = self.get_permissions(app_id);
+
+        if current_usage > permissions.cpu_time_limit {
+            return Err(SecurityError::CpuTimeLimitExceeded(current_usage));
+        }
+
+        Ok(())
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Security errors
+#[derive(Debug)]
+pub enum SecurityError {
+    /// Permission denied
+    PermissionDenied(String),
+    /// Memory limit exceeded
+    MemoryLimitExceeded(usize),
+    /// CPU time limit exceeded
+    CpuTimeLimitExceeded(u32),
+    /// Security violation
+    SecurityViolation(String),
+}
 
-    #[test]
-    fn test_security_manager_creation() {
-        let security_manager = SecurityManager::new();
-        assert!(security_manager.is_ok());
-    }
-
-    #[test]
-    fn test_key_generation() {
-        let security_manager = SecurityManager::new().unwrap();
-        let public_key = security_manager.get_public_key();
-        assert!(public_key.is_ok());
-    }
-
-    #[test]
-    fn test_signature_verification() {
-        let security_manager = SecurityManager::new().unwrap();
-        
-        let test_data = "Hello, World!";
-        let signature = security_manager.sign_data(&test_data).unwrap();
-        let is_valid = security_manager.verify_signature(&test_data, &signature).unwrap();
-        
-        assert!(is_valid);
-    }
-
-    #[test]
-    fn test_encryption_decryption() {
-        let mut security_manager = SecurityManager::new().unwrap();
-        
-        let test_data = b"Secret data to encrypt";
-        let key = security_manager.generate_key(32);
-        
-        let encrypted = security_manager.encrypt_data(test_data, &key).unwrap();
-        let decrypted = security_manager.decrypt_data(&encrypted, &key).unwrap();
-        
-        assert_eq!(test_data, &decrypted[..]);
-    }
-
-    #[test]
-    fn test_key_validation() {
-        let security_manager = SecurityManager::new().unwrap();
-        let is_valid = security_manager.validate_key_pair().unwrap();
-        assert!(is_valid);
-    }
-
-    #[test]
-    fn test_fingerprint() {
-        let security_manager = SecurityManager::new().unwrap();
-        let fingerprint = security_manager.get_key_fingerprint().unwrap();
-        assert!(!fingerprint.is_empty());
+impl core::fmt::Display for SecurityError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            SecurityError::PermissionDenied(permission) => write!(f, "Permission denied: {}", permission),
+            SecurityError::MemoryLimitExceeded(limit) => write!(f, "Memory limit exceeded: {} bytes", limit),
+            SecurityError::CpuTimeLimitExceeded(limit) => write!(f, "CPU time limit exceeded: {} ms", limit),
+            SecurityError::SecurityViolation(violation) => write!(f, "Security violation: {}", violation),
+        }
     }
 }

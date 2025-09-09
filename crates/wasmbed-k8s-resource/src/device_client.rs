@@ -4,7 +4,6 @@
 use chrono::{DateTime, Utc};
 use kube::{Api, Error};
 use kube::api::{ListParams, Patch, PatchParams};
-use kube::core::Expression;
 use serde_json::json;
 
 use crate::device::{Device, DevicePhase};
@@ -15,11 +14,15 @@ impl Device {
         api: Api<Device>,
         public_key: PublicKey<'_>,
     ) -> Result<Option<Self>, Error> {
-        let expr =
-            Expression::Equal("spec.publicKey".into(), public_key.to_base64());
-        let params = ListParams::default().fields(&expr.to_string());
-        let devices = api.list(&params).await?;
-        Ok(devices.iter().next().cloned())
+        // List all devices and find the one with matching public key
+        // Field selectors don't work with custom spec fields in Kubernetes
+        let devices = api.list(&ListParams::default()).await?;
+        for device in devices {
+            if device.spec.public_key == public_key {
+                return Ok(Some(device));
+            }
+        }
+        Ok(None)
     }
 }
 
