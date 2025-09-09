@@ -8,9 +8,15 @@ metadata:
 spec:
   type: NodePort
   ports:
-    - port: 4423
+    - name: tls
+      port: 4423
       targetPort: 4423
       nodePort: 30423
+      protocol: TCP
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30080
       protocol: TCP
   selector:
     app: wasmbed-gateway

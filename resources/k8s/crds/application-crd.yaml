@@ -5,9 +5,11 @@ metadata:
 spec:
   group: wasmbed.github.io
   versions:
-  - name: v1
+  - name: v1alpha1
     served: true
     storage: true
+    subresources:
+      status: {}
     schema:
       openAPIV3Schema:
         type: object

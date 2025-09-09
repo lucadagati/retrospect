@@ -19,11 +19,14 @@ spec:
       serviceAccountName: wasmbed-gateway
       containers:
         - name: wasmbed-gateway
+          command: ["wasmbed-gateway"]
           image: wasmbed-gateway:latest
           imagePullPolicy: Never
           ports:
             - containerPort: 4423
-              name: wasmbed-gateway
+              name: tls
+            - containerPort: 8080
+              name: http
           volumeMounts:
             - name: wasmbed-tls-secret
               mountPath: /etc/wasmbed-gateway/certs

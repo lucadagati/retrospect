@@ -136,23 +136,17 @@ pub struct DeviceInfo {
 impl HttpApiServer {
     /// Create a new HTTP API server with CBOR/TLS support
     pub fn new(device_api: Api<Device>, application_api: Api<Application>) -> Result<Self> {
-        // Create a placeholder TLS server for CBOR/TLS listener
-        // TODO: Load actual certificates from configuration
-        let bind_addr = "0.0.0.0:8443".parse().unwrap();
-        
-        // Create placeholder certificates (in production, load from files)
-        let server_cert = rustls_pki_types::CertificateDer::from(vec![0u8; 100]);
-        let server_key = rustls_pki_types::PrivatePkcs8KeyDer::from(vec![0u8; 100]);
-        let ca_cert = rustls_pki_types::CertificateDer::from(vec![0u8; 100]);
-        
-        let tls_server = TlsServer::new(bind_addr, server_cert, server_key, ca_cert);
-        
         Ok(Self {
             device_connections: Arc::new(RwLock::new(HashMap::new())),
             applications: Arc::new(RwLock::new(HashMap::new())),
             device_api,
             application_api,
-            tls_config: Arc::new(tls_server),
+            tls_config: Arc::new(TlsServer::new(
+                "0.0.0.0:8443".parse().unwrap(),
+                rustls_pki_types::CertificateDer::from(vec![]),
+                rustls_pki_types::PrivatePkcs8KeyDer::from(vec![]),
+                rustls_pki_types::CertificateDer::from(vec![]),
+            )),
             cbor_tls_listener: None,
             pairing_mode: Arc::new(RwLock::new(false)),
             pairing_timeout_seconds: Arc::new(RwLock::new(300)),

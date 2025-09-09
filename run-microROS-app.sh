@@ -57,6 +57,9 @@ check_platform() {
     log_success "Platform is ready with $device_count MCU devices"
 }
 
+# Global variable for WASM binary
+WASM_BINARY=""
+
 # Create microROS WASM application
 create_microros_app() {
     log_info "Creating microROS WASM application..."
@@ -110,7 +113,7 @@ EOF
     fi
     
     # Encode WASM binary to base64
-    local wasm_binary=$(base64 -w 0 microros-bridge.wasm)
+    WASM_BINARY=$(base64 -w 0 microros-bridge.wasm)
     
     log_success "microROS WASM application created"
 }
@@ -131,15 +134,9 @@ metadata:
   namespace: $NAMESPACE
 spec:
   name: "microROS PX4 Bridge"
-  wasmBinary: "$wasm_binary"
+  wasmBinary: "$WASM_BINARY"
   targetDevices:
 $(for device in $devices; do echo "    - \"$device\""; done)
-  config:
-    px4Endpoint: "udp://192.168.1.100:14540"
-    ddsDomain: 0
-    ros2Namespace: "/px4"
-    maxMemoryMB: 512
-    timeoutMs: 30000
 EOF
     
     log_success "microROS application deployed"

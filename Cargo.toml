@@ -16,7 +16,6 @@ members = [
     "crates/wasmbed-test-utils",
     "crates/wasmbed-tls-utils",
     "crates/wasmbed-types",
-    "test-tls-utils",
 ]
 
 [workspace.package]

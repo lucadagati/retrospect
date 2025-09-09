@@ -27,7 +27,12 @@ features = [ "derive", "env" ]
 [dependencies.kube]
 version = "1.1.0"
 default-features = false
-features = [ "client", "rustls-tls" ]
+features = [ "client", "openssl-tls" ]
+
+[dependencies.kube-client]
+version = "1.1.0"
+default-features = false
+features = [ "client", "openssl-tls" ]
 
 [dependencies.wasmbed-cert]
 path = "../wasmbed-cert"
@@ -39,9 +44,6 @@ features = [ "client" ]
 [dependencies.wasmbed-protocol]
 path = "../wasmbed-protocol"
 features = [ "alloc" ]
-
-[dependencies.wasmbed-protocol-server]
-path = "../wasmbed-protocol-server"
 
 [dependencies.wasmbed-tls-utils]
 path = "../wasmbed-tls-utils"
@@ -72,7 +74,8 @@ features = ["derive"]
 
 [dependencies.reqwest]
 version = "0.11"
-features = ["json"]
+features = ["json", "native-tls"]
+default-features = false
 
 [dependencies.tokio-stream]
 version = "0.1"
@@ -86,6 +89,10 @@ version = "1.0"
 
 [dependencies.pem]
 version = "3.0"
+
+[[bin]]
+name = "wasmbed-gateway"
+path = "src/main.rs"
 
 [[bin]]
 name = "wasmbed-gateway-simple"

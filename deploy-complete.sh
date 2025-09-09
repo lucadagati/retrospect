@@ -269,14 +269,14 @@ create_mcu_devices() {
     
     for i in $(seq 1 $MCU_DEVICES_COUNT); do
         cat <<EOF | kubectl apply -f -
-apiVersion: wasmbed.github.io/v1
+apiVersion: wasmbed.github.io/v0
 kind: Device
 metadata:
   name: mcu-device-${i}
   namespace: $NAMESPACE
 spec:
   deviceId: "mcu-device-${i}"
-  publicKey: "$(openssl rsa -in "certs/client-${i}-key.pem" -pubout -outform PEM | base64 -w 0)"
+  publicKey: "$(openssl rsa -in "certs/client-${i}-key.pem" -pubout -outform PEM | base64 -w 0 | tr '+/' '-_' | tr -d '=')"
   deviceType: "riscv-hifive1"
   capabilities:
     - "wasm-execution"

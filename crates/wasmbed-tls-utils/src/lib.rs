@@ -431,30 +431,6 @@ impl TlsUtils {
         })
     }
 
-    /// Create TLS server configuration
-    /// Note: This is a simplified implementation for development purposes
-    pub fn create_server_config(
-        _private_key: PrivateKeyDer<'static>,
-        _certificate: CertificateDer<'static>,
-        _client_ca_certs: Vec<CertificateDer<'static>>,
-    ) -> Result<rustls::ServerConfig> {
-        // For now, return an error indicating this feature needs external tools
-        // In a production environment, you'd want to use a proper TLS configuration library
-        Err(anyhow::anyhow!("TLS server configuration not yet implemented. Use external tools like rustls directly for now."))
-    }
-
-    /// Create TLS client configuration
-    /// Note: This is a simplified implementation for development purposes
-    pub fn create_client_config(
-        _ca_certs: Vec<CertificateDer<'static>>,
-        _client_cert: Option<CertificateDer<'static>>,
-        _client_key: Option<PrivateKeyDer<'static>>,
-    ) -> Result<rustls::ClientConfig> {
-        // For now, return an error indicating this feature needs external tools
-        // In a production environment, you'd want to use a proper TLS configuration library
-        Err(anyhow::anyhow!("TLS client configuration not yet implemented. Use external tools like rustls directly for now."))
-    }
-
     /// Check if certificate is expired
     pub fn is_certificate_expired(cert: &CertificateDer) -> Result<bool> {
         let (_, cert) = parse_x509_certificate(cert.as_ref())

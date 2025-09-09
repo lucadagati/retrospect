@@ -503,6 +503,7 @@ async fn check_heartbeat_timeouts(api: &Api<Device>, timeout_duration: Duration)
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)
         .finish();
@@ -620,12 +621,15 @@ async fn main() -> Result<()> {
         let listener = tokio::net::TcpListener::bind(args.http_addr).await.unwrap();
         info!("Starting HTTP API server on {}", args.http_addr);
         
-        axum::serve(listener, http_router)
+        match axum::serve(listener, http_router)
             .with_graceful_shutdown(async move {
                 http_shutdown.cancelled().await;
             })
             .await
-            .unwrap();
+        {
+            Ok(_) => info!("HTTP API server stopped gracefully"),
+            Err(e) => error!("HTTP API server error: {}", e),
+        }
     });
 
     // Start heartbeat monitor task
