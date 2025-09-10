@@ -1,0 +1,17 @@
+[package]
+name = "wasmbed-integration-test"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "integration_test"
+path = "src/main.rs"
+
+[dependencies]
+wasmbed-microros-bridge = { path = "../wasmbed-microros-bridge" }
+wasmbed-fastdds-middleware = { path = "../wasmbed-fastdds-middleware" }
+wasmbed-px4-communication = { path = "../wasmbed-px4-communication" }
+tokio = { version = "1.0", features = ["full"] }

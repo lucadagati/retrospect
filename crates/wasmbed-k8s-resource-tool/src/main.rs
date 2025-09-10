@@ -100,7 +100,7 @@ pub fn main() -> Result<()> {
                 let device = Device::new(
                     &name,
                     DeviceSpec {
-                        public_key: public_key.into_owned(),
+                        public_key: public_key.to_string(),
                     },
                 );
 

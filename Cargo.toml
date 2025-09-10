@@ -18,6 +18,10 @@ members = [
     "crates/wasmbed-test-utils",
     "crates/wasmbed-tls-utils",
     "crates/wasmbed-types",
+    "crates/wasmbed-microros-bridge",
+    "crates/wasmbed-fastdds-middleware",
+    "crates/wasmbed-px4-communication",
+    "crates/wasmbed-integration-test",
 ]
 
 [workspace.package]

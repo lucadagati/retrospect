@@ -47,43 +47,74 @@ This document provides comprehensive documentation for integrating PX4 autopilot
 
 ### microROS Bridge Implementation
 
-**Required Implementation**:
+**Current Implementation**:
 ```rust
 pub struct MicroRosBridge {
-    node: rcl::Node,
-    participant: fastdds::DomainParticipant,
-    publishers: HashMap<String, Publisher>,
-    subscribers: HashMap<String, Subscriber>,
+    participant: Arc<DomainParticipant>,
+    publishers: Arc<DashMap<String, RustDdsPublisher>>,
+    subscribers: Arc<DashMap<String, RustDdsSubscriber>>,
+    data_writers: Arc<DashMap<String, rustdds::with_key::DataWriter<Px4Message, CDRSerializerAdapter<Px4Message>>>>,
+    data_readers: Arc<DashMap<String, rustdds::with_key::DataReader<Px4Message, CDRDeserializerAdapter<Px4Message>>>>,
+    topic_manager: Arc<RwLock<Px4TopicManager>>,
 }
 
 impl MicroRosBridge {
-    pub fn new(domain_id: u32) -> Result<Self, Error> {
-        // Initialize ROS 2 node
-        let node = rcl::Node::new("wasmbed_gateway")?;
+    pub async fn new(config: BridgeConfig) -> Result<Self, BridgeError> {
+        // Initialize DDS domain participant
+        let participant = DomainParticipant::new(config.dds_domain_id as u16)
+            .map_err(|e| BridgeError::FastDdsError(e.to_string()))?;
         
-        // Initialize FastDDS participant
-        let participant = fastdds::DomainParticipant::new(domain_id)?;
+        // Create PX4 topic manager
+        let topic_manager = Arc::new(RwLock::new(Px4TopicManager::new()));
         
         Ok(Self {
-            node,
-            participant,
-            publishers: HashMap::new(),
-            subscribers: HashMap::new(),
+            participant: Arc::new(participant),
+            publishers: Arc::new(DashMap::new()),
+            subscribers: Arc::new(DashMap::new()),
+            data_writers: Arc::new(DashMap::new()),
+            data_readers: Arc::new(DashMap::new()),
+            topic_manager,
         })
     }
     
-    pub fn create_publisher(&mut self, topic_name: &str, topic_type: &str) -> Result<Publisher, Error> {
-        // Create publisher for specific topic
-        let publisher = self.participant.create_publisher(topic_name, topic_type)?;
-        self.publishers.insert(topic_name.to_string(), publisher.clone());
-        Ok(publisher)
+    pub async fn create_publisher(&mut self, topic_name: &str) -> Result<(), BridgeError> {
+        // Create DDS topic
+        let topic = self.participant.create_topic(
+            topic_name,
+            "Px4Message",
+            TopicKind::WithKey,
+            &QosPolicyBuilder::new().build(),
+        ).map_err(|e| BridgeError::FastDdsError(e.to_string()))?;
+        
+        // Create data writer
+        let writer = self.participant.create_data_writer(
+            &topic,
+            DataWriterQos::default(),
+            None,
+        ).map_err(|e| BridgeError::FastDdsError(e.to_string()))?;
+        
+        self.data_writers.insert(topic_name.to_string(), writer);
+        Ok(())
     }
     
-    pub fn create_subscriber(&mut self, topic_name: &str, topic_type: &str) -> Result<Subscriber, Error> {
-        // Create subscriber for specific topic
-        let subscriber = self.participant.create_subscriber(topic_name, topic_type)?;
-        self.subscribers.insert(topic_name.to_string(), subscriber.clone());
-        Ok(subscriber)
+    pub async fn create_subscriber(&mut self, topic_name: &str) -> Result<(), BridgeError> {
+        // Create DDS topic
+        let topic = self.participant.create_topic(
+            topic_name,
+            "Px4Message",
+            TopicKind::WithKey,
+            &QosPolicyBuilder::new().build(),
+        ).map_err(|e| BridgeError::FastDdsError(e.to_string()))?;
+        
+        // Create data reader
+        let reader = self.participant.create_data_reader(
+            &topic,
+            DataReaderQos::default(),
+            None,
+        ).map_err(|e| BridgeError::FastDdsError(e.to_string()))?;
+        
+        self.data_readers.insert(topic_name.to_string(), reader);
+        Ok(())
     }
 }
 ```
@@ -128,44 +159,69 @@ impl Ros2NodeConfig {
 
 ### FastDDS Implementation
 
-**Required Implementation**:
+**Current Implementation**:
 ```rust
 pub struct FastDdsMiddleware {
-    domain_id: u32,
-    participant: DomainParticipant,
-    transport: UdpTransport,
-    qos: QosProfile,
+    participant: Arc<DomainParticipant>,
+    publishers: Arc<DashMap<String, RustDdsPublisher>>,
+    subscribers: Arc<DashMap<String, RustDdsSubscriber>>,
+    data_writers: Arc<DashMap<String, rustdds::with_key::DataWriter<Px4Message, CDRSerializerAdapter<Px4Message>>>>,
+    data_readers: Arc<DashMap<String, rustdds::with_key::DataReader<Px4Message, CDRDeserializerAdapter<Px4Message>>>>,
 }
 
 impl FastDdsMiddleware {
-    pub fn new(domain_id: u32) -> Result<Self, Error> {
+    pub async fn new(config: FastDdsConfig) -> Result<Self, MiddlewareError> {
         // Create domain participant
-        let participant = DomainParticipant::new(domain_id)?;
-        
-        // Configure UDP transport
-        let transport = UdpTransport::new()?;
-        
-        // Configure QoS profile
-        let qos = QosProfile::reliable()?;
+        let participant = DomainParticipant::new(config.domain_id as u16)
+            .map_err(|e| MiddlewareError::FastDdsError(e.to_string()))?;
         
         Ok(Self {
-            domain_id,
-            participant,
-            transport,
-            qos,
+            participant: Arc::new(participant),
+            publishers: Arc::new(DashMap::new()),
+            subscribers: Arc::new(DashMap::new()),
+            data_writers: Arc::new(DashMap::new()),
+            data_readers: Arc::new(DashMap::new()),
         })
     }
     
-    pub fn create_publisher(&self, topic_name: &str, topic_type: &str) -> Result<Publisher, Error> {
-        // Create publisher with reliable QoS
-        let publisher = self.participant.create_publisher(topic_name, topic_type, &self.qos)?;
-        Ok(publisher)
+    pub async fn create_publisher(&mut self, topic_name: &str) -> Result<(), MiddlewareError> {
+        // Create DDS topic
+        let topic = self.participant.create_topic(
+            topic_name,
+            "Px4Message",
+            TopicKind::WithKey,
+            &QosPolicyBuilder::new().build(),
+        ).map_err(|e| MiddlewareError::FastDdsError(e.to_string()))?;
+        
+        // Create data writer
+        let writer = self.participant.create_data_writer(
+            &topic,
+            DataWriterQos::default(),
+            None,
+        ).map_err(|e| MiddlewareError::FastDdsError(e.to_string()))?;
+        
+        self.data_writers.insert(topic_name.to_string(), writer);
+        Ok(())
     }
     
-    pub fn create_subscriber(&self, topic_name: &str, topic_type: &str) -> Result<Subscriber, Error> {
-        // Create subscriber with reliable QoS
-        let subscriber = self.participant.create_subscriber(topic_name, topic_type, &self.qos)?;
-        Ok(subscriber)
+    pub async fn create_subscriber(&mut self, topic_name: &str) -> Result<(), MiddlewareError> {
+        // Create DDS topic
+        let topic = self.participant.create_topic(
+            topic_name,
+            "Px4Message",
+            TopicKind::WithKey,
+            &QosPolicyBuilder::new().build(),
+        ).map_err(|e| MiddlewareError::FastDdsError(e.to_string()))?;
+        
+        // Create data reader
+        let reader = self.participant.create_data_reader(
+            &topic,
+            DataReaderQos::default(),
+            None,
+        ).map_err(|e| MiddlewareError::FastDdsError(e.to_string()))?;
+        
+        self.data_readers.insert(topic_name.to_string(), reader);
+        Ok(())
     }
 }
 ```
@@ -215,54 +271,71 @@ pub struct QosConfig {
 
 ### PX4 Bridge Implementation
 
-**Required Implementation**:
+**Current Implementation**:
 ```rust
 pub struct Px4CommunicationBridge {
     microros_bridge: MicroRosBridge,
     fastdds: FastDdsMiddleware,
     px4_topics: Px4TopicManager,
+    mavlink_client: Option<MavlinkClient>,
 }
 
 impl Px4CommunicationBridge {
-    pub fn new(domain_id: u32) -> Result<Self, Error> {
+    pub async fn new(config: Px4Config) -> Result<Self, BridgeError> {
         // Initialize microROS bridge
-        let microros_bridge = MicroRosBridge::new(domain_id)?;
+        let microros_bridge = MicroRosBridge::new(BridgeConfig {
+            node_name: "px4_communication_bridge".to_string(),
+            dds_domain_id: config.domain_id,
+        }).await?;
         
         // Initialize FastDDS middleware
-        let fastdds = FastDdsMiddleware::new(domain_id)?;
+        let fastdds = FastDdsMiddleware::new(FastDdsConfig {
+            domain_id: config.domain_id,
+        }).await?;
         
         // Initialize PX4 topic manager
-        let px4_topics = Px4TopicManager::new()?;
+        let px4_topics = Px4TopicManager::new();
+        
+        // Initialize MAVLink client (optional)
+        let mavlink_client = if config.mavlink_enabled {
+            Some(MavlinkClient::new(&config.mavlink_endpoint, config.system_id, config.component_id).await?)
+        } else {
+            None
+        };
         
         Ok(Self {
             microros_bridge,
             fastdds,
             px4_topics,
+            mavlink_client,
         })
     }
     
-    pub fn initialize_px4_topics(&mut self) -> Result<(), Error> {
+    pub async fn initialize_px4_topics(&mut self) -> Result<(), BridgeError> {
         // Initialize input topics (commands to PX4)
-        self.microros_bridge.create_publisher("/fmu/in/vehicle_command", "px4_msgs::msg::VehicleCommand")?;
-        self.microros_bridge.create_publisher("/fmu/in/position_setpoint", "px4_msgs::msg::PositionSetpoint")?;
-        self.microros_bridge.create_publisher("/fmu/in/attitude_setpoint", "px4_msgs::msg::AttitudeSetpoint")?;
+        self.microros_bridge.create_publisher("/fmu/in/vehicle_command").await?;
+        self.microros_bridge.create_publisher("/fmu/in/position_setpoint").await?;
+        self.microros_bridge.create_publisher("/fmu/in/attitude_setpoint").await?;
         
         // Initialize output topics (status from PX4)
-        self.microros_bridge.create_subscriber("/fmu/out/vehicle_status", "px4_msgs::msg::VehicleStatus")?;
-        self.microros_bridge.create_subscriber("/fmu/out/vehicle_local_position", "px4_msgs::msg::VehicleLocalPosition")?;
-        self.microros_bridge.create_subscriber("/fmu/out/battery_status", "px4_msgs::msg::BatteryStatus")?;
-        self.microros_bridge.create_subscriber("/fmu/out/vehicle_attitude", "px4_msgs::msg::VehicleAttitude")?;
-        self.microros_bridge.create_subscriber("/fmu/out/actuator_outputs", "px4_msgs::msg::ActuatorOutputs")?;
+        self.microros_bridge.create_subscriber("/fmu/out/vehicle_status").await?;
+        self.microros_bridge.create_subscriber("/fmu/out/vehicle_local_position").await?;
+        self.microros_bridge.create_subscriber("/fmu/out/battery_status").await?;
+        self.microros_bridge.create_subscriber("/fmu/out/vehicle_attitude").await?;
+        self.microros_bridge.create_subscriber("/fmu/out/actuator_outputs").await?;
         
         Ok(())
     }
     
-    pub fn send_mavlink_command(&self, command: MavlinkCommand) -> Result<(), Error> {
+    pub async fn send_mavlink_command(&self, command: MavlinkCommand) -> Result<(), BridgeError> {
         // Convert MAVLink command to PX4 message
         let px4_message = self.px4_topics.convert_mavlink_to_px4(command)?;
         
         // Publish to PX4 input topic
-        self.microros_bridge.publish("/fmu/in/vehicle_command", px4_message)?;
+        if let Some(writer) = self.microros_bridge.data_writers.get("/fmu/in/vehicle_command") {
+            writer.write(px4_message, None).await
+                .map_err(|e| BridgeError::FastDdsError(e.to_string()))?;
+        }
         
         Ok(())
     }
@@ -271,7 +344,7 @@ impl Px4CommunicationBridge {
 
 ### PX4 Topic Manager
 
-**PX4 Topic Manager Implementation**:
+**Current Implementation**:
 ```rust
 pub struct Px4TopicManager {
     topic_definitions: HashMap<String, TopicDefinition>,
@@ -279,21 +352,21 @@ pub struct Px4TopicManager {
 }
 
 impl Px4TopicManager {
-    pub fn new() -> Result<Self, Error> {
+    pub fn new() -> Self {
         let mut topic_definitions = HashMap::new();
         let mut message_converters = HashMap::new();
         
         // Define PX4 topics
         topic_definitions.insert("/fmu/in/vehicle_command".to_string(), TopicDefinition {
             name: "/fmu/in/vehicle_command".to_string(),
-            message_type: "px4_msgs::msg::VehicleCommand".to_string(),
+            message_type: "std_msgs::msg::String".to_string(), // Using placeholder type
             direction: TopicDirection::Input,
             qos: QosProfile::reliable(),
         });
         
         topic_definitions.insert("/fmu/out/vehicle_status".to_string(), TopicDefinition {
             name: "/fmu/out/vehicle_status".to_string(),
-            message_type: "px4_msgs::msg::VehicleStatus".to_string(),
+            message_type: "std_msgs::msg::String".to_string(), // Using placeholder type
             direction: TopicDirection::Output,
             qos: QosProfile::reliable(),
         });
@@ -301,17 +374,17 @@ impl Px4TopicManager {
         // Initialize message converters
         message_converters.insert("mavlink_to_px4".to_string(), MessageConverter::new());
         
-        Ok(Self {
+        Self {
             topic_definitions,
             message_converters,
-        })
+        }
     }
     
-    pub fn convert_mavlink_to_px4(&self, command: MavlinkCommand) -> Result<Px4Message, Error> {
+    pub fn convert_mavlink_to_px4(&self, command: MavlinkCommand) -> Result<Px4Message, BridgeError> {
         // Convert MAVLink command to PX4 message
         match command.command_type {
             MavlinkCommandType::Arm => {
-                Ok(Px4Message::VehicleCommand {
+                Ok(Px4Message {
                     command: 400, // ARM command
                     param1: 1.0,
                     param2: 0.0,
@@ -323,7 +396,7 @@ impl Px4TopicManager {
                 })
             }
             MavlinkCommandType::Disarm => {
-                Ok(Px4Message::VehicleCommand {
+                Ok(Px4Message {
                     command: 400, // DISARM command
                     param1: 0.0,
                     param2: 0.0,
@@ -335,7 +408,7 @@ impl Px4TopicManager {
                 })
             }
             MavlinkCommandType::Takeoff => {
-                Ok(Px4Message::VehicleCommand {
+                Ok(Px4Message {
                     command: 22, // TAKEOFF command
                     param1: 0.0,
                     param2: 0.0,
@@ -347,7 +420,7 @@ impl Px4TopicManager {
                 })
             }
             MavlinkCommandType::Land => {
-                Ok(Px4Message::VehicleCommand {
+                Ok(Px4Message {
                     command: 21, // LAND command
                     param1: 0.0,
                     param2: 0.0,
@@ -358,7 +431,7 @@ impl Px4TopicManager {
                     param7: 0.0,
                 })
             }
-            _ => Err(Error::UnsupportedCommand),
+            _ => Err(BridgeError::UnsupportedCommand),
         }
     }
 }
@@ -428,46 +501,25 @@ impl MavlinkToPx4Mapping {
 
 ### PX4 Message Types
 
-**PX4 Message Definitions**:
+**Current PX4 Message Definition**:
 ```rust
-#[derive(Debug, Clone)]
-pub enum Px4Message {
-    VehicleCommand {
-        command: u16,
-        param1: f32,
-        param2: f32,
-        param3: f32,
-        param4: f32,
-        param5: f32,
-        param6: f32,
-        param7: f32,
-    },
-    PositionSetpoint {
-        x: f32,
-        y: f32,
-        z: f32,
-        yaw: f32,
-        yaw_valid: bool,
-        vx: f32,
-        vy: f32,
-        vz: f32,
-        acceleration_valid: bool,
-        acceleration: [f32; 3],
-        jerk_valid: bool,
-        jerk: [f32; 3],
-    },
-    AttitudeSetpoint {
-        roll_body: f32,
-        pitch_body: f32,
-        yaw_body: f32,
-        yaw_sp_move_rate: f32,
-        thrust_body: [f32; 3],
-        roll_reset_integral: bool,
-        pitch_reset_integral: bool,
-        yaw_reset_integral: bool,
-        fw_control_yaw: bool,
-        apply_flaps: bool,
-    },
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Px4Message {
+    pub command: u16,
+    pub param1: f32,
+    pub param2: f32,
+    pub param3: f32,
+    pub param4: f32,
+    pub param5: f32,
+    pub param6: f32,
+    pub param7: f32,
+}
+
+impl Keyed for Px4Message {
+    type K = u16;
+    fn key(&self) -> Self::K {
+        self.command
+    }
 }
 ```
 
@@ -961,7 +1013,7 @@ impl CommunicationOptimizer {
 
 ### PX4 Integration Tests
 
-**Integration Test Suite**:
+**Current Integration Test Suite**:
 ```rust
 #[cfg(test)]
 mod integration_tests {
@@ -970,7 +1022,15 @@ mod integration_tests {
     #[tokio::test]
     async fn test_px4_communication_bridge() {
         // Setup
-        let bridge = Px4CommunicationBridge::new(0).await.unwrap();
+        let config = Px4Config {
+            domain_id: 0,
+            mavlink_enabled: false,
+            mavlink_endpoint: "".to_string(),
+            system_id: 1,
+            component_id: 1,
+        };
+        
+        let bridge = Px4CommunicationBridge::new(config).await.unwrap();
         
         // Test topic initialization
         bridge.initialize_px4_topics().await.unwrap();
@@ -991,31 +1051,40 @@ mod integration_tests {
     }
     
     #[tokio::test]
-    async fn test_flight_mode_transitions() {
+    async fn test_microros_bridge_initialization() {
         // Setup
-        let mut flight_mode_manager = FlightModeManager::new().unwrap();
+        let config = BridgeConfig {
+            node_name: "test_node".to_string(),
+            dds_domain_id: 0,
+        };
         
-        // Test valid transition
-        let result = flight_mode_manager.set_flight_mode(FlightMode::Altitude);
+        let bridge = MicroRosBridge::new(config).await.unwrap();
+        
+        // Test publisher creation
+        let result = bridge.create_publisher("/test_topic").await;
         assert!(result.is_ok());
         
-        // Test invalid transition
-        let result = flight_mode_manager.set_flight_mode(FlightMode::Offboard);
-        assert!(result.is_err());
+        // Test subscriber creation
+        let result = bridge.create_subscriber("/test_topic").await;
+        assert!(result.is_ok());
     }
     
     #[tokio::test]
-    async fn test_safety_systems() {
+    async fn test_fastdds_middleware_initialization() {
         // Setup
-        let mut safety_manager = SafetySystemManager::new().unwrap();
+        let config = FastDdsConfig {
+            domain_id: 0,
+        };
         
-        // Test emergency stop
-        let result = safety_manager.activate_emergency_stop();
+        let middleware = FastDdsMiddleware::new(config).await.unwrap();
+        
+        // Test publisher creation
+        let result = middleware.create_publisher("/test_topic").await;
         assert!(result.is_ok());
         
-        // Test safety status
-        let status = safety_manager.check_safety_conditions().unwrap();
-        assert_eq!(status, SafetyStatus::EmergencyStop);
+        // Test subscriber creation
+        let result = middleware.create_subscriber("/test_topic").await;
+        assert!(result.is_ok());
     }
 }
 ```
@@ -1024,7 +1093,7 @@ mod integration_tests {
 
 ### PX4 Application Deployment
 
-**PX4 Application Manifest**:
+**Current PX4 Application Manifest**:
 ```yaml
 apiVersion: wasmbed.github.io/v1alpha1
 kind: Application
@@ -1121,38 +1190,41 @@ px4:
 
 ## Troubleshooting
 
-### Common Issues
+### Current Implementation Status
 
-**microROS Connection Issues**:
-- Check domain ID configuration
-- Verify network connectivity
-- Check QoS settings
-- Validate message types
+**Completed Components**:
+- ✅ microROS Bridge with rustdds integration
+- ✅ FastDDS Middleware with rustdds
+- ✅ PX4 Communication Bridge
+- ✅ PX4 Topic Manager
+- ✅ MAVLink command conversion
+- ✅ Integration tests
 
-**FastDDS Communication Issues**:
-- Check transport configuration
-- Verify port availability
-- Check participant configuration
-- Validate QoS settings
+**Current Limitations**:
+- ROS 2 integration commented out (requires ROS 2 environment)
+- PX4 message types using placeholder (`std_msgs::msg::String`)
+- MAVLink client optional (commented out due to dependency issues)
 
-**PX4 Integration Issues**:
-- Check PX4 firmware version
-- Verify UORB topic configuration
-- Check message format compatibility
-- Validate command parameters
+**Dependencies Status**:
+- `rustdds`: ✅ Working
+- `postcard`: ✅ Working (replaced bincode/cbor)
+- `mavlink`: ✅ Working (v0.15)
+- `async-mavlink`: ❌ Commented out (xml-rs dependency issues)
+- `px4`: ❌ Commented out (rustc-serialize dependency issues)
+- `r2r`: ❌ Commented out (ROS 2 environment required)
 
 ### Debugging Tools
 
-**Debugging Configuration**:
+**Current Debugging Configuration**:
 ```yaml
 # Debug Configuration
 debug:
-  microros:
+  rustdds:
     log_level: "debug"
     verbose: true
     trace: true
   
-  fastdds:
+  microros:
     log_level: "debug"
     verbose: true
     trace: true
@@ -1180,11 +1252,11 @@ impl Px4Debugger {
         }
     }
     
-    pub fn log_command(&self, command: &Px4Command) {
+    pub fn log_command(&self, command: &Px4Message) {
         self.logger.info(&format!("PX4 Command: {:?}", command));
     }
     
-    pub fn log_status(&self, status: &Px4Status) {
+    pub fn log_status(&self, status: &Px4Message) {
         self.logger.info(&format!("PX4 Status: {:?}", status));
     }
     
