@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright © 2025 Wasmbed contributors
 
+pub mod qemu_manager;
+pub mod firmware_manager;
+
+pub use qemu_manager::*;
+pub use firmware_manager::*;
+
 use std::os::unix::net::UnixStream;
 use std::io::{Read, Write};
 use std::time::Duration;

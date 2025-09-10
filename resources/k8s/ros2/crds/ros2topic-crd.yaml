@@ -1,0 +1,76 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: ros2topics.wasmbed.io
+spec:
+  group: wasmbed.io
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              topicName:
+                type: string
+                description: "Name of the ROS 2 topic"
+              messageType:
+                type: string
+                description: "ROS 2 message type (e.g., std_msgs/String)"
+              qosProfile:
+                type: object
+                properties:
+                  reliability:
+                    type: string
+                    enum: ["reliable", "best_effort"]
+                  durability:
+                    type: string
+                    enum: ["volatile", "transient_local"]
+                  history:
+                    type: string
+                    enum: ["keep_last", "keep_all"]
+                  depth:
+                    type: integer
+                    minimum: 1
+              publisher:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  wasmFunction:
+                    type: string
+                    description: "WASM function to call for publishing"
+              subscriber:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  wasmFunction:
+                    type: string
+                    description: "WASM function to call when message received"
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum: ["Pending", "Active", "Failed"]
+              lastMessageTime:
+                type: string
+                format: date-time
+              messageCount:
+                type: integer
+              errorMessage:
+                type: string
+    subresources:
+      status: {}
+  scope: Namespaced
+  names:
+    plural: ros2topics
+    singular: ros2topic
+    kind: ROS2Topic
+    shortNames:
+    - ros2t

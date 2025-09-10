@@ -23,4 +23,4 @@ version = "0.13.0"
 features = [ "single-hart" ]
 
 # WASM Runtime dependencies (no_std compatible)
-wasm3 = "0.5"
+# wasm3 = "0.5"  # Temporarily disabled

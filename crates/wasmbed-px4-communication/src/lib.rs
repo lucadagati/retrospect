@@ -150,7 +150,10 @@ impl Px4CommunicationBridge {
             },
         };
         
-        let microros_bridge = MicroRosBridge::new(microros_config).await
+        let microros_bridge = MicroRosBridge::new(microros_config, wasmbed_microros_bridge::WasmRuntimeIntegration {
+            gateway_url: "http://localhost:8080".to_string(),
+            runtime_id: "px4-bridge".to_string(),
+        }).await
             .map_err(|e| Px4BridgeError::MicroRosError(e.to_string()))?;
         
         // Create FastDDS middleware

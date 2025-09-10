@@ -7,12 +7,19 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::Result;
 use dashmap::DashMap;
-use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, mpsc};
 use tokio::time::interval;
 use tracing::{debug, error, info, instrument};
 use uuid::Uuid;
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::Json,
+    routing::{get, post},
+    Router,
+};
+use serde_json::{json, Value};
 
 use rustdds::{
     DomainParticipant, Publisher as RustDdsPublisher, Subscriber as RustDdsSubscriber,
@@ -55,6 +62,37 @@ impl Keyed for Px4Message {
     fn key(&self) -> Self::K {
         self.topic.clone()
     }
+}
+
+/// HTTP API request/response structures
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublishRequest {
+    pub topic: String,
+    pub message_type: String,
+    pub data: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubscribeRequest {
+    pub topic: String,
+    pub message_type: String,
+    pub callback_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeStatus {
+    pub initialized: bool,
+    pub connected: bool,
+    pub active_topics: usize,
+    pub error_count: u64,
+    pub last_heartbeat: Option<SystemTime>,
+}
+
+/// WASM Runtime integration
+#[derive(Debug, Clone)]
+pub struct WasmRuntimeIntegration {
+    pub gateway_url: String,
+    pub runtime_id: String,
 }
 
 /// microROS Bridge for PX4 communication
@@ -103,6 +141,9 @@ pub struct MicroRosBridge {
     
     /// Bridge state
     state: Arc<RwLock<BridgeState>>,
+    
+    /// WASM Runtime integration
+    wasm_integration: WasmRuntimeIntegration,
 }
 
 /// Bridge configuration
@@ -241,7 +282,7 @@ pub enum BridgeError {
 
 impl MicroRosBridge {
     /// Create a new microROS bridge
-    pub async fn new(config: BridgeConfig) -> Result<Self, BridgeError> {
+    pub async fn new(config: BridgeConfig, wasm_integration: WasmRuntimeIntegration) -> Result<Self, BridgeError> {
         info!("Creating microROS bridge with config: {:?}", config);
         
         // Initialize DDS domain participant
@@ -290,6 +331,7 @@ impl MicroRosBridge {
             message_channels,
             config,
             state,
+            wasm_integration,
         };
         
         info!("microROS bridge created successfully");
@@ -611,6 +653,99 @@ impl MicroRosBridge {
         info!("microROS bridge shutdown complete");
         Ok(())
     }
+    
+    /// Create HTTP API router
+    pub fn create_api_router(self: Arc<Self>) -> Router {
+        Router::new()
+            .route("/health", get(Self::health_handler))
+            .route("/ready", get(Self::ready_handler))
+            .route("/status", get(Self::status_handler))
+            .route("/topics", get(Self::list_topics_handler))
+            .route("/topics/:topic/publish", post(Self::publish_handler))
+            .route("/topics/:topic/subscribe", post(Self::subscribe_handler))
+            .with_state(self)
+    }
+    
+    /// Health check handler
+    async fn health_handler(State(bridge): State<Arc<Self>>) -> Result<Json<Value>, StatusCode> {
+        let status = bridge.get_status().await;
+        Ok(Json(json!({
+            "status": "healthy",
+            "initialized": status.initialized,
+            "connected": status.connected
+        })))
+    }
+    
+    /// Readiness check handler
+    async fn ready_handler(State(bridge): State<Arc<Self>>) -> Result<Json<Value>, StatusCode> {
+        let status = bridge.get_status().await;
+        if status.initialized && status.connected {
+            Ok(Json(json!({"status": "ready"})))
+        } else {
+            Err(StatusCode::SERVICE_UNAVAILABLE)
+        }
+    }
+    
+    /// Status handler
+    async fn status_handler(State(bridge): State<Arc<Self>>) -> Result<Json<BridgeStatus>, StatusCode> {
+        let status = bridge.get_status().await;
+        Ok(Json(BridgeStatus {
+            initialized: status.initialized,
+            connected: status.connected,
+            active_topics: status.active_topics,
+            error_count: status.error_count,
+            last_heartbeat: status.last_heartbeat,
+        }))
+    }
+    
+    /// List topics handler
+    async fn list_topics_handler(State(bridge): State<Arc<Self>>) -> Result<Json<Value>, StatusCode> {
+        let topic_manager = bridge.topic_manager.read().await;
+        Ok(Json(json!({
+            "input_topics": topic_manager.input_topics.keys().collect::<Vec<_>>(),
+            "output_topics": topic_manager.output_topics.keys().collect::<Vec<_>>()
+        })))
+    }
+    
+    /// Publish message handler
+    async fn publish_handler(
+        State(bridge): State<Arc<Self>>,
+        Path(topic): Path<String>,
+        Json(payload): Json<PublishRequest>,
+    ) -> Result<Json<Value>, StatusCode> {
+        // Serialize the JSON data to bytes
+        let data = match serde_json::to_vec(&payload.data) {
+            Ok(data) => data,
+            Err(_) => return Err(StatusCode::BAD_REQUEST),
+        };
+        
+        match bridge.publish_message(&topic, data).await {
+            Ok(_) => Ok(Json(json!({"status": "published", "topic": topic}))),
+            Err(e) => {
+                error!("Failed to publish message: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+    
+    /// Subscribe to topic handler
+    async fn subscribe_handler(
+        State(bridge): State<Arc<Self>>,
+        Path(topic): Path<String>,
+        Json(payload): Json<SubscribeRequest>,
+    ) -> Result<Json<Value>, StatusCode> {
+        match bridge.subscribe_to_topic(&topic).await {
+            Ok(_) => Ok(Json(json!({
+                "status": "subscribed", 
+                "topic": topic,
+                "callback_url": payload.callback_url
+            }))),
+            Err(e) => {
+                error!("Failed to subscribe to topic: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
 }
 
 impl Px4TopicManager {
@@ -665,14 +800,22 @@ mod tests {
     #[tokio::test]
     async fn test_bridge_creation() {
         let config = BridgeConfig::default();
-        let bridge = MicroRosBridge::new(config).await;
+        let wasm_integration = WasmRuntimeIntegration {
+            gateway_url: "http://localhost:8080".to_string(),
+            runtime_id: "test-runtime".to_string(),
+        };
+        let bridge = MicroRosBridge::new(config, wasm_integration).await;
         assert!(bridge.is_ok());
     }
     
     #[tokio::test]
     async fn test_bridge_initialization() {
         let config = BridgeConfig::default();
-        let bridge = MicroRosBridge::new(config).await.unwrap();
+        let wasm_integration = WasmRuntimeIntegration {
+            gateway_url: "http://localhost:8080".to_string(),
+            runtime_id: "test-runtime".to_string(),
+        };
+        let bridge = MicroRosBridge::new(config, wasm_integration).await.unwrap();
         let result = bridge.initialize().await;
         if let Err(e) = &result {
             println!("Initialization error: {:?}", e);

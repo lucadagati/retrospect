@@ -6,7 +6,6 @@ extern crate alloc;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::time::Duration;
 
 use crate::wasm_runtime::{WasmRuntime, WasmRuntimeError, ApplicationStatus};
 
@@ -95,8 +94,8 @@ pub struct ApplicationManager {
 pub struct ApplicationManagerConfig {
     /// Maximum number of concurrent applications
     pub max_applications: usize,
-    /// Default application timeout
-    pub default_timeout: Duration,
+    /// Default application timeout (in seconds)
+    pub default_timeout: u32,
     /// Enable auto-restart
     pub auto_restart: bool,
 }
@@ -105,7 +104,7 @@ impl Default for ApplicationManagerConfig {
     fn default() -> Self {
         Self {
             max_applications: 5,
-            default_timeout: Duration::from_secs(30),
+            default_timeout: 30, // 30 seconds
             auto_restart: true,
         }
     }

@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: microros-agent
+  namespace: ros2-system
+  labels:
+    app: microros-agent
+    app.kubernetes.io/name: microros-agent
+    app.kubernetes.io/component: bridge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: microros-agent
+  template:
+    metadata:
+      labels:
+        app: microros-agent
+    spec:
+      serviceAccountName: ros2-service-account
+      containers:
+      - name: microros-agent
+        image: microros/micro-ros-agent:humble
+        ports:
+        - containerPort: 8888
+          name: agent-port
+        - containerPort: 9090
+          name: rosbridge-port
+        env:
+        - name: ROS_DOMAIN_ID
+          valueFrom:
+            configMapKeyRef:
+              name: ros2-config
+              key: ROS_DOMAIN_ID
+        - name: RMW_IMPLEMENTATION
+          valueFrom:
+            configMapKeyRef:
+              name: ros2-config
+              key: RMW_IMPLEMENTATION
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          tcpSocket:
+            port: 8888
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 8888
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      - name: rosbridge-websocket
+        image: ros:iron-ros-core-jammy
+        command: ["ros2", "run", "rosbridge_server", "rosbridge_websocket"]
+        ports:
+        - containerPort: 9090
+          name: websocket-port
+        env:
+        - name: ROS_DOMAIN_ID
+          valueFrom:
+            configMapKeyRef:
+              name: ros2-config
+              key: ROS_DOMAIN_ID
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: microros-agent
+  namespace: ros2-system
+  labels:
+    app: microros-agent
+spec:
+  selector:
+    app: microros-agent
+  ports:
+  - name: agent-port
+    port: 8888
+    targetPort: 8888
+    protocol: TCP
+  - name: websocket-port
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+  type: ClusterIP

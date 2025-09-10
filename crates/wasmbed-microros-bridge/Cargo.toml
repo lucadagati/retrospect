@@ -11,7 +11,7 @@ repository.workspace = true
 tokio = { version = "1.0", features = ["full"] }
 anyhow = "1.0"
 tracing = "0.1"
-tracing-subscriber = "0.3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 uuid = { version = "1.0", features = ["v4", "serde"] }
@@ -36,11 +36,13 @@ thiserror = "1.0"
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }
 
+# HTTP API dependencies
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
 # Collections
 dashmap = "5.0"
-
-# Logging
-log = "0.4"
 
 [dev-dependencies]
 tokio-test = "0.4"

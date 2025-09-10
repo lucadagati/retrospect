@@ -6,7 +6,6 @@ extern crate alloc;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::time::Duration;
 
 use crate::wasm_runtime::ApplicationStatus;
 

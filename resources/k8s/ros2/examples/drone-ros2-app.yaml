@@ -1,0 +1,51 @@
+apiVersion: wasmbed.io/v1alpha1
+kind: ROS2Topic
+metadata:
+  name: drone-telemetry
+  namespace: ros2-apps
+spec:
+  topicName: "/drone/telemetry"
+  messageType: "sensor_msgs/NavSatFix"
+  qosProfile:
+    reliability: "reliable"
+    durability: "volatile"
+    history: "keep_last"
+    depth: 10
+  publisher:
+    enabled: true
+    wasmFunction: "publish_telemetry"
+  subscriber:
+    enabled: false
+---
+apiVersion: wasmbed.io/v1alpha1
+kind: ROS2Topic
+metadata:
+  name: drone-commands
+  namespace: ros2-apps
+spec:
+  topicName: "/drone/commands"
+  messageType: "geometry_msgs/Twist"
+  qosProfile:
+    reliability: "reliable"
+    durability: "volatile"
+    history: "keep_last"
+    depth: 5
+  publisher:
+    enabled: false
+  subscriber:
+    enabled: true
+    wasmFunction: "handle_drone_command"
+---
+apiVersion: wasmbed.io/v1alpha1
+kind: ROS2Service
+metadata:
+  name: drone-arm-service
+  namespace: ros2-apps
+spec:
+  serviceName: "/drone/arm"
+  serviceType: "std_srvs/Empty"
+  server:
+    enabled: true
+    wasmFunction: "arm_drone_service"
+  client:
+    enabled: false

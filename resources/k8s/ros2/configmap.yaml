@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ros2-config
+  namespace: ros2-system
+data:
+  # ROS 2 Configuration
+  ROS_DOMAIN_ID: "0"
+  RMW_IMPLEMENTATION: "rmw_fastrtps_cpp"
+  
+  # microROS Configuration
+  MICROROS_AGENT_IP: "microros-agent.ros2-system.svc.cluster.local"
+  MICROROS_AGENT_PORT: "8888"
+  
+  # FastDDS Configuration
+  FASTRTPS_DEFAULT_PROFILES_FILE: "/etc/ros2/fastdds.xml"
+  
+  # Logging Configuration
+  RCUTILS_LOGGING_USE_STDOUT: "1"
+  RCUTILS_LOGGING_BUFFERED_STREAM: "1"
+  
+  # Performance Configuration
+  RCUTILS_COLORIZED_OUTPUT: "1"
+  RCUTILS_CONSOLE_OUTPUT_FORMAT: "[{severity}] [{time}] [{name}]: {message}"

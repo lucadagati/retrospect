@@ -3,8 +3,8 @@ resolver = "2"
 members = [
     "crates/wasmbed-cert",
     "crates/wasmbed-cert-tool",
-    "crates/wasmbed-firmware-esp32",
-    "crates/wasmbed-firmware-hifive1-qemu",
+    # "crates/wasmbed-firmware-esp32",  # Temporarily disabled due to unstable features
+    # "crates/wasmbed-firmware-hifive1-qemu",  # Temporarily disabled due to no_std conflicts
     "crates/wasmbed-gateway",
     "crates/wasmbed-gateway-test-client",
     "crates/wasmbed-k8s-controller",
@@ -22,6 +22,7 @@ members = [
     "crates/wasmbed-fastdds-middleware",
     "crates/wasmbed-px4-communication",
     "crates/wasmbed-integration-test",
+    "crates/wasmbed-wasm-runtime",
 ]
 
 [workspace.package]
