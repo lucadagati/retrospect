@@ -21,6 +21,7 @@ spec:
                 type: string
               publicKey:
                 type: string
+                description: "Base64 encoded public key"
               deviceType:
                 type: string
               capabilities:

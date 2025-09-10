@@ -1,0 +1,7 @@
+apiVersion: wasmbed.github.io/v0
+kind: Device
+metadata:
+  name: test-device-0
+  namespace: wasmbed
+spec:
+  publicKey: "test-key-12345"

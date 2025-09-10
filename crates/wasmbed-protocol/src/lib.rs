@@ -63,15 +63,30 @@ impl DeviceUuid {
         Self { bytes }
     }
     
-    /// Convert to string representation (requires alloc)
+    /// Convert to string representation (requires alloc) - use Display trait instead
     #[cfg(feature = "alloc")]
-    pub fn to_string(&self) -> alloc::string::String {
+    pub fn to_string_alt(&self) -> alloc::string::String {
         use alloc::format;
         let s = format!("{:02x}{:02x}{:02x}{:02x}", self.bytes[0], self.bytes[1], self.bytes[2], self.bytes[3]);
         let s = format!("{}-{:02x}{:02x}", s, self.bytes[4], self.bytes[5]);
         let s = format!("{}-{:02x}{:02x}", s, self.bytes[6], self.bytes[7]);
         let s = format!("{}-{:02x}{:02x}", s, self.bytes[8], self.bytes[9]);
         format!("{}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}", s, self.bytes[10], self.bytes[11], self.bytes[12], self.bytes[13], self.bytes[14], self.bytes[15])
+    }
+    
+}
+
+/// Display trait implementation for DeviceUuid
+#[cfg(feature = "alloc")]
+impl core::fmt::Display for DeviceUuid {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use alloc::format;
+        let s = format!("{:02x}{:02x}{:02x}{:02x}", self.bytes[0], self.bytes[1], self.bytes[2], self.bytes[3]);
+        let s = format!("{}-{:02x}{:02x}", s, self.bytes[4], self.bytes[5]);
+        let s = format!("{}-{:02x}{:02x}", s, self.bytes[6], self.bytes[7]);
+        let s = format!("{}-{:02x}{:02x}", s, self.bytes[8], self.bytes[9]);
+        let s = format!("{}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}", s, self.bytes[10], self.bytes[11], self.bytes[12], self.bytes[13], self.bytes[14], self.bytes[15]);
+        write!(f, "{}", s)
     }
 }
 
@@ -243,6 +258,7 @@ pub struct ApplicationMetrics {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
     
     #[test]
     fn test_device_uuid_to_string() {

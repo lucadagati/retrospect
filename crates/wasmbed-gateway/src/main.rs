@@ -73,7 +73,7 @@ impl Callbacks {
                 match Device::find(api.clone(), public_key_obj.clone()).await {
                     Ok(Some(device)) => {
                         // Verify that the public key from the certificate matches the stored device public key
-                        if device.spec.public_key == public_key_obj {
+                        if device.spec.public_key == public_key_obj.to_string() {
                             // Device exists and public key matches, mark as connected
                             info!("TLS client certificate verification successful: public key matches stored device {}", device.name_any());
                             
@@ -117,7 +117,7 @@ impl Callbacks {
                             AuthorizationResult::Authorized
                         } else {
                             error!("TLS client authentication failed: public key mismatch for device {}", device.name_any());
-                            error!("Expected: {}, Got: {}", device.spec.public_key.to_base64(), public_key_obj.to_base64());
+                            error!("Expected: {}, Got: {}", device.spec.public_key, public_key_obj.to_string());
                             AuthorizationResult::Unauthorized
                         }
                     },
@@ -384,7 +384,7 @@ async fn create_device_crd(
     
     // Create Device spec
     let device_spec = wasmbed_k8s_resource::DeviceSpec {
-        public_key: wasmbed_types::PublicKey::from(public_key_b64.into_bytes()),
+        public_key: public_key_b64,
     };
     
     // Create Device status
@@ -393,6 +393,7 @@ async fn create_device_crd(
         gateway: Some(gateway_reference.clone()),
         connected_since: None,
         last_heartbeat: None,
+        pairing_mode: false,
     };
     
     // Create Device object
@@ -469,7 +470,15 @@ async fn check_heartbeat_timeouts(api: &Api<Device>, timeout_duration: Duration)
     use chrono::Utc;
     use kube::api::ListParams;
     
-    let devices = api.list(&ListParams::default()).await?;
+    // Try to list devices with retry logic
+    let devices = match api.list(&ListParams::default()).await {
+        Ok(devices) => devices,
+        Err(e) => {
+            warn!("Failed to list devices for heartbeat check: {}", e);
+            return Err(e.into());
+        }
+    };
+    
     let now = Utc::now();
     
     for device in devices {
@@ -488,7 +497,8 @@ async fn check_heartbeat_timeouts(api: &Api<Device>, timeout_duration: Duration)
                             .apply(api.clone(), device.clone())
                             .await
                         {
-                            error!("Error marking device {} as unreachable: {}", device.name_any(), e);
+                            warn!("Error marking device {} as unreachable: {}", device.name_any(), e);
+                            // Don't fail the entire heartbeat check for individual device errors
                         } else {
                             info!("Device {} marked as unreachable due to heartbeat timeout", device.name_any());
                         }
@@ -573,7 +583,35 @@ async fn main() -> Result<()> {
         }
     });
 
-    let client = Client::try_default().await?;
+    // Create Kubernetes client with robust configuration and retry logic
+    let client = match Client::try_default().await {
+        Ok(client) => {
+            info!("Kubernetes client created successfully with default config");
+            client
+        }
+        Err(e) => {
+            warn!("Failed to create Kubernetes client with default config: {}", e);
+            // Try to create client with explicit configuration
+            info!("Attempting to create client with explicit configuration");
+            let config = kube::Config::infer().await.map_err(|e| {
+                error!("Failed to infer Kubernetes config: {}", e);
+                e
+            })?;
+            let client = Client::try_from(config).map_err(|e| {
+                error!("Failed to create client from config: {}", e);
+                e
+            })?;
+            info!("Kubernetes client created successfully with explicit config");
+            client
+        }
+    };
+    
+    // Test the client connection
+    info!("Testing Kubernetes client connection...");
+    match client.list_api_groups().await {
+        Ok(_) => info!("Kubernetes client connection test successful"),
+        Err(e) => warn!("Kubernetes client connection test failed: {}", e),
+    }
     let api: Api<Device> = Api::namespaced(client.clone(), &args.namespace);
     let application_api: Api<Application> = Api::namespaced(client.clone(), &args.namespace);
 
@@ -632,7 +670,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Start heartbeat monitor task
+    // Start heartbeat monitor task with robust error handling
     let heartbeat_monitor_api = api.clone();
     let heartbeat_monitor_shutdown = shutdown.clone();
     let heartbeat_timeout = Duration::from_secs(args.heartbeat_timeout_seconds);
@@ -646,8 +684,16 @@ async fn main() -> Result<()> {
                     break;
                 }
                 _ = tokio::time::sleep(Duration::from_secs(30)) => {
-                    if let Err(e) = check_heartbeat_timeouts(&heartbeat_monitor_api, heartbeat_timeout).await {
-                        error!("Error checking heartbeat timeouts: {}", e);
+                    match check_heartbeat_timeouts(&heartbeat_monitor_api, heartbeat_timeout).await {
+                        Ok(_) => {
+                            debug!("Heartbeat check completed successfully");
+                        }
+                        Err(e) => {
+                            // Log error but don't crash - this is a monitoring function
+                            warn!("Heartbeat monitor warning: {}", e);
+                            // Continue monitoring even if there are temporary connection issues
+                            // The system should be resilient to temporary Kubernetes API issues
+                        }
                     }
                 }
             }

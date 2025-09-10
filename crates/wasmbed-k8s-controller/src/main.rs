@@ -28,6 +28,7 @@ use axum::{
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use futures_util::StreamExt;
+use k8s_openapi;
 
 use wasmbed_k8s_resource::{
     Application, ApplicationPhase, ApplicationSpec, Device, DevicePhase,
@@ -226,10 +227,66 @@ impl ApplicationController {
         }
     }
 
-    /// Error policy for the controller
-    pub fn error_policy(&self, _app: Arc<Application>, error: &ControllerError, _ctx: Arc<Recorder>) -> Action {
-        error!("Reconciliation error: {}", error);
-        Action::requeue(Duration::from_secs(30))
+    /// Enable pairing mode for device enrollment
+    pub async fn enable_pairing_mode(&self) -> Result<()> {
+        info!("Enabling pairing mode for device enrollment");
+        
+        // Create a ConfigMap to store pairing mode state
+        let config_map = k8s_openapi::api::core::v1::ConfigMap {
+            metadata: k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta {
+                name: Some("wasmbed-pairing-mode".to_string()),
+                namespace: Some("wasmbed".to_string()),
+                ..Default::default()
+            },
+            data: Some(std::collections::BTreeMap::from([
+                ("enabled".to_string(), "true".to_string()),
+                ("enabled_at".to_string(), chrono::Utc::now().to_rfc3339()),
+            ])),
+            ..Default::default()
+        };
+
+        let config_api: Api<k8s_openapi::api::core::v1::ConfigMap> = Api::namespaced(self.client.clone(), "wasmbed");
+        
+        match config_api.get("wasmbed-pairing-mode").await {
+            Ok(_) => {
+                // Update existing ConfigMap
+                config_api.replace("wasmbed-pairing-mode", &Default::default(), &config_map).await?;
+            },
+            Err(_) => {
+                // Create new ConfigMap
+                config_api.create(&Default::default(), &config_map).await?;
+            }
+        }
+
+        info!("Pairing mode enabled successfully");
+        Ok(())
+    }
+
+    /// Disable pairing mode
+    pub async fn disable_pairing_mode(&self) -> Result<()> {
+        info!("Disabling pairing mode");
+        
+        let config_api: Api<k8s_openapi::api::core::v1::ConfigMap> = Api::namespaced(self.client.clone(), "wasmbed");
+        config_api.delete("wasmbed-pairing-mode", &Default::default()).await?;
+        
+        info!("Pairing mode disabled successfully");
+        Ok(())
+    }
+
+    /// Check if pairing mode is enabled
+    pub async fn is_pairing_mode_enabled(&self) -> Result<bool> {
+        let config_api: Api<k8s_openapi::api::core::v1::ConfigMap> = Api::namespaced(self.client.clone(), "wasmbed");
+        
+        match config_api.get("wasmbed-pairing-mode").await {
+            Ok(config_map) => {
+                if let Some(data) = config_map.data {
+                    Ok(data.get("enabled").map(|v| v == "true").unwrap_or(false))
+                } else {
+                    Ok(false)
+                }
+            },
+            Err(_) => Ok(false)
+        }
     }
 
     /// Handle Creating phase

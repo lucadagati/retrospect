@@ -6,7 +6,7 @@ use kube::CustomResource;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use wasmbed_types::{GatewayReference, PublicKey};
+use wasmbed_types::GatewayReference;
 
 #[derive(
     Clone,
@@ -28,7 +28,7 @@ use wasmbed_types::{GatewayReference, PublicKey};
 )]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceSpec {
-    pub public_key: PublicKey<'static>,
+    pub public_key: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
@@ -48,6 +48,10 @@ pub struct DeviceStatus {
     /// Last heartbeat timestamp
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_heartbeat: Option<DateTime<Utc>>,
+
+    /// Pairing mode status
+    #[serde(default)]
+    pub pairing_mode: bool,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema, Default, PartialEq)]

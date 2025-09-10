@@ -1,505 +1,710 @@
 # Development Setup Guide
 
-##  Overview
+## Overview
 
-This guide provides detailed instructions for setting up a development environment for Wasmbed, including all necessary tools, dependencies, and configuration.
+This document provides step-by-step instructions for setting up a complete development environment for the Wasmbed platform.
 
-##  Prerequisites
+## System Requirements
 
-### System Requirements
+### Minimum Requirements
 
-- **Operating System**: Linux (Ubuntu 20.04+), macOS (10.15+), or Windows (WSL2)
-- **CPU**: 2+ cores recommended
-- **Memory**: 8GB+ RAM recommended
-- **Storage**: 20GB+ free space
-- **Network**: Internet connectivity for downloads
+**Hardware**:
+- CPU: 4 cores (2.0 GHz)
+- RAM: 8GB
+- Storage: 50GB free space
+- Network: Internet connection
 
-### Required Software
+**Software**:
+- Linux (Ubuntu 20.04+ recommended)
+- macOS (10.15+)
+- Windows 10+ (with WSL2)
 
-#### Core Dependencies
+### Recommended Requirements
+
+**Hardware**:
+- CPU: 8 cores (3.0 GHz)
+- RAM: 16GB
+- Storage: 100GB free space
+- Network: Stable internet connection
+
+**Software**:
+- Linux (Ubuntu 22.04+)
+- macOS (12+)
+- Windows 11+ (with WSL2)
+
+## Installation Steps
+
+### 1. Install System Dependencies
+
+#### Ubuntu/Debian
 
 ```bash
-# Package Manager
-- Nix 2.8+ (for reproducible development environment)
+# Update package list
+sudo apt-get update
 
-# Container Runtime
-- Docker 20.10+ (for containerization)
+# Install essential packages
+sudo apt-get install -y \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    cmake \
+    ninja-build \
+    clang \
+    llvm-dev \
+    libclang-dev \
+    curl \
+    wget \
+    git \
+    make \
+    unzip \
+    software-properties-common
 
-# Kubernetes Tools
-- kubectl 1.28+ (Kubernetes CLI)
-- k3d 5.4+ (local Kubernetes cluster)
+# Install QEMU emulators
+sudo apt-get install -y \
+    qemu-system-riscv32 \
+    qemu-system-arm \
+    qemu-system-xtensa \
+    qemu-utils \
+    qemu-user-static
 
-# Emulation
-- QEMU 6.0+ (for MCU emulation)
-
-# Build Tools
-- Rust 1.88+ (compiler and toolchain)
-- Cargo (package manager)
+# Install additional tools
+sudo apt-get install -y \
+    netcat-openbsd \
+    jq \
+    tree \
+    htop \
+    vim \
+    nano
 ```
 
-#### Optional Dependencies
+#### macOS
 
 ```bash
-# Development Tools
-- VS Code with Rust extension
-- Git (version control)
-- Make (build automation)
+# Install Homebrew if not already installed
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# Monitoring
-- Prometheus (metrics collection)
-- Grafana (dashboards)
+# Install essential packages
+brew install \
+    cmake \
+    ninja \
+    llvm \
+    curl \
+    wget \
+    git \
+    make \
+    unzip \
+    jq \
+    tree \
+    htop \
+    vim \
+    nano
 
-# Testing
-- k6 (load testing)
-- Postman (API testing)
+# Install QEMU
+brew install qemu
+
+# Install additional tools
+brew install --cask docker
 ```
 
-##  Installation Steps
-
-### 1. Install Nix
+#### Windows (WSL2)
 
 ```bash
-# Install Nix package manager
-curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+# Install WSL2 if not already installed
+wsl --install
+
+# Install Ubuntu in WSL2
+wsl --install -d Ubuntu
+
+# Follow Ubuntu installation steps above
+```
+
+### 2. Install Rust Toolchain
+
+```bash
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env
+
+# Install required components
+rustup component add rustfmt clippy
+rustup target add riscv32imac-unknown-none-elf
+rustup target add thumbv7em-none-eabihf
+rustup target add xtensa-esp32-espidf
+
+# Install additional Rust tools
+cargo install cargo-watch
+cargo install cargo-expand
+cargo install cargo-audit
+cargo install cargo-deny
+cargo install cargo-outdated
+cargo install cargo-tree
 
 # Verify installation
-nix --version
-
-# Enable flakes (if not already enabled)
-mkdir -p ~/.config/nix
-echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+rustc --version
+cargo --version
+rustup show
 ```
 
-### 2. Install Docker
+### 3. Install Docker
+
+#### Ubuntu/Debian
 
 ```bash
-# Ubuntu/Debian
+# Install Docker
 sudo apt-get update
-sudo apt-get install docker.io
+sudo apt-get install -y \
+    ca-certificates \
+    curl \
+    gnupg \
+    lsb-release
+
+# Add Docker's official GPG key
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+# Set up repository
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Install Docker Engine
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Start Docker service
 sudo systemctl start docker
 sudo systemctl enable docker
-sudo usermod -aG docker $USER
 
-# macOS
-brew install --cask docker
+# Add user to docker group
+sudo usermod -aG docker $USER
+newgrp docker
 
 # Verify installation
 docker --version
-docker run hello-world
+docker compose version
 ```
 
-### 3. Install k3d
+#### macOS
+
+```bash
+# Install Docker Desktop
+brew install --cask docker
+
+# Start Docker Desktop
+open /Applications/Docker.app
+
+# Verify installation
+docker --version
+docker compose version
+```
+
+#### Windows
+
+```bash
+# Install Docker Desktop
+# Download from https://www.docker.com/products/docker-desktop
+# Follow installation wizard
+
+# Verify installation
+docker --version
+docker compose version
+```
+
+### 4. Install Kubernetes (k3d)
 
 ```bash
 # Install k3d
 curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 
 # Verify installation
-k3d --version
+k3d version
+
+# Test k3d
+k3d cluster create test --port "8080:80@loadbalancer"
+k3d cluster delete test
 ```
 
-### 4. Install QEMU
+### 5. Install Additional Development Tools
+
+#### Git Configuration
 
 ```bash
-# Ubuntu/Debian
-sudo apt-get install qemu-system
-
-# macOS
-brew install qemu
-
-# Verify installation
-qemu-system-riscv32 --version
+# Configure Git
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+git config --global init.defaultBranch main
+git config --global pull.rebase false
 ```
 
-##  Project Setup
+#### VS Code (Optional)
+
+```bash
+# Install VS Code
+# Download from https://code.visualstudio.com/
+
+# Install Rust extension
+code --install-extension rust-lang.rust-analyzer
+code --install-extension tamasfe.even-better-toml
+code --install-extension serayuzgur.crates
+code --install-extension vadimcn.vscode-lldb
+```
+
+#### Additional Tools
+
+```bash
+# Install additional development tools
+sudo apt-get install -y \
+    tmux \
+    screen \
+    rsync \
+    ssh \
+    openssh-client \
+    openssh-server
+
+# Install network tools
+sudo apt-get install -y \
+    netcat-openbsd \
+    tcpdump \
+    wireshark \
+    nmap
+```
+
+## Project Setup
 
 ### 1. Clone Repository
 
 ```bash
-# Clone Wasmbed repository
-git clone https://github.com/your-org/wasmbed.git
-cd wasmbed
+# Clone the repository
+git clone <repository-url>
+cd retrospect
 
-# Verify repository
+# Verify project structure
 ls -la
+tree -L 2
 ```
 
-### 2. Enter Development Environment
+### 2. Build Project
 
 ```bash
-# Enter Nix development environment
-nix develop
-
-# Verify environment
-rustc --version
-cargo --version
-kubectl version --client
-```
-
-### 3. Build Project
-
-```bash
-# Build all crates
-cargo build
-
-# Build specific crate
-cargo build -p wasmbed-gateway
-cargo build -p wasmbed-k8s-controller
-cargo build -p wasmbed-firmware-hifive1-qemu
-
-# Build with optimizations
+# Build all components
 cargo build --release
+
+# Build specific components
+cargo build --release -p wasmbed-gateway
+cargo build --release -p wasmbed-k8s-controller
+cargo build --release -p wasmbed-qemu-serial-bridge
+
+# Build firmware components
+cargo build --release --target riscv32imac-unknown-none-elf
+cargo build --release --target thumbv7em-none-eabihf
+cargo build --release --target xtensa-esp32-espidf
 ```
 
-### 4. Run Tests
+### 3. Run Tests
 
 ```bash
 # Run all tests
 cargo test
 
-# Run specific crate tests
-cargo test -p wasmbed-protocol
-cargo test -p wasmbed-k8s-resource
+# Run specific test suites
+cargo test -p wasmbed-gateway
+cargo test -p wasmbed-k8s-controller
+cargo test -p wasmbed-qemu-serial-bridge
 
-# Run integration tests
-cargo test --test integration
+# Run tests with output
+cargo test -- --nocapture
+
+# Run tests in specific module
+cargo test module_name
 ```
 
-##  Development Workflow
-
-### 1. Code Organization
-
-```
-wasmbed/
-├── crates/                          # Rust crates
-│   ├── wasmbed-gateway/            # Gateway implementation
-│   ├── wasmbed-k8s-controller/     # Kubernetes controller
-│   ├── wasmbed-k8s-resource/       # CRD definitions
-│   ├── wasmbed-protocol/           # Communication protocol
-│   ├── wasmbed-firmware-hifive1-qemu/ # MCU firmware
-│   └── wasmbed-cert-tool/          # Certificate generation
-├── resources/                       # Configuration files
-│   ├── k8s/                        # Kubernetes manifests
-│   ├── k3d/                        # k3d configuration
-│   └── dev-certs/                  # Development certificates
-├── scripts/                         # Automation scripts
-├── docs/                           # Documentation
-└── tests/                          # Integration tests
-```
-
-### 2. Development Commands
+### 4. Setup Development Scripts
 
 ```bash
-# Start development environment
-./scripts/setup.sh
+# Make scripts executable
+chmod +x scripts/*.sh
 
-# Run complete system test
-./scripts/test.sh
-
-# Clean up environment
-./scripts/cleanup.sh
-
-# Generate certificates
-./scripts/generate-certs.sh
-
-# Deploy to local cluster
-./scripts/deploy.sh
+# Test scripts
+./scripts/deploy.sh --help
+./scripts/app.sh --help
+./scripts/monitor.sh --help
+./scripts/cleanup.sh --help
 ```
 
-### 3. Code Quality
+### 5. Setup Pre-commit Hooks
 
 ```bash
-# Format code
+# Install pre-commit
+pip install pre-commit
+
+# Setup pre-commit hooks
+pre-commit install
+
+# Test pre-commit hooks
+pre-commit run --all-files
+```
+
+## Development Environment Configuration
+
+### 1. Environment Variables
+
+```bash
+# Create environment file
+cat > .env << EOF
+# Development environment variables
+RUST_LOG=debug
+RUST_BACKTRACE=1
+CARGO_TARGET_DIR=target
+WASMBED_DEV_MODE=true
+WASMBED_LOG_LEVEL=debug
+EOF
+
+# Source environment variables
+source .env
+```
+
+### 2. Cargo Configuration
+
+```bash
+# Create Cargo configuration
+mkdir -p .cargo
+cat > .cargo/config.toml << EOF
+[build]
+target-dir = "target"
+
+[target.riscv32imac-unknown-none-elf]
+runner = "qemu-system-riscv32 -machine sifive_u -smp 2 -m 128M -nographic -kernel"
+
+[target.thumbv7em-none-eabihf]
+runner = "qemu-system-arm -machine stm32-p103 -smp 1 -m 64M -nographic -kernel"
+
+[target.xtensa-esp32-espidf]
+runner = "qemu-system-xtensa -machine esp32 -smp 1 -m 4M -nographic -kernel"
+EOF
+```
+
+### 3. VS Code Configuration
+
+```bash
+# Create VS Code configuration
+mkdir -p .vscode
+cat > .vscode/settings.json << EOF
+{
+    "rust-analyzer.cargo.buildScripts.enable": true,
+    "rust-analyzer.cargo.features": "all",
+    "rust-analyzer.checkOnSave.command": "clippy",
+    "rust-analyzer.checkOnSave.extraArgs": ["--", "-D", "warnings"],
+    "rust-analyzer.rustfmt.extraArgs": ["--edition", "2021"],
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll": true,
+        "source.organizeImports": true
+    }
+}
+EOF
+```
+
+### 4. Git Configuration
+
+```bash
+# Create Git configuration
+cat > .gitignore << EOF
+# Rust
+target/
+Cargo.lock
+*.pem
+*.key
+*.crt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+EOF
+```
+
+## Development Workflow
+
+### 1. Daily Development Setup
+
+```bash
+# Start development session
+cd retrospect
+
+# Pull latest changes
+git pull origin main
+
+# Build project
+cargo build
+
+# Run tests
+cargo test
+
+# Start development server
+cargo run --bin wasmbed-gateway
+```
+
+### 2. Feature Development
+
+```bash
+# Create feature branch
+git checkout -b feature/your-feature-name
+
+# Make changes
+# ... edit files ...
+
+# Test changes
+cargo test
+cargo clippy
 cargo fmt
 
-# Lint code
-cargo clippy
+# Commit changes
+git add .
+git commit -m "Add your feature description"
 
-# Check for security issues
-cargo audit
-
-# Run benchmarks
-cargo bench
+# Push changes
+git push origin feature/your-feature-name
 ```
 
-##  Testing
-
-### 1. Unit Tests
+### 3. Debugging
 
 ```bash
-# Run unit tests for specific crate
-cargo test -p wasmbed-protocol
+# Debug with gdb
+cargo build --release
+gdb target/release/wasmbed-gateway
+
+# Debug with lldb (macOS)
+cargo build --release
+lldb target/release/wasmbed-gateway
+
+# Debug with VS Code
+# Use VS Code debugger with launch.json configuration
+```
+
+### 4. Performance Profiling
+
+```bash
+# Install profiling tools
+cargo install cargo-flamegraph
+cargo install cargo-profdata
+
+# Profile application
+cargo flamegraph --bin wasmbed-gateway
+
+# Profile with perf
+perf record --call-graph dwarf cargo run --release --bin wasmbed-gateway
+perf report
+```
+
+## Testing Environment
+
+### 1. Unit Testing
+
+```bash
+# Run unit tests
+cargo test
 
 # Run tests with output
 cargo test -- --nocapture
 
 # Run specific test
-cargo test test_enrollment_flow
+cargo test test_function_name
+
+# Run tests in specific module
+cargo test module_name
 ```
 
-### 2. Integration Tests
+### 2. Integration Testing
 
 ```bash
 # Run integration tests
 cargo test --test integration
 
-# Run with specific features
-cargo test --features integration-tests
-
-# Run with custom environment
-RUST_LOG=debug cargo test --test integration
+# Run specific integration test
+cargo test --test integration test_name
 ```
 
-### 3. End-to-End Tests
+### 3. End-to-End Testing
 
 ```bash
-# Start test environment
-./scripts/setup.sh
+# Deploy test environment
+./scripts/deploy.sh
 
 # Run end-to-end tests
-./scripts/test-e2e.sh
+./scripts/app.sh test
 
-# Clean up
+# Clean up test environment
 ./scripts/cleanup.sh
 ```
 
-##  Debugging
-
-### 1. Logging
+### 4. QEMU Testing
 
 ```bash
-# Enable debug logging
-export RUST_LOG=debug
+# Test QEMU emulation
+./scripts/app.sh qemu
 
-# Enable specific module logging
-export RUST_LOG=wasmbed_gateway=debug,wasmbed_protocol=trace
+# Test QEMU communication
+./scripts/app.sh qemu-comm
 
-# Run with logging
-cargo run -p wasmbed-gateway
+# Start QEMU devices
+./scripts/app.sh start-qemu
+
+# Stop QEMU devices
+./scripts/app.sh stop-qemu
 ```
 
-### 2. Debugging Tools
+## Troubleshooting
+
+### Common Issues
+
+#### 1. Rust Installation Issues
+
+**Problem**: Rust not found in PATH
+**Solution**:
+```bash
+source ~/.cargo/env
+echo 'source ~/.cargo/env' >> ~/.bashrc
+```
+
+#### 2. Docker Permission Issues
+
+**Problem**: Permission denied for Docker
+**Solution**:
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+#### 3. QEMU Installation Issues
+
+**Problem**: QEMU not found
+**Solution**:
+```bash
+sudo apt-get update
+sudo apt-get install -y qemu-system-riscv32 qemu-system-arm qemu-system-xtensa
+```
+
+#### 4. Build Issues
+
+**Problem**: Build failures
+**Solution**:
+```bash
+cargo clean
+cargo build --release
+```
+
+### Development Tools Issues
+
+#### 1. VS Code Rust Extension
+
+**Problem**: Rust analyzer not working
+**Solution**:
+```bash
+# Reinstall Rust extension
+code --uninstall-extension rust-lang.rust-analyzer
+code --install-extension rust-lang.rust-analyzer
+```
+
+#### 2. Pre-commit Hooks
+
+**Problem**: Pre-commit hooks failing
+**Solution**:
+```bash
+pre-commit uninstall
+pre-commit install
+pre-commit run --all-files
+```
+
+### Performance Issues
+
+#### 1. Slow Build Times
+
+**Solution**:
+```bash
+# Use sccache for faster builds
+cargo install sccache
+export RUSTC_WRAPPER=sccache
+```
+
+#### 2. Memory Issues
+
+**Solution**:
+```bash
+# Increase swap space
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+```
+
+## Maintenance
+
+### Regular Maintenance
+
+#### 1. Update Dependencies
 
 ```bash
-# Use GDB for debugging
-gdb target/debug/wasmbed-gateway
+# Update Rust toolchain
+rustup update
 
-# Use LLDB (macOS)
-lldb target/debug/wasmbed-gateway
+# Update Cargo packages
+cargo update
 
-# Debug with VS Code
-# Add launch.json configuration
+# Check for outdated packages
+cargo outdated
 ```
 
-### 3. Profiling
+#### 2. Clean Build Artifacts
 
 ```bash
-# Profile with perf
-perf record -g cargo run --release
-perf report
+# Clean build artifacts
+cargo clean
 
-# Profile with flamegraph
-cargo install flamegraph
-cargo flamegraph
+# Clean specific target
+cargo clean --target riscv32imac-unknown-none-elf
 ```
 
-##  Performance Testing
-
-### 1. Load Testing
-
-```bash
-# Install k6
-curl -L https://github.com/grafana/k6/releases/download/v0.45.0/k6-v0.45.0-linux-amd64.tar.gz | tar xz
-sudo cp k6-v0.45.0-linux-amd64/k6 /usr/local/bin/
-
-# Run load test
-k6 run tests/load-test.js
-```
-
-### 2. Benchmarking
-
-```bash
-# Run benchmarks
-cargo bench
-
-# Run specific benchmark
-cargo bench --bench protocol_benchmarks
-
-# Compare benchmarks
-cargo bench --bench compare
-```
-
-##  Security
-
-### 1. Certificate Management
-
-```bash
-# Generate development certificates
-cargo run -p wasmbed-cert-tool -- generate-ca \
-  --common-name "Wasmbed Dev CA" \
-  --out-key resources/dev-certs/ca.key \
-  --out-cert resources/dev-certs/ca.der
-
-# Generate device certificates
-cargo run -p wasmbed-cert-tool -- issue-cert \
-  --ca-key resources/dev-certs/ca.key \
-  --ca-cert resources/dev-certs/ca.der \
-  --common-name "test-device" \
-  --out-key resources/dev-certs/device.key \
-  --out-cert resources/dev-certs/device.der \
-  client
-```
-
-### 2. Security Scanning
+#### 3. Security Audit
 
 ```bash
 # Run security audit
 cargo audit
 
-# Scan for vulnerabilities
-cargo install cargo-audit
-cargo audit
-
-# Check dependencies
-cargo tree
-cargo outdated
+# Check for vulnerabilities
+cargo deny check
 ```
 
-##  Deployment
+### Backup and Recovery
 
-### 1. Local Development
+#### 1. Backup Development Environment
 
 ```bash
-# Start local cluster
-k3d cluster create wasmbed --config resources/k3d/config.yaml
-
-# Deploy Wasmbed
-kubectl apply -f resources/k8s/
-
-# Verify deployment
-kubectl get all -n wasmbed
+# Backup configuration files
+tar -czf dev-env-backup.tar.gz \
+    .cargo/ \
+    .vscode/ \
+    .env \
+    .gitignore \
+    Cargo.toml \
+    Cargo.lock
 ```
 
-### 2. Production Build
+#### 2. Restore Development Environment
 
 ```bash
-# Build production images
-docker build -f crates/wasmbed-gateway/Dockerfile -t wasmbed-gateway:latest .
-docker build -f crates/wasmbed-k8s-controller/Dockerfile -t wasmbed-k8s-controller:latest .
-
-# Push to registry
-docker push your-registry/wasmbed-gateway:latest
-docker push your-registry/wasmbed-k8s-controller:latest
+# Restore configuration files
+tar -xzf dev-env-backup.tar.gz
 ```
-
-##  Best Practices
-
-### 1. Code Style
-
-```rust
-// Use consistent formatting
-cargo fmt
-
-// Follow Rust conventions
-cargo clippy
-
-// Document public APIs
-/// This function does something important
-pub fn important_function() -> Result<(), Error> {
-    // Implementation
-}
-```
-
-### 2. Error Handling
-
-```rust
-// Use proper error types
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum WasmbedError {
-    #[error("Network error: {0}")]
-    Network(#[from] std::io::Error),
-    #[error("Protocol error: {0}")]
-    Protocol(String),
-}
-```
-
-### 3. Testing
-
-```rust
-// Write comprehensive tests
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_functionality() {
-        // Test implementation
-        assert!(true);
-    }
-
-    #[tokio::test]
-    async fn test_async_functionality() {
-        // Async test implementation
-        assert!(true);
-    }
-}
-```
-
-##  IDE Configuration
-
-### 1. VS Code
-
-```json
-// .vscode/settings.json
-{
-    "rust-analyzer.checkOnSave.command": "clippy",
-    "rust-analyzer.cargo.buildScripts.enable": true,
-    "rust-analyzer.procMacro.enable": true,
-    "editor.formatOnSave": true,
-    "files.associations": {
-        "*.x": "linkerscript"
-    }
-}
-```
-
-### 2. IntelliJ IDEA
-
-```xml
-<!-- .idea/workspace.xml -->
-<component name="RustProjectSettings">
-    <option name="autoReloadCargoProject" value="true" />
-    <option name="useCargoCheckOnSave" value="true" />
-</component>
-```
-
-## 📞 Support
-
-### Getting Help
-
-- **Documentation**: Check the `docs/` directory
-- **Issues**: [GitHub Issues](https://github.com/your-org/wasmbed/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/wasmbed/discussions)
-- **Wiki**: [Documentation Wiki](https://github.com/your-org/wasmbed/wiki)
-
-### Common Issues
-
-```bash
-# Nix environment issues
-nix develop --command bash
-
-# Docker permission issues
-sudo usermod -aG docker $USER
-newgrp docker
-
-# k3d cluster issues
-k3d cluster delete wasmbed
-k3d cluster create wasmbed
-```
-
----
-
-**Last Updated**: September 2024  
-**Version**: Development Setup v1.0.0  
-**Maintainer**: Wasmbed Development Team

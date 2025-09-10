@@ -34,6 +34,9 @@ spec:
             - name: wasmbed-ca-secret
               mountPath: /etc/wasmbed-gateway/ca
               readOnly: true
+            - name: wasmbed-gateway-config
+              mountPath: /etc/wasmbed-gateway/config
+              readOnly: true
           env:
             - name: WASMBED_GATEWAY_BIND_ADDR
               value: 0.0.0.0:4423
@@ -62,3 +65,6 @@ spec:
         - name: wasmbed-ca-secret
           secret:
             secretName: wasmbed-ca-secret-rsa
+        - name: wasmbed-gateway-config
+          configMap:
+            name: wasmbed-gateway-config

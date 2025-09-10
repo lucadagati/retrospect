@@ -22,5 +22,5 @@ heapless = "0.8"
 version = "0.13.0"
 features = [ "single-hart" ]
 
-# WASM Runtime dependencies (simulated for no_std)
-# wasmi = "0.17"  # Not available for no_std targets
+# WASM Runtime dependencies (no_std compatible)
+wasm3 = "0.5"

@@ -1,0 +1,10 @@
+apiVersion: wasmbed.github.io/v1alpha1
+kind: Application
+metadata:
+  name: test-wasm-app
+  namespace: wasmbed
+spec:
+  name: "Test WASM Application"
+  wasmBinary: "AGFzbQEAAAABBQFgAAF/AwIBAAcHA2FkZAAACgkBBwAgACABawELCgEHAwAgACABawEL"
+  targetDevices: ["device-0"]
+  config: {}

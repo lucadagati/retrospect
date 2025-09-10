@@ -1,125 +1,18 @@
-# Kubernetes CRDs Reference
+# Custom Resource Definitions (CRDs) Documentation
 
-##  Overview
+## Overview
 
-Wasmbed extends Kubernetes with Custom Resource Definitions (CRDs) to manage IoT devices and WASM applications. This document provides a comprehensive reference for all CRDs, their schemas, and usage examples.
+This document provides comprehensive documentation for the Custom Resource Definitions (CRDs) used in the Wasmbed platform, including schema definitions, examples, and usage guidelines.
 
-##  CRD Definitions
+## Application CRD
 
-### 1. Device CRD
+### Definition
 
-The Device CRD represents an MCU device that can run WASM applications.
+**API Version**: `wasmbed.github.io/v1alpha1`
+**Kind**: `Application`
+**Plural**: `applications`
 
-#### Schema Definition
-
-```yaml
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  name: devices.wasmbed.github.io
-spec:
-  group: wasmbed.github.io
-  names:
-    kind: Device
-    listKind: DeviceList
-    plural: devices
-    singular: device
-    shortNames:
-    - dev
-  scope: Namespaced
-  versions:
-  - name: v1alpha1
-    served: true
-    storage: true
-    schema:
-      openAPIV3Schema:
-        type: object
-        properties:
-          spec:
-            type: object
-            properties:
-              device_type:
-                type: string
-                description: "Type of the MCU device (e.g., hifive1)"
-              capabilities:
-                type: array
-                items:
-                  type: string
-                description: "Device capabilities (e.g., wasm, tls)"
-              public_key:
-                type: string
-                description: "Base64 encoded public key"
-              firmware_version:
-                type: string
-                description: "Firmware version"
-              hardware_id:
-                type: string
-                description: "Unique hardware identifier"
-            required:
-            - device_type
-            - capabilities
-            - public_key
-          status:
-            type: object
-            properties:
-              phase:
-                type: string
-                enum:
-                - Enrolling
-                - Connected
-                - Disconnected
-                - Failed
-              last_heartbeat:
-                type: string
-                format: date-time
-              connection_info:
-                type: object
-                properties:
-                  gateway_address:
-                    type: string
-                  connection_id:
-                    type: string
-                  established_at:
-                    type: string
-                    format: date-time
-              error:
-                type: string
-```
-
-#### Example Device Resource
-
-```yaml
-apiVersion: wasmbed.github.io/v1alpha1
-kind: Device
-metadata:
-  name: hifive1-001
-  namespace: wasmbed
-  labels:
-    device-type: hifive1
-    location: lab-1
-spec:
-  device_type: "hifive1"
-  capabilities:
-    - "wasm"
-    - "tls"
-    - "network"
-  public_key: "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0K..."
-  firmware_version: "1.0.0"
-  hardware_id: "hifive1-001"
-status:
-  phase: "Connected"
-  last_heartbeat: "2024-09-01T22:00:00Z"
-  connection_info:
-    gateway_address: "172.19.0.2:30423"
-    connection_id: "conn-12345"
-    established_at: "2024-09-01T21:55:00Z"
-```
-
-### 2. Application CRD
-
-The Application CRD represents a WASM application that can be deployed to MCU devices.
-
-#### Schema Definition
+### Schema
 
 ```yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -128,14 +21,6 @@ metadata:
   name: applications.wasmbed.github.io
 spec:
   group: wasmbed.github.io
-  names:
-    kind: Application
-    listKind: ApplicationList
-    plural: applications
-    singular: application
-    shortNames:
-    - app
-  scope: Namespaced
   versions:
   - name: v1alpha1
     served: true
@@ -149,540 +34,964 @@ spec:
             properties:
               name:
                 type: string
-                description: "Human-readable application name"
-              description:
+                description: "Application name"
+                minLength: 1
+                maxLength: 63
+                pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+              version:
                 type: string
-                description: "Application description"
-              wasm_bytes:
+                description: "Application version"
+                pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+              targetDevices:
+                type: array
+                items:
+                  type: string
+                  enum: ["mpu", "mcu", "riscv", "arm", "esp32"]
+                description: "Target device types"
+                minItems: 1
+              wasmBinary:
                 type: string
-                description: "Base64 encoded WASM binary"
-              target_devices:
-                type: object
-                properties:
-                  device_names:
-                    type: array
-                    items:
-                      type: string
-                    description: "List of target device names"
-                  device_labels:
-                    type: object
-                    additionalProperties:
-                      type: string
-                    description: "Device label selectors"
-                  device_count:
-                    type: integer
-                    minimum: 1
-                    description: "Number of devices to deploy to"
+                format: byte
+                description: "Base64-encoded WASM binary"
+                minLength: 1
               config:
                 type: object
+                description: "Application configuration"
                 properties:
-                  memory_limit:
-                    type: integer
-                    minimum: 1024
-                    description: "Memory limit in bytes"
-                  cpu_time_limit:
-                    type: integer
-                    minimum: 100
-                    description: "CPU time limit in milliseconds"
-                  auto_restart:
-                    type: boolean
-                    default: true
-                    description: "Auto-restart on failure"
-                  max_restarts:
-                    type: integer
-                    minimum: 0
-                    maximum: 10
-                    default: 3
-                    description: "Maximum restart attempts"
-                  timeout:
-                    type: integer
-                    minimum: 1000
-                    description: "Application timeout in milliseconds"
-                  environment_vars:
+                  microros:
                     type: object
-                    additionalProperties:
+                    properties:
+                      node_name:
+                        type: string
+                        description: "microROS node name"
+                      domain_id:
+                        type: integer
+                        description: "DDS domain ID"
+                        minimum: 0
+                        maximum: 232
+                      qos_profile:
+                        type: string
+                        enum: ["reliable", "best_effort"]
+                        description: "QoS profile"
+                      transport:
+                        type: string
+                        enum: ["udp", "tcp", "serial"]
+                        description: "Transport protocol"
+                  fastdds:
+                    type: object
+                    properties:
+                      domain_id:
+                        type: integer
+                        description: "DDS domain ID"
+                        minimum: 0
+                        maximum: 232
+                      transport:
+                        type: string
+                        enum: ["udp", "tcp", "shared_memory"]
+                        description: "Transport protocol"
+                      port:
+                        type: integer
+                        description: "Transport port"
+                        minimum: 1024
+                        maximum: 65535
+                  px4:
+                    type: object
+                    properties:
+                      topics:
+                        type: object
+                        properties:
+                          input_topics:
+                            type: array
+                            items:
+                              type: string
+                            description: "PX4 input topics"
+                          output_topics:
+                            type: array
+                            items:
+                              type: string
+                            description: "PX4 output topics"
+                      safety:
+                        type: object
+                        properties:
+                          emergency_stop_enabled:
+                            type: boolean
+                            description: "Enable emergency stop"
+                          failsafe_enabled:
+                            type: boolean
+                            description: "Enable failsafe"
+                          battery_monitoring:
+                            type: boolean
+                            description: "Enable battery monitoring"
+                  resources:
+                    type: object
+                    properties:
+                      cpu_limit:
+                        type: string
+                        description: "CPU limit"
+                        pattern: "^[0-9]+m$"
+                      memory_limit:
+                        type: string
+                        description: "Memory limit"
+                        pattern: "^[0-9]+(Mi|Gi)$"
+                      storage_limit:
+                        type: string
+                        description: "Storage limit"
+                        pattern: "^[0-9]+(Mi|Gi)$"
+                additionalProperties: true
+              dependencies:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
                       type: string
-                    description: "Environment variables"
-                  args:
-                    type: array
-                    items:
+                      description: "Dependency name"
+                    version:
                       type: string
-                    description: "Application arguments"
+                      description: "Dependency version"
+                    type:
+                      type: string
+                      enum: ["library", "service", "device"]
+                      description: "Dependency type"
+                description: "Application dependencies"
+              environment:
+                type: object
+                additionalProperties:
+                  type: string
+                description: "Environment variables"
             required:
             - name
-            - wasm_bytes
-            - target_devices
+            - version
+            - targetDevices
+            - wasmBinary
           status:
             type: object
             properties:
               phase:
                 type: string
-                enum:
-                - Creating
-                - Deploying
-                - Running
-                - PartiallyRunning
-                - Stopping
-                - Stopped
-                - Failed
-                - Deleting
+                enum: ["Creating", "Deploying", "Running", "Stopping", "Stopped", "Failed"]
+                description: "Application phase"
               message:
                 type: string
-                description: "Human-readable status message"
-              device_statuses:
-                type: object
-                additionalProperties:
+                description: "Status message"
+              deployedAt:
+                type: string
+                format: date-time
+                description: "Deployment timestamp"
+              lastUpdate:
+                type: string
+                format: date-time
+                description: "Last update timestamp"
+              instances:
+                type: array
+                items:
                   type: object
                   properties:
-                    phase:
+                    deviceId:
                       type: string
-                      enum:
-                      - Deploying
-                      - Running
-                      - Stopped
-                      - Failed
-                    last_updated:
+                      description: "Device ID"
+                    status:
+                      type: string
+                      enum: ["Deploying", "Running", "Stopped", "Failed"]
+                      description: "Instance status"
+                    message:
+                      type: string
+                      description: "Instance message"
+                    deployedAt:
                       type: string
                       format: date-time
-                    error:
+                      description: "Instance deployment timestamp"
+                    lastUpdate:
                       type: string
+                      format: date-time
+                      description: "Instance last update timestamp"
+                description: "Application instances"
               metrics:
                 type: object
                 properties:
-                  total_devices:
+                  totalInstances:
                     type: integer
-                  running_devices:
+                    description: "Total number of instances"
+                  runningInstances:
                     type: integer
-                  failed_devices:
+                    description: "Number of running instances"
+                  failedInstances:
                     type: integer
-                  stopped_devices:
-                    type: integer
-              last_updated:
-                type: string
-                format: date-time
-              error:
-                type: string
+                    description: "Number of failed instances"
+                  averageCpuUsage:
+                    type: number
+                    description: "Average CPU usage"
+                  averageMemoryUsage:
+                    type: number
+                    description: "Average memory usage"
+                description: "Application metrics"
 ```
 
-#### Example Application Resource
+### Examples
 
+**Basic Application**:
 ```yaml
 apiVersion: wasmbed.github.io/v1alpha1
 kind: Application
 metadata:
-  name: temperature-monitor
+  name: hello-world
   namespace: wasmbed
-  labels:
-    app-type: monitoring
-    version: v1.0.0
 spec:
-  name: "Temperature Monitor"
-  description: "Monitors temperature sensors and reports data"
-  wasm_bytes: "AGFzbQEB..."  # Base64 encoded WASM binary
-  target_devices:
-    device_names:
-      - "hifive1-001"
-      - "hifive1-002"
-    device_labels:
-      device-type: hifive1
-      location: lab-1
-    device_count: 2
+  name: "Hello World"
+  version: "1.0.0"
+  targetDevices:
+  - "riscv"
+  wasmBinary: <base64-encoded-wasm-binary>
   config:
-    memory_limit: 1048576      # 1MB
-    cpu_time_limit: 1000       # 1 second
-    auto_restart: true
-    max_restarts: 3
-    timeout: 5000              # 5 seconds
-    environment_vars:
-      SENSOR_TYPE: "temperature"
-      REPORT_INTERVAL: "30"
-    args:
-      - "--verbose"
-      - "--log-level=info"
+    resources:
+      cpu_limit: "100m"
+      memory_limit: "64Mi"
 status:
   phase: "Running"
-  message: "Running on 2/2 devices"
-  device_statuses:
-    hifive1-001:
-      phase: "Running"
-      last_updated: "2024-09-01T22:00:00Z"
-    hifive1-002:
-      phase: "Running"
-      last_updated: "2024-09-01T22:00:00Z"
+  message: "Application deployed successfully"
+  deployedAt: "2024-01-01T00:00:00Z"
+  lastUpdate: "2024-01-01T00:00:00Z"
+```
+
+**PX4 Drone Control Application**:
+```yaml
+apiVersion: wasmbed.github.io/v1alpha1
+kind: Application
+metadata:
+  name: px4-drone-control
+  namespace: wasmbed
+spec:
+  name: "PX4 Drone Control"
+  version: "1.0.0"
+  targetDevices:
+  - "riscv"
+  wasmBinary: <base64-encoded-wasm-binary>
+  config:
+    microros:
+      node_name: "px4_drone_control_node"
+      domain_id: 0
+      qos_profile: "reliable"
+      transport: "udp"
+    fastdds:
+      domain_id: 0
+      transport: "udp"
+      port: 7400
+    px4:
+      topics:
+        input_topics:
+        - "/fmu/in/vehicle_command"
+        - "/fmu/in/position_setpoint"
+        - "/fmu/in/attitude_setpoint"
+        output_topics:
+        - "/fmu/out/vehicle_status"
+        - "/fmu/out/vehicle_local_position"
+        - "/fmu/out/battery_status"
+        - "/fmu/out/vehicle_attitude"
+        - "/fmu/out/actuator_outputs"
+      safety:
+        emergency_stop_enabled: true
+        failsafe_enabled: true
+        battery_monitoring: true
+    resources:
+      cpu_limit: "200m"
+      memory_limit: "128Mi"
+      storage_limit: "64Mi"
+  dependencies:
+  - name: "microros"
+    version: "1.0.0"
+    type: "library"
+  - name: "fastdds"
+    version: "2.0.0"
+    type: "library"
+  environment:
+    LOG_LEVEL: "info"
+    DEBUG_MODE: "false"
+status:
+  phase: "Running"
+  message: "PX4 application deployed successfully"
+  deployedAt: "2024-01-01T00:00:00Z"
+  lastUpdate: "2024-01-01T00:00:00Z"
+  instances:
+  - deviceId: "riscv-device-001"
+    status: "Running"
+    message: "Instance running successfully"
+    deployedAt: "2024-01-01T00:00:00Z"
+    lastUpdate: "2024-01-01T00:00:00Z"
   metrics:
-    total_devices: 2
-    running_devices: 2
-    failed_devices: 0
-    stopped_devices: 0
-  last_updated: "2024-09-01T22:00:00Z"
+    totalInstances: 1
+    runningInstances: 1
+    failedInstances: 0
+    averageCpuUsage: 45.2
+    averageMemoryUsage: 67.8
 ```
 
-##  CRD Operations
-
-### Creating Resources
-
-#### Create Device
-
-```bash
-# Create device from YAML file
-kubectl apply -f device.yaml
-
-# Create device from command line
-kubectl create device hifive1-001 \
-  --device-type=hifive1 \
-  --capabilities=wasm,tls \
-  --public-key="LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0K..."
-```
-
-#### Create Application
-
-```bash
-# Create application from YAML file
-kubectl apply -f application.yaml
-
-# Create application from command line
-kubectl create application temperature-monitor \
-  --name="Temperature Monitor" \
-  --wasm-bytes="AGFzbQEB..." \
-  --target-devices=hifive1-001,hifive1-002
-```
-
-### Querying Resources
-
-#### List Resources
-
-```bash
-# List all devices
-kubectl get devices
-
-# List all applications
-kubectl get applications
-
-# List with custom columns
-kubectl get devices -o custom-columns=NAME:.metadata.name,STATUS:.status.phase,TYPE:.spec.device_type
-
-# List with wide output
-kubectl get applications -o wide
-```
-
-#### Get Resource Details
-
-```bash
-# Get device details
-kubectl get device hifive1-001 -o yaml
-
-# Get application details
-kubectl get application temperature-monitor -o yaml
-
-# Get status only
-kubectl get device hifive1-001 -o jsonpath='{.status.phase}'
-```
-
-#### Watch Resources
-
-```bash
-# Watch devices for changes
-kubectl watch devices
-
-# Watch applications for changes
-kubectl watch applications
-
-# Watch with custom format
-kubectl watch applications -o custom-columns=NAME:.metadata.name,STATUS:.status.phase,DEVICES:.status.metrics.running_devices
-```
-
-### Updating Resources
-
-#### Patch Resources
-
-```bash
-# Patch device status
-kubectl patch device hifive1-001 --type='merge' -p='{"status":{"phase":"Connected"}}'
-
-# Patch application configuration
-kubectl patch application temperature-monitor --type='merge' -p='{"spec":{"config":{"memory_limit":2097152}}}'
-```
-
-#### Scale Applications
-
-```bash
-# Scale application to more devices
-kubectl patch application temperature-monitor --type='merge' -p='{"spec":{"target_devices":{"device_count":5}}}'
-```
-
-### Deleting Resources
-
-```bash
-# Delete device
-kubectl delete device hifive1-001
-
-# Delete application
-kubectl delete application temperature-monitor
-
-# Delete with cascade
-kubectl delete application temperature-monitor --cascade=true
-```
-
-##  Status Fields
-
-### Device Status Phases
-
-| Phase | Description | Next Actions |
-|-------|-------------|--------------|
-| `Enrolling` | Device is being enrolled | Wait for enrollment completion |
-| `Connected` | Device is connected and ready | Deploy applications |
-| `Disconnected` | Device is disconnected | Check connectivity |
-| `Failed` | Device enrollment failed | Check logs and retry |
-
-### Application Status Phases
-
-| Phase | Description | Next Actions |
-|-------|-------------|--------------|
-| `Creating` | Application is being created | Wait for validation |
-| `Deploying` | Application is being deployed | Monitor deployment progress |
-| `Running` | Application is running on all devices | Monitor performance |
-| `PartiallyRunning` | Application is running on some devices | Check failed devices |
-| `Stopping` | Application is being stopped | Wait for stop completion |
-| `Stopped` | Application is stopped | Restart if needed |
-| `Failed` | Application deployment failed | Check logs and retry |
-| `Deleting` | Application is being deleted | Wait for cleanup |
-
-##  Validation Rules
-
-### Device Validation
-
+**Multi-Device Application**:
 ```yaml
-# Required fields
-- spec.device_type: Must be non-empty string
-- spec.capabilities: Must be non-empty array
-- spec.public_key: Must be valid base64 string
-
-# Optional validation
-- spec.firmware_version: Should match semantic versioning
-- spec.hardware_id: Should be unique within namespace
-```
-
-### Application Validation
-
-```yaml
-# Required fields
-- spec.name: Must be non-empty string
-- spec.wasm_bytes: Must be valid base64 string
-- spec.target_devices: Must specify at least one target
-
-# Validation rules
-- spec.config.memory_limit: Must be >= 1024 bytes
-- spec.config.cpu_time_limit: Must be >= 100 milliseconds
-- spec.config.max_restarts: Must be between 0 and 10
-- spec.target_devices.device_count: Must be >= 1
-```
-
-##  Advanced Usage
-
-### Device Selectors
-
-```yaml
-# Select devices by labels
-spec:
-  target_devices:
-    device_labels:
-      device-type: hifive1
-      location: lab-1
-      environment: production
-
-# Select devices by name
-spec:
-  target_devices:
-    device_names:
-      - "hifive1-001"
-      - "hifive1-002"
-      - "hifive1-003"
-
-# Select devices by count
-spec:
-  target_devices:
-    device_count: 5
-    device_labels:
-      device-type: hifive1
-```
-
-### Application Configuration
-
-```yaml
-# Environment variables
-spec:
-  config:
-    environment_vars:
-      DATABASE_URL: "postgresql://localhost:5432/wasmbed"
-      API_KEY: "secret-api-key"
-      LOG_LEVEL: "info"
-      DEBUG: "true"
-
-# Application arguments
-spec:
-  config:
-    args:
-      - "--config=/etc/app/config.yaml"
-      - "--port=8080"
-      - "--workers=4"
-      - "--verbose"
-
-# Resource limits
-spec:
-  config:
-    memory_limit: 2097152      # 2MB
-    cpu_time_limit: 2000       # 2 seconds
-    timeout: 10000             # 10 seconds
-```
-
-### Status Monitoring
-
-```bash
-# Monitor application deployment
-kubectl get application temperature-monitor -w
-
-# Check device status
-kubectl get device hifive1-001 -o jsonpath='{.status.connection_info}'
-
-# Monitor metrics
-kubectl get application temperature-monitor -o jsonpath='{.status.metrics}'
-```
-
-##  Security Considerations
-
-### RBAC Permissions
-
-```yaml
-# Device permissions
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+apiVersion: wasmbed.github.io/v1alpha1
+kind: Application
 metadata:
-  name: wasmbed-device-manager
-rules:
-- apiGroups: ["wasmbed.github.io"]
-  resources: ["devices"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-# Application permissions
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: wasmbed-application-manager
-rules:
-- apiGroups: ["wasmbed.github.io"]
-  resources: ["applications"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: ["wasmbed.github.io"]
-  resources: ["applications/status"]
-  verbs: ["get", "update", "patch"]
-```
-
-### Network Policies
-
-```yaml
-# Allow controller to access CRDs
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: wasmbed-controller-policy
+  name: multi-device-app
+  namespace: wasmbed
 spec:
-  podSelector:
-    matchLabels:
-      app: wasmbed-k8s-controller
-  policyTypes:
-  - Egress
-  egress:
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          name: kube-system
-    ports:
-    - protocol: TCP
-      port: 443
-```
-
-##  Testing CRDs
-
-### Validation Tests
-
-```bash
-# Test CRD schema validation
-kubectl create -f test-device.yaml --dry-run=client
-
-# Test application validation
-kubectl create -f test-application.yaml --dry-run=server
-
-# Test status updates
-kubectl patch device test-device --type='merge' -p='{"status":{"phase":"Connected"}}'
-```
-
-### Integration Tests
-
-```bash
-# Test device enrollment flow
-kubectl apply -f test-device.yaml
-kubectl wait --for=condition=Ready device/test-device --timeout=60s
-
-# Test application deployment flow
-kubectl apply -f test-application.yaml
-kubectl wait --for=condition=Ready application/test-app --timeout=120s
-
-# Test cleanup
-kubectl delete -f test-application.yaml
-kubectl delete -f test-device.yaml
-```
-
-##  Best Practices
-
-### Resource Naming
-
-```yaml
-# Use consistent naming conventions
-metadata:
-  name: "hifive1-lab-001"           # device-type-location-number
-  name: "temp-monitor-v1.0.0"        # app-name-version
-  name: "sensor-gateway-prod"        # app-name-environment
-```
-
-### Labels and Annotations
-
-```yaml
-metadata:
-  labels:
-    device-type: hifive1
-    location: lab-1
-    environment: development
-    version: v1.0.0
-  annotations:
-    wasmbed.github.io/description: "Temperature monitoring application"
-    wasmbed.github.io/author: "team-iot"
-    wasmbed.github.io/created: "2024-09-01T22:00:00Z"
-```
-
-### Resource Limits
-
-```yaml
-# Set appropriate resource limits
-spec:
+  name: "Multi-Device Application"
+  version: "1.0.0"
+  targetDevices:
+  - "riscv"
+  - "arm"
+  - "esp32"
+  wasmBinary: <base64-encoded-wasm-binary>
   config:
-    memory_limit: 1048576      # 1MB for simple apps
-    cpu_time_limit: 1000       # 1 second per execution
-    timeout: 5000              # 5 seconds total timeout
+    resources:
+      cpu_limit: "150m"
+      memory_limit: "96Mi"
+    environment:
+      DEVICE_TYPE: "auto"
+      LOG_LEVEL: "debug"
+status:
+  phase: "Running"
+  message: "Multi-device application deployed successfully"
+  deployedAt: "2024-01-01T00:00:00Z"
+  lastUpdate: "2024-01-01T00:00:00Z"
+  instances:
+  - deviceId: "riscv-device-001"
+    status: "Running"
+    message: "RISC-V instance running"
+    deployedAt: "2024-01-01T00:00:00Z"
+    lastUpdate: "2024-01-01T00:00:00Z"
+  - deviceId: "arm-device-001"
+    status: "Running"
+    message: "ARM instance running"
+    deployedAt: "2024-01-01T00:00:00Z"
+    lastUpdate: "2024-01-01T00:00:00Z"
+  - deviceId: "esp32-device-001"
+    status: "Running"
+    message: "ESP32 instance running"
+    deployedAt: "2024-01-01T00:00:00Z"
+    lastUpdate: "2024-01-01T00:00:00Z"
+  metrics:
+    totalInstances: 3
+    runningInstances: 3
+    failedInstances: 0
+    averageCpuUsage: 52.1
+    averageMemoryUsage: 73.4
 ```
 
-### Error Handling
+## Device CRD
+
+### Definition
+
+**API Version**: `wasmbed.github.io/v1alpha1`
+**Kind**: `Device`
+**Plural**: `devices`
+
+### Schema
 
 ```yaml
-# Configure retry behavior
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: devices.wasmbed.github.io
 spec:
-  config:
-    auto_restart: true
-    max_restarts: 3
-    timeout: 10000             # 10 seconds timeout
+  group: wasmbed.github.io
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              deviceType:
+                type: string
+                enum: ["mpu", "mcu", "riscv", "arm", "esp32"]
+                description: "Device type"
+              capabilities:
+                type: array
+                items:
+                  type: string
+                  enum: ["wasm", "tls", "serial", "wifi", "ethernet", "bluetooth", "gps", "sensors"]
+                description: "Device capabilities"
+                minItems: 1
+              publicKey:
+                type: string
+                description: "Device public key"
+                minLength: 1
+              gatewayEndpoint:
+                type: string
+                description: "Gateway endpoint"
+                pattern: "^[a-zA-Z0-9.-]+:[0-9]+$"
+              firmwareVersion:
+                type: string
+                description: "Device firmware version"
+                pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+              hardwareInfo:
+                type: object
+                properties:
+                  manufacturer:
+                    type: string
+                    description: "Device manufacturer"
+                  model:
+                    type: string
+                    description: "Device model"
+                  serialNumber:
+                    type: string
+                    description: "Device serial number"
+                  cpu:
+                    type: string
+                    description: "CPU information"
+                  memory:
+                    type: string
+                    description: "Memory information"
+                  storage:
+                    type: string
+                    description: "Storage information"
+                description: "Hardware information"
+              networkConfig:
+                type: object
+                properties:
+                  ipAddress:
+                    type: string
+                    format: ipv4
+                    description: "Device IP address"
+                  macAddress:
+                    type: string
+                    pattern: "^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$"
+                    description: "Device MAC address"
+                  networkInterface:
+                    type: string
+                    enum: ["wifi", "ethernet", "cellular"]
+                    description: "Network interface type"
+                description: "Network configuration"
+              location:
+                type: object
+                properties:
+                  latitude:
+                    type: number
+                    description: "Device latitude"
+                    minimum: -90
+                    maximum: 90
+                  longitude:
+                    type: number
+                    description: "Device longitude"
+                    minimum: -180
+                    maximum: 180
+                  altitude:
+                    type: number
+                    description: "Device altitude"
+                description: "Device location"
+            required:
+            - deviceType
+            - capabilities
+            - publicKey
+            - gatewayEndpoint
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum: ["Enrolling", "Enrolled", "Connected", "Disconnected", "Failed"]
+                description: "Device phase"
+              message:
+                type: string
+                description: "Status message"
+              lastHeartbeat:
+                type: string
+                format: date-time
+                description: "Last heartbeat timestamp"
+              pairingMode:
+                type: boolean
+                description: "Pairing mode status"
+              connectionInfo:
+                type: object
+                properties:
+                  connectedAt:
+                    type: string
+                    format: date-time
+                    description: "Connection timestamp"
+                  lastSeen:
+                    type: string
+                    format: date-time
+                    description: "Last seen timestamp"
+                  connectionDuration:
+                    type: string
+                    description: "Connection duration"
+                  heartbeatInterval:
+                    type: integer
+                    description: "Heartbeat interval in seconds"
+                  missedHeartbeats:
+                    type: integer
+                    description: "Number of missed heartbeats"
+                description: "Connection information"
+              metrics:
+                type: object
+                properties:
+                  cpuUsage:
+                    type: number
+                    description: "CPU usage percentage"
+                  memoryUsage:
+                    type: number
+                    description: "Memory usage percentage"
+                  temperature:
+                    type: number
+                    description: "Device temperature"
+                  batteryLevel:
+                    type: number
+                    description: "Battery level percentage"
+                  signalStrength:
+                    type: number
+                    description: "Signal strength"
+                description: "Device metrics"
+              applications:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    appId:
+                      type: string
+                      description: "Application ID"
+                    appName:
+                      type: string
+                      description: "Application name"
+                    status:
+                      type: string
+                      enum: ["Deploying", "Running", "Stopped", "Failed"]
+                      description: "Application status"
+                    deployedAt:
+                      type: string
+                      format: date-time
+                      description: "Deployment timestamp"
+                description: "Deployed applications"
 ```
 
----
+### Examples
 
-**Last Updated**: September 2024  
-**Version**: CRDs v1alpha1  
-**Maintainer**: Wasmbed Development Team
+**RISC-V Device**:
+```yaml
+apiVersion: wasmbed.github.io/v1alpha1
+kind: Device
+metadata:
+  name: riscv-device-001
+  namespace: wasmbed
+spec:
+  deviceType: "riscv"
+  capabilities:
+  - "wasm"
+  - "tls"
+  - "serial"
+  publicKey: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...\n-----END PUBLIC KEY-----"
+  gatewayEndpoint: "wasmbed-gateway:8080"
+  firmwareVersion: "1.0.0"
+  hardwareInfo:
+    manufacturer: "SiFive"
+    model: "HiFive1"
+    serialNumber: "SF001234567890"
+    cpu: "RISC-V 32-bit"
+    memory: "16MB"
+    storage: "4MB"
+  networkConfig:
+    ipAddress: "192.168.1.100"
+    macAddress: "00:11:22:33:44:55"
+    networkInterface: "ethernet"
+status:
+  phase: "Connected"
+  message: "Device connected successfully"
+  lastHeartbeat: "2024-01-01T00:00:00Z"
+  pairingMode: false
+  connectionInfo:
+    connectedAt: "2024-01-01T00:00:00Z"
+    lastSeen: "2024-01-01T00:00:00Z"
+    connectionDuration: "24h30m15s"
+    heartbeatInterval: 30
+    missedHeartbeats: 0
+  metrics:
+    cpuUsage: 45.2
+    memoryUsage: 67.8
+    temperature: 25.5
+    batteryLevel: 100.0
+    signalStrength: -45.0
+  applications:
+  - appId: "px4-drone-control"
+    appName: "PX4 Drone Control"
+    status: "Running"
+    deployedAt: "2024-01-01T00:00:00Z"
+```
+
+**ARM Device**:
+```yaml
+apiVersion: wasmbed.github.io/v1alpha1
+kind: Device
+metadata:
+  name: arm-device-001
+  namespace: wasmbed
+spec:
+  deviceType: "arm"
+  capabilities:
+  - "wasm"
+  - "tls"
+  - "wifi"
+  - "sensors"
+  publicKey: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...\n-----END PUBLIC KEY-----"
+  gatewayEndpoint: "wasmbed-gateway:8080"
+  firmwareVersion: "1.0.0"
+  hardwareInfo:
+    manufacturer: "STMicroelectronics"
+    model: "STM32F4"
+    serialNumber: "ST001234567890"
+    cpu: "ARM Cortex-M4"
+    memory: "32MB"
+    storage: "8MB"
+  networkConfig:
+    ipAddress: "192.168.1.101"
+    macAddress: "00:11:22:33:44:66"
+    networkInterface: "wifi"
+  location:
+    latitude: 40.7128
+    longitude: -74.0060
+    altitude: 10.0
+status:
+  phase: "Connected"
+  message: "Device connected successfully"
+  lastHeartbeat: "2024-01-01T00:00:00Z"
+  pairingMode: false
+  connectionInfo:
+    connectedAt: "2024-01-01T00:00:00Z"
+    lastSeen: "2024-01-01T00:00:00Z"
+    connectionDuration: "24h30m15s"
+    heartbeatInterval: 30
+    missedHeartbeats: 0
+  metrics:
+    cpuUsage: 52.1
+    memoryUsage: 73.4
+    temperature: 28.2
+    batteryLevel: 85.0
+    signalStrength: -50.0
+  applications:
+  - appId: "sensor-monitoring"
+    appName: "Sensor Monitoring"
+    status: "Running"
+    deployedAt: "2024-01-01T00:00:00Z"
+```
+
+**ESP32 Device**:
+```yaml
+apiVersion: wasmbed.github.io/v1alpha1
+kind: Device
+metadata:
+  name: esp32-device-001
+  namespace: wasmbed
+spec:
+  deviceType: "esp32"
+  capabilities:
+  - "wasm"
+  - "tls"
+  - "wifi"
+  - "bluetooth"
+  - "sensors"
+  publicKey: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...\n-----END PUBLIC KEY-----"
+  gatewayEndpoint: "wasmbed-gateway:8080"
+  firmwareVersion: "1.0.0"
+  hardwareInfo:
+    manufacturer: "Espressif"
+    model: "ESP32"
+    serialNumber: "ES001234567890"
+    cpu: "XTensa LX6"
+    memory: "16MB"
+    storage: "4MB"
+  networkConfig:
+    ipAddress: "192.168.1.102"
+    macAddress: "00:11:22:33:44:77"
+    networkInterface: "wifi"
+status:
+  phase: "Connected"
+  message: "Device connected successfully"
+  lastHeartbeat: "2024-01-01T00:00:00Z"
+  pairingMode: false
+  connectionInfo:
+    connectedAt: "2024-01-01T00:00:00Z"
+    lastSeen: "2024-01-01T00:00:00Z"
+    connectionDuration: "24h30m15s"
+    heartbeatInterval: 30
+    missedHeartbeats: 0
+  metrics:
+    cpuUsage: 38.7
+    memoryUsage: 61.2
+    temperature: 26.8
+    batteryLevel: 92.0
+    signalStrength: -40.0
+  applications:
+  - appId: "iot-gateway"
+    appName: "IoT Gateway"
+    status: "Running"
+    deployedAt: "2024-01-01T00:00:00Z"
+```
+
+## Configuration CRD
+
+### Definition
+
+**API Version**: `wasmbed.github.io/v1alpha1`
+**Kind**: `Configuration`
+**Plural**: `configurations`
+
+### Schema
+
+```yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: configurations.wasmbed.github.io
+spec:
+  group: wasmbed.github.io
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              name:
+                type: string
+                description: "Configuration name"
+                minLength: 1
+                maxLength: 63
+              configType:
+                type: string
+                enum: ["gateway", "controller", "device", "application"]
+                description: "Configuration type"
+              settings:
+                type: object
+                additionalProperties: true
+                description: "Configuration settings"
+              scope:
+                type: string
+                enum: ["global", "namespace", "device", "application"]
+                description: "Configuration scope"
+              targetDevices:
+                type: array
+                items:
+                  type: string
+                description: "Target devices for this configuration"
+              targetApplications:
+                type: array
+                items:
+                  type: string
+                description: "Target applications for this configuration"
+            required:
+            - name
+            - configType
+            - settings
+            - scope
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum: ["Creating", "Active", "Updating", "Failed"]
+                description: "Configuration phase"
+              message:
+                type: string
+                description: "Status message"
+              appliedAt:
+                type: string
+                format: date-time
+                description: "Application timestamp"
+              lastUpdate:
+                type: string
+                format: date-time
+                description: "Last update timestamp"
+              appliedTo:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    resourceType:
+                      type: string
+                      enum: ["device", "application"]
+                    resourceName:
+                      type: string
+                    appliedAt:
+                      type: string
+                      format: date-time
+                description: "Resources this configuration was applied to"
+```
+
+### Examples
+
+**Gateway Configuration**:
+```yaml
+apiVersion: wasmbed.github.io/v1alpha1
+kind: Configuration
+metadata:
+  name: gateway-config
+  namespace: wasmbed
+spec:
+  name: "Gateway Configuration"
+  configType: "gateway"
+  scope: "global"
+  settings:
+    server:
+      host: "0.0.0.0"
+      port: 8080
+      tls_port: 4423
+    logging:
+      level: "info"
+      format: "json"
+    performance:
+      max_connections: 10000
+      connection_timeout: "30s"
+      read_timeout: "60s"
+      write_timeout: "60s"
+    security:
+      tls_enabled: true
+      auth_enabled: true
+      rate_limiting: true
+status:
+  phase: "Active"
+  message: "Configuration applied successfully"
+  appliedAt: "2024-01-01T00:00:00Z"
+  lastUpdate: "2024-01-01T00:00:00Z"
+  appliedTo:
+  - resourceType: "device"
+    resourceName: "wasmbed-gateway"
+    appliedAt: "2024-01-01T00:00:00Z"
+```
+
+**Device Configuration**:
+```yaml
+apiVersion: wasmbed.github.io/v1alpha1
+kind: Configuration
+metadata:
+  name: device-config
+  namespace: wasmbed
+spec:
+  name: "Device Configuration"
+  configType: "device"
+  scope: "device"
+  targetDevices:
+  - "riscv-device-001"
+  - "arm-device-001"
+  settings:
+    heartbeat:
+      interval: 30
+      timeout: 90
+      max_misses: 3
+    pairing:
+      enabled: false
+      timeout: 300
+      max_attempts: 3
+    logging:
+      level: "info"
+      max_size: "10MB"
+      max_files: 5
+status:
+  phase: "Active"
+  message: "Configuration applied to devices"
+  appliedAt: "2024-01-01T00:00:00Z"
+  lastUpdate: "2024-01-01T00:00:00Z"
+  appliedTo:
+  - resourceType: "device"
+    resourceName: "riscv-device-001"
+    appliedAt: "2024-01-01T00:00:00Z"
+  - resourceType: "device"
+    resourceName: "arm-device-001"
+    appliedAt: "2024-01-01T00:00:00Z"
+```
+
+## Usage Guidelines
+
+### CRD Management
+
+**Creating CRDs**:
+```bash
+# Apply CRD definitions
+kubectl apply -f resources/k8s/crds/application-crd.yaml
+kubectl apply -f resources/k8s/crds/device-crd.yaml
+kubectl apply -f resources/k8s/crds/configuration-crd.yaml
+
+# Verify CRDs are created
+kubectl get crds | grep wasmbed
+```
+
+**Creating Resources**:
+```bash
+# Create application
+kubectl apply -f resources/k8s/test-application.yaml
+
+# Create device
+kubectl apply -f resources/k8s/test-device.yaml
+
+# Create configuration
+kubectl apply -f resources/k8s/test-configuration.yaml
+```
+
+**Managing Resources**:
+```bash
+# List resources
+kubectl get applications -n wasmbed
+kubectl get devices -n wasmbed
+kubectl get configurations -n wasmbed
+
+# Get resource details
+kubectl get application px4-drone-control -n wasmbed -o yaml
+kubectl get device riscv-device-001 -n wasmbed -o yaml
+
+# Update resources
+kubectl patch application px4-drone-control -n wasmbed --type='merge' -p='{"spec":{"version":"1.1.0"}}'
+
+# Delete resources
+kubectl delete application px4-drone-control -n wasmbed
+kubectl delete device riscv-device-001 -n wasmbed
+```
+
+### Validation and Admission Control
+
+**Schema Validation**:
+- All CRDs include comprehensive schema validation
+- Required fields are enforced
+- Data types and formats are validated
+- Enum values are restricted to valid options
+
+**Admission Control**:
+- Webhook validation for complex business rules
+- Resource quota enforcement
+- Security policy validation
+- Dependency validation
+
+### Best Practices
+
+**Resource Naming**:
+- Use descriptive names for resources
+- Follow Kubernetes naming conventions
+- Use consistent naming patterns
+- Include version information where appropriate
+
+**Resource Organization**:
+- Use namespaces to organize resources
+- Group related resources together
+- Use labels and annotations for metadata
+- Implement proper RBAC policies
+
+**Resource Lifecycle**:
+- Implement proper cleanup procedures
+- Use finalizers for resource cleanup
+- Monitor resource status and health
+- Implement backup and recovery procedures
+
+**Security Considerations**:
+- Validate all input data
+- Implement proper authentication and authorization
+- Use secure communication protocols
+- Monitor for security violations
+
+**Performance Optimization**:
+- Use appropriate resource limits
+- Implement efficient data structures
+- Monitor resource usage
+- Optimize for scale

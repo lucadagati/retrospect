@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wasmbed-gateway-config
+  namespace: wasmbed
+data:
+  pairing-mode: "false"
+  pairing-timeout-seconds: "300"
+  heartbeat-timeout-seconds: "90"
