@@ -255,6 +255,11 @@ impl HttpApiServer {
             .route("/api/v1/admin/pairing-timeout", post(set_pairing_timeout))
             .route("/api/v1/admin/heartbeat-timeout", get(get_heartbeat_timeout))
             .route("/api/v1/admin/heartbeat-timeout", post(set_heartbeat_timeout))
+            .route("/api/v1/k8s/pods", get(get_k8s_pods))
+            .route("/api/v1/k8s/applications", get(get_k8s_applications))
+            .route("/api/v1/metrics/system", get(get_system_metrics))
+            .route("/api/v1/alerts", get(get_alerts))
+            .route("/api/v1/drone/command", post(send_drone_command))
             .route("/health", get(health_check))
             .route("/ready", get(readiness_check))
             .with_state(state)
@@ -690,4 +695,136 @@ async fn set_heartbeat_timeout(
         "message": format!("Heartbeat timeout set to {} seconds", request.timeout_seconds),
         "timestamp": chrono::Utc::now().to_rfc3339()
     }))
+}
+
+/// Get Kubernetes pods status
+async fn get_k8s_pods(State(server): State<Arc<HttpApiServer>>) -> Json<serde_json::Value> {
+    // Simulazione per ora - in futuro collegare all'API Kubernetes reale
+    Json(serde_json::json!({
+        "total": 12,
+        "running": 10,
+        "pending": 1,
+        "failed": 1,
+        "pods": [
+            {
+                "name": "wasmbed-gateway-1",
+                "status": "Running",
+                "ready": "1/1",
+                "restarts": 0,
+                "age": "2d"
+            },
+            {
+                "name": "wasmbed-gateway-2",
+                "status": "Running",
+                "ready": "1/1",
+                "restarts": 0,
+                "age": "1d"
+            },
+            {
+                "name": "wasmbed-controller",
+                "status": "Running",
+                "ready": "1/1",
+                "restarts": 0,
+                "age": "2d"
+            }
+        ]
+    }))
+}
+
+/// Get Kubernetes applications status
+async fn get_k8s_applications(State(server): State<Arc<HttpApiServer>>) -> Json<serde_json::Value> {
+    let applications = server.applications.read().await;
+    
+    Json(serde_json::json!({
+        "total": applications.len(),
+        "running": applications.values().filter(|a| matches!(a.status, DeviceApplicationPhase::Running)).count(),
+        "failed": applications.values().filter(|a| matches!(a.status, DeviceApplicationPhase::Failed)).count(),
+        "deploying": applications.values().filter(|a| matches!(a.status, DeviceApplicationPhase::Deploying)).count(),
+        "applications": applications.values().collect::<Vec<_>>()
+    }))
+}
+
+/// Get system metrics
+async fn get_system_metrics(State(server): State<Arc<HttpApiServer>>) -> Json<serde_json::Value> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let mut metrics = Vec::new();
+    
+    // Generate last 24 hours of data
+    for i in 0..24 {
+        let time = now - (24 - i) * 3600;
+        metrics.push(serde_json::json!({
+            "time": format!("{}:00", (time / 3600) % 24),
+            "timestamp": time,
+            "cpu": 20.0 + (i as f64 * 2.5) + (rand::random::<f64>() * 20.0),
+            "memory": 30.0 + (i as f64 * 1.5) + (rand::random::<f64>() * 15.0),
+            "devices": 3 + (rand::random::<u8>() % 3),
+            "applications": 5 + (rand::random::<u8>() % 5)
+        }));
+    }
+    
+    Json(serde_json::json!({
+        "metrics": metrics,
+        "current": {
+            "cpu": 45.2,
+            "memory": 67.8,
+            "storage": 23.1,
+            "network_in": 1024,
+            "network_out": 2048
+        }
+    }))
+}
+
+/// Get active alerts
+async fn get_alerts(State(server): State<Arc<HttpApiServer>>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "alerts": [
+            {
+                "id": "alert-1",
+                "severity": "warning",
+                "title": "High CPU Usage",
+                "message": "CPU usage on gateway-pod-1 is above 80%",
+                "timestamp": "2025-01-10T10:30:00Z",
+                "source": "kubernetes",
+                "resolved": false
+            },
+            {
+                "id": "alert-2",
+                "severity": "error",
+                "title": "Device Disconnected",
+                "message": "Device drone-002 has been disconnected for more than 5 minutes",
+                "timestamp": "2025-01-10T10:25:00Z",
+                "source": "device_monitor",
+                "resolved": false
+            }
+        ]
+    }))
+}
+
+/// Send drone command
+async fn send_drone_command(
+    State(server): State<Arc<HttpApiServer>>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let command = payload["command"].as_str().unwrap_or("");
+    
+    info!("Received drone command: {}", command);
+    
+    // In futuro, qui invieremo il comando al PX4 via microROS
+    // Per ora simuliamo la risposta
+    match command {
+        "arm" | "disarm" | "takeoff" | "land" | "hover" | "emergency" | "setAltitude" => {
+            Ok(Json(serde_json::json!({
+                "success": true,
+                "command": command,
+                "message": format!("Command '{}' executed successfully", command),
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            })))
+        }
+        _ => {
+            warn!("Unknown drone command: {}", command);
+            Err(StatusCode::BAD_REQUEST)
+        }
+    }
 }
