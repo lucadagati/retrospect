@@ -95,6 +95,15 @@ pub struct WasmRuntimeIntegration {
     pub runtime_id: String,
 }
 
+impl Default for WasmRuntimeIntegration {
+    fn default() -> Self {
+        Self {
+            gateway_url: "http://localhost:8080".to_string(),
+            runtime_id: "default-runtime".to_string(),
+        }
+    }
+}
+
 /// microROS Bridge for PX4 communication
 /// 
 /// This bridge enables real-time communication between WebAssembly applications
@@ -157,9 +166,6 @@ pub struct BridgeConfig {
     
     /// QoS configuration
     pub qos: QosConfig,
-    
-    /// PX4 configuration
-    pub px4_config: Px4Config,
 }
 
 /// QoS configuration
@@ -176,25 +182,6 @@ pub struct QosConfig {
     
     /// Deadline duration
     pub deadline_duration: Duration,
-}
-
-/// PX4 configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Px4Config {
-    /// PX4 system ID
-    pub system_id: u8,
-    
-    /// PX4 component ID
-    pub component_id: u8,
-    
-    /// MAVLink protocol version
-    pub mavlink_version: u8,
-    
-    /// Heartbeat interval
-    pub heartbeat_interval: Duration,
-    
-    /// Command timeout
-    pub command_timeout: Duration,
 }
 
 /// Bridge state
@@ -582,7 +569,7 @@ impl MicroRosBridge {
         let config = self.config.clone();
         
         tokio::spawn(async move {
-            let mut interval = interval(config.px4_config.heartbeat_interval);
+            let mut interval = interval(Duration::from_secs(1)); // Default heartbeat interval
             
             loop {
                 interval.tick().await;
@@ -610,8 +597,8 @@ impl MicroRosBridge {
                 .clone(),
             data,
             timestamp: SystemTime::now(),
-            source_system_id: self.config.px4_config.system_id,
-            target_system_id: self.config.px4_config.component_id,
+            source_system_id: 1, // Default system ID
+            target_system_id: 1, // Default component ID
         };
         
         self.message_channels.incoming_tx.send(message)
@@ -765,7 +752,6 @@ impl Default for BridgeConfig {
             dds_domain_id: 0,
             node_name: "wasmbed_gateway".to_string(),
             qos: QosConfig::default(),
-            px4_config: Px4Config::default(),
         }
     }
 }
@@ -777,18 +763,6 @@ impl Default for QosConfig {
             durability: Durability::Volatile,
             history_depth: 10,
             deadline_duration: Duration::from_millis(100),
-        }
-    }
-}
-
-impl Default for Px4Config {
-    fn default() -> Self {
-        Self {
-            system_id: 1,
-            component_id: 1,
-            mavlink_version: 2,
-            heartbeat_interval: Duration::from_secs(1),
-            command_timeout: Duration::from_secs(5),
         }
     }
 }

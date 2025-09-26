@@ -161,64 +161,29 @@ impl Default for WasmRuntimeConfig {
 /// Host function configuration for different integrations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HostFunctionConfig {
-    /// Enable PX4/MAVLink host functions
-    pub enable_px4: bool,
-    /// Enable microROS/DDS host functions
-    pub enable_microros: bool,
-    /// Enable sensor data access host functions
-    pub enable_sensors: bool,
-    /// Enable secure communication host functions
-    pub enable_secure: bool,
-    /// Enable file system access host functions
-    pub enable_filesystem: bool,
-    /// Enable network access host functions
-    pub enable_network: bool,
-    /// Enable GPIO access host functions
-    pub enable_gpio: bool,
-    /// Enable I2C/SPI communication host functions
-    pub enable_i2c_spi: bool,
+    /// Enable hello world functions (always enabled)
+    pub enable_hello_world: bool,
 }
 
 impl HostFunctionConfig {
     /// Create configuration for MPU with all features enabled
     pub fn for_mpu() -> Self {
         Self {
-            enable_px4: true,
-            enable_microros: true,
-            enable_sensors: true,
-            enable_secure: true,
-            enable_filesystem: true,
-            enable_network: true,
-            enable_gpio: true,
-            enable_i2c_spi: true,
+            enable_hello_world: true,
         }
     }
 
     /// Create configuration for MCU with minimal features
     pub fn for_mcu() -> Self {
         Self {
-            enable_px4: true,
-            enable_microros: false, // Too resource-intensive for MCU
-            enable_sensors: true,
-            enable_secure: false, // Minimal security for MCU
-            enable_filesystem: false,
-            enable_network: false,
-            enable_gpio: true,
-            enable_i2c_spi: true,
+            enable_hello_world: true,
         }
     }
 
     /// Create configuration for RISC-V with balanced features
     pub fn for_riscv() -> Self {
         Self {
-            enable_px4: true,
-            enable_microros: true,
-            enable_sensors: true,
-            enable_secure: true,
-            enable_filesystem: false, // Limited storage
-            enable_network: true,
-            enable_gpio: true,
-            enable_i2c_spi: true,
+            enable_hello_world: true,
         }
     }
 

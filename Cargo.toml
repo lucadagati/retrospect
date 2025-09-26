@@ -20,7 +20,6 @@ members = [
     "crates/wasmbed-types",
     "crates/wasmbed-microros-bridge",
     "crates/wasmbed-fastdds-middleware",
-    "crates/wasmbed-px4-communication",
     "crates/wasmbed-integration-test",
     "crates/wasmbed-wasm-runtime",
 ]

@@ -44,14 +44,12 @@ sha2 = "0.10"
 hex = "0.4"
 rand = "0.8"
 
-# PX4 integration
-mavlink = "0.15"
-
 # DDS integration
 rustdds = "0.11"
 
 # WASM parsing
 wasmparser = "0.118"
+wat = "1.0"
 
 # Memory management
 bytes = "1.0"
@@ -72,6 +70,5 @@ mcu = ["no-std"]
 riscv = ["no-std"]
 
 # Optional integrations
-px4 = []
 microros = []
 secure = []

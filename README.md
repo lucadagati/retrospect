@@ -1,6 +1,6 @@
 # Wasmbed Platform
 
-A secure middleware platform for deploying WebAssembly applications to industrial robotic systems using Kubernetes orchestration.
+A simple WebAssembly runtime platform for edge devices with hello world functionality.
 
 ## Table of Contents
 
@@ -9,22 +9,20 @@ A secure middleware platform for deploying WebAssembly applications to industria
 3. [Quick Start](#quick-start)
 4. [Documentation](#documentation)
 5. [Current Status](#current-status)
-6. [Known Issues](#known-issues)
-7. [Missing Implementations](#missing-implementations)
-8. [Contributing](#contributing)
-9. [License](#license)
+6. [Contributing](#contributing)
+7. [License](#license)
 
 ## Overview
 
-Wasmbed is a comprehensive 3-layer architecture (cloud-fog-edge) designed to enable secure deployment and execution of WebAssembly applications on heterogeneous edge devices including MPU, MCU, and RISC-V systems. The platform provides real-time communication capabilities for industrial robotic applications, particularly PX4 autopilot integration.
+Wasmbed is a simple WebAssembly runtime designed to enable basic WASM execution on edge devices. The platform provides a minimal hello world environment for testing and development.
 
 ### Key Features
 
 - **Kubernetes Integration**: Custom CRDs and controllers for application lifecycle management
 - **TLS Security**: Mutual authentication with custom TLS implementation
 - **QEMU Emulation**: Realistic emulation of edge devices for development and testing
-- **WebAssembly Runtime**: no_std compatible runtime for embedded systems
-- **Real-time Communication**: microROS and FastDDS integration for PX4 systems
+- **WebAssembly Runtime**: Simple runtime for basic WASM execution
+- **Hello World Functions**: Basic print and timestamp functions for testing
 - **Device Management**: Secure enrollment and connection workflows
 
 ## Architecture
@@ -54,6 +52,7 @@ graph TB
         MCU[MCU Devices]
         RISCV[RISC-V Devices]
         WASM[WebAssembly Runtime]
+        HW[Hello World Functions]
         TLS_CLIENT[TLS Client]
     end
     

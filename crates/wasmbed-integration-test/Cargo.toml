@@ -13,5 +13,4 @@ path = "src/main.rs"
 [dependencies]
 wasmbed-microros-bridge = { path = "../wasmbed-microros-bridge" }
 wasmbed-fastdds-middleware = { path = "../wasmbed-fastdds-middleware" }
-wasmbed-px4-communication = { path = "../wasmbed-px4-communication" }
 tokio = { version = "1.0", features = ["full"] }
