@@ -96,9 +96,9 @@ print_status "SUCCESS" "Kubernetes resources created successfully"
 
 # Apply test resources
 print_status "INFO" "Creating test resources..."
-kubectl apply -f test-device-1.yaml
-kubectl apply -f test-app-1.yaml
-kubectl apply -f test-gateway-1.yaml
+kubectl apply -f k8s/test-resources/test-device-1.yaml
+kubectl apply -f k8s/test-resources/test-app-1.yaml
+kubectl apply -f k8s/test-resources/test-gateway-1.yaml
 
 print_status "SUCCESS" "Test resources created successfully"
 

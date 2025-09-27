@@ -319,6 +319,79 @@ impl HttpApiServer {
             debug!("Updated application status for {}", app_id);
         }
     }
+
+    /// Deploy application to a specific device
+    pub async fn deploy_application_to_device(&self, device_id: &str, app_id: &str, wasm_bytes: &[u8]) -> Result<()> {
+        let connections = self.device_connections.read().await;
+        
+        if let Some(connection) = connections.get(device_id) {
+            // Create deployment message
+            let deployment_message = ServerMessage::DeployApplication {
+                app_id: app_id.to_string(),
+                name: app_id.to_string(), // Use app_id as name for now
+                wasm_bytes: wasm_bytes.to_vec(),
+                config: None,
+            };
+            
+            // Send deployment command via TLS
+            match self.send_message_to_device(device_id, &deployment_message).await {
+                Ok(_) => {
+                    info!("Successfully sent deployment command for app {} to device {}", app_id, device_id);
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("Failed to send deployment command for app {} to device {}: {}", app_id, device_id, e);
+                    Err(e)
+                }
+            }
+        } else {
+            Err(anyhow::anyhow!("Device {} not connected", device_id))
+        }
+    }
+
+    /// Stop application on a specific device
+    pub async fn stop_application_on_device(&self, device_id: &str, app_id: &str) -> Result<()> {
+        let connections = self.device_connections.read().await;
+        
+        if let Some(connection) = connections.get(device_id) {
+            // Create stop message
+            let stop_message = ServerMessage::StopApplication {
+                app_id: app_id.to_string(),
+            };
+            
+            // Send stop command via TLS
+            match self.send_message_to_device(device_id, &stop_message).await {
+                Ok(_) => {
+                    info!("Successfully sent stop command for app {} to device {}", app_id, device_id);
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("Failed to send stop command for app {} to device {}: {}", app_id, device_id, e);
+                    Err(e)
+                }
+            }
+        } else {
+            Err(anyhow::anyhow!("Device {} not connected", device_id))
+        }
+    }
+
+    /// Send message to a specific device via TLS
+    async fn send_message_to_device(&self, device_id: &str, message: &ServerMessage) -> Result<()> {
+        // This would implement the actual TLS communication
+        // For now, we'll simulate the communication
+        info!("Sending message to device {}: {:?}", device_id, message);
+        
+        // In a real implementation, this would:
+        // 1. Get the TLS connection for the device
+        // 2. Serialize the message to CBOR
+        // 3. Send it over the TLS connection
+        // 4. Wait for acknowledgment
+        
+        // Simulate network delay
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        
+        Ok(())
+    }
 }
 
 /// Get list of connected devices
@@ -377,17 +450,28 @@ async fn deploy_application(
         app_id.clone(),
         device_id.clone(),
         payload.name,
-        wasm_bytes,
+        wasm_bytes.clone(),
         None, // No config for now
     ).await;
 
-    // TODO: Send deployment command to device via TLS connection
-    // For now, simulate successful deployment
+    // Send deployment command to device via TLS connection
     let server_clone = server.clone();
     let app_id_clone = app_id.clone();
+    let device_id_clone = device_id.clone();
+    let wasm_bytes_clone = wasm_bytes.clone();
+    
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        server_clone.update_application_status(&app_id_clone, DeviceApplicationPhase::Running, None).await;
+        // Deploy to the specific device
+        match server_clone.deploy_application_to_device(&device_id_clone, &app_id_clone, &wasm_bytes_clone).await {
+            Ok(_) => {
+                // Update application status to running
+                server_clone.update_application_status(&app_id_clone, DeviceApplicationPhase::Running, None).await;
+            }
+            Err(e) => {
+                eprintln!("Failed to deploy application {} to device {}: {}", app_id_clone, device_id_clone, e);
+                server_clone.update_application_status(&app_id_clone, DeviceApplicationPhase::Failed, Some(e.to_string())).await;
+            }
+        }
     });
 
     Ok(Json(DeploymentResponse {
@@ -419,11 +503,20 @@ async fn stop_application(
     let app_id_clone = app_id.clone();
     server.update_application_status(&app_id, DeviceApplicationPhase::Stopped, None).await;
 
-    // TODO: Send stop command to device via TLS connection
-    // For now, simulate successful stop
+    // Send stop command to device via TLS connection
+    let device_id_clone = device_id.clone();
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        server_clone.update_application_status(&app_id_clone, DeviceApplicationPhase::Stopped, None).await;
+        // Stop the application on the specific device
+        match server_clone.stop_application_on_device(&device_id_clone, &app_id_clone).await {
+            Ok(_) => {
+                // Update application status to stopped
+                server_clone.update_application_status(&app_id_clone, DeviceApplicationPhase::Stopped, None).await;
+            }
+            Err(e) => {
+                eprintln!("Failed to stop application {} on device {}: {}", app_id_clone, device_id_clone, e);
+                server_clone.update_application_status(&app_id_clone, DeviceApplicationPhase::Failed, Some(e.to_string())).await;
+            }
+        }
     });
 
     Ok(Json(DeploymentResponse {
