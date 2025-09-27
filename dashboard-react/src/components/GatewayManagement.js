@@ -209,8 +209,10 @@ const GatewayManagement = () => {
     {
       title: 'Actions',
       key: 'actions',
+      width: 150,
+      fixed: 'right',
       render: (_, record) => (
-        <Space>
+        <Space size="small">
           <Button
             type="link"
             icon={<SettingOutlined />}
@@ -223,6 +225,7 @@ const GatewayManagement = () => {
               });
               setConfigModalVisible(true);
             }}
+            size="small"
           >
             Configure
           </Button>
@@ -232,7 +235,12 @@ const GatewayManagement = () => {
             okText="Yes"
             cancelText="No"
           >
-            <Button type="link" danger icon={<DeleteOutlined />}>
+            <Button 
+              type="link" 
+              danger 
+              icon={<DeleteOutlined />}
+              size="small"
+            >
               Delete
             </Button>
           </Popconfirm>
@@ -329,6 +337,8 @@ const GatewayManagement = () => {
             showTotal: (total, range) =>
               `${range[0]}-${range[1]} of ${total} gateways`,
           }}
+          scroll={{ x: 1200 }}
+          size="small"
           expandable={{
             expandedRowRender: (record) => (
               <Descriptions size="small" column={2}>

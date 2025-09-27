@@ -7,12 +7,14 @@ import {
   AppstoreOutlined,
   GatewayOutlined,
   MonitorOutlined,
+  NodeIndexOutlined,
 } from '@ant-design/icons';
 import Dashboard from './components/Dashboard';
 import DeviceManagement from './components/DeviceManagement';
 import ApplicationManagement from './components/ApplicationManagement';
 import GatewayManagement from './components/GatewayManagement';
 import Monitoring from './components/Monitoring';
+import NetworkTopology from './components/NetworkTopology';
 import './App.css';
 
 const { Header, Sider, Content } = Layout;
@@ -28,6 +30,11 @@ function App() {
       key: 'dashboard',
       icon: <DashboardOutlined />,
       label: 'Dashboard',
+    },
+    {
+      key: 'topology',
+      icon: <NodeIndexOutlined />,
+      label: 'Network Topology',
     },
     {
       key: 'devices',
@@ -56,7 +63,32 @@ function App() {
       theme={{
         token: {
           colorPrimary: '#1890ff',
-          borderRadius: 6,
+          borderRadius: 8,
+          colorBgContainer: '#ffffff',
+          colorBgElevated: '#fafafa',
+          colorBorder: '#d9d9d9',
+          colorText: '#262626',
+          colorTextSecondary: '#8c8c8c',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        },
+        components: {
+          Layout: {
+            headerBg: '#ffffff',
+            siderBg: '#fafafa',
+          },
+          Menu: {
+            itemBg: 'transparent',
+            itemSelectedBg: '#e6f7ff',
+            itemHoverBg: '#f5f5f5',
+          },
+          Card: {
+            borderRadius: 8,
+            boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02)',
+          },
+          Table: {
+            borderRadius: 8,
+            headerBg: '#fafafa',
+          },
         },
       }}
     >
@@ -71,17 +103,40 @@ function App() {
             }}
           >
             <div className="logo" style={{ 
-              height: 32, 
+              height: 64, 
               margin: 16, 
               background: 'rgba(255, 255, 255, 0.3)',
               borderRadius: borderRadiusLG,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontWeight: 'bold',
-              color: '#1890ff'
+              flexDirection: 'column',
+              padding: '8px'
             }}>
-              {collapsed ? 'W' : 'Wasmbed'}
+              <img 
+                src="/Logo_Serics.png" 
+                alt="MdsLab Logo" 
+                style={{ 
+                  height: collapsed ? 24 : 32, 
+                  width: 'auto',
+                  marginBottom: collapsed ? 0 : 4
+                }} 
+              />
+              {!collapsed && (
+                <div style={{ 
+                  fontSize: '10px', 
+                  fontWeight: 'bold', 
+                  color: '#1890ff',
+                  textAlign: 'center',
+                  lineHeight: 1.2
+                }}>
+                  RETROSPECT
+                  <br />
+                  <span style={{ fontSize: '8px', color: '#666' }}>
+                    MdsLab - UniMe
+                  </span>
+                </div>
+              )}
             </div>
             <Menu
               theme="light"
@@ -121,11 +176,22 @@ function App() {
                   {collapsed ? '☰' : '✕'}
                 </button>
                 <h1 style={{ margin: 0, marginLeft: 16, fontSize: '20px', fontWeight: 'bold' }}>
-                  Wasmbed Platform Dashboard
+                  RETROSPECT Dashboard
                 </h1>
+                <div style={{ 
+                  marginLeft: 16, 
+                  fontSize: '12px', 
+                  color: '#666',
+                  fontStyle: 'italic'
+                }}>
+                  secuRE inTegration middlewaRe fOr cpS in the comPutE ConTinuum
+                </div>
               </div>
-              <div style={{ color: '#666', fontSize: '14px' }}>
-                Edge Device Management Platform
+              <div style={{ color: '#666', fontSize: '14px', textAlign: 'right' }}>
+                <div>MdsLab - Università degli Studi di Messina</div>
+                <div style={{ fontSize: '12px', color: '#999' }}>
+                  Edge Device Management Platform
+                </div>
               </div>
             </Header>
             <Content
@@ -140,6 +206,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/topology" element={<NetworkTopology />} />
                 <Route path="/devices" element={<DeviceManagement />} />
                 <Route path="/applications" element={<ApplicationManagement />} />
                 <Route path="/gateways" element={<GatewayManagement />} />

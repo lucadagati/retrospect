@@ -261,13 +261,16 @@ const ApplicationManagement = () => {
     {
       title: 'Actions',
       key: 'actions',
+      width: 150,
+      fixed: 'right',
       render: (_, record) => (
-        <Space>
+        <Space size="small">
           {record.status === 'Pending' || record.status === 'Stopped' ? (
             <Button
               type="link"
               icon={<PlayCircleOutlined />}
               onClick={() => handleDeployApplication(record.id)}
+              size="small"
             >
               Deploy
             </Button>
@@ -276,6 +279,7 @@ const ApplicationManagement = () => {
               type="link"
               icon={<PauseCircleOutlined />}
               onClick={() => handleStopApplication(record.id)}
+              size="small"
             >
               Stop
             </Button>
@@ -286,7 +290,12 @@ const ApplicationManagement = () => {
             okText="Yes"
             cancelText="No"
           >
-            <Button type="link" danger icon={<DeleteOutlined />}>
+            <Button 
+              type="link" 
+              danger 
+              icon={<DeleteOutlined />}
+              size="small"
+            >
               Delete
             </Button>
           </Popconfirm>
@@ -425,6 +434,8 @@ const ApplicationManagement = () => {
             showTotal: (total, range) =>
               `${range[0]}-${range[1]} of ${total} applications`,
           }}
+          scroll={{ x: 1200 }}
+          size="small"
           expandable={{
             expandedRowRender: (record) => (
               <Descriptions size="small" column={2}>

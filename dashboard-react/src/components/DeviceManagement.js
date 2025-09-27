@@ -171,15 +171,22 @@ const DeviceManagement = () => {
     {
       title: 'Actions',
       key: 'actions',
+      width: 120,
+      fixed: 'right',
       render: (_, record) => (
-        <Space>
+        <Space size="small">
           <Popconfirm
             title="Are you sure you want to delete this device?"
             onConfirm={() => handleDeleteDevice(record.id)}
             okText="Yes"
             cancelText="No"
           >
-            <Button type="link" danger icon={<DeleteOutlined />}>
+            <Button 
+              type="link" 
+              danger 
+              icon={<DeleteOutlined />}
+              size="small"
+            >
               Delete
             </Button>
           </Popconfirm>
@@ -280,6 +287,8 @@ const DeviceManagement = () => {
             showTotal: (total, range) =>
               `${range[0]}-${range[1]} of ${total} devices`,
           }}
+          scroll={{ x: 1000 }}
+          size="small"
         />
       </Card>
 
