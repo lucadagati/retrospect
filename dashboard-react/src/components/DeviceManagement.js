@@ -24,6 +24,8 @@ import {
   ExclamationCircleOutlined,
   ClockCircleOutlined,
   QuestionCircleOutlined,
+  UserAddOutlined,
+  LinkOutlined,
 } from '@ant-design/icons';
 
 const { Title } = Typography;
@@ -31,12 +33,12 @@ const { Option } = Select;
 
 // Initial mock data
 const initialDevices = [
-  { id: 1, name: 'mcu-board-1', status: 'Connected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z' },
-  { id: 2, name: 'mcu-board-2', status: 'Connected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z' },
-  { id: 3, name: 'mcu-board-3', status: 'Connected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z' },
-  { id: 4, name: 'riscv-board-1', status: 'Connected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z' },
-  { id: 5, name: 'riscv-board-2', status: 'Connected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z' },
-  { id: 6, name: 'riscv-board-3', status: 'Connected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z' }
+  { id: 1, name: 'mcu-board-1', status: 'Disconnected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z', enrolled: false, connected: false },
+  { id: 2, name: 'mcu-board-2', status: 'Disconnected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z', enrolled: false, connected: false },
+  { id: 3, name: 'mcu-board-3', status: 'Disconnected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z', enrolled: false, connected: false },
+  { id: 4, name: 'riscv-board-1', status: 'Disconnected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z', enrolled: false, connected: false },
+  { id: 5, name: 'riscv-board-2', status: 'Disconnected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z', enrolled: false, connected: false },
+  { id: 6, name: 'riscv-board-3', status: 'Disconnected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z', enrolled: false, connected: false }
 ];
 
 const DeviceManagement = () => {
@@ -94,6 +96,38 @@ const DeviceManagement = () => {
       console.log('Device deleted successfully:', deviceId);
     } catch (error) {
       console.error('Error deleting device:', error);
+    }
+  };
+
+  const handleEnrollDevice = async (deviceId) => {
+    try {
+      // Simulate device enrollment
+      setDevices(prevDevices => 
+        prevDevices.map(device => 
+          device.id === deviceId 
+            ? { ...device, status: 'Enrolled', enrolled: true }
+            : device
+        )
+      );
+      console.log('Device enrolled successfully:', deviceId);
+    } catch (error) {
+      console.error('Error enrolling device:', error);
+    }
+  };
+
+  const handleConnectDevice = async (deviceId) => {
+    try {
+      // Simulate device connection
+      setDevices(prevDevices => 
+        prevDevices.map(device => 
+          device.id === deviceId 
+            ? { ...device, status: 'Connected', connected: true }
+            : device
+        )
+      );
+      console.log('Device connected successfully:', deviceId);
+    } catch (error) {
+      console.error('Error connecting device:', error);
     }
   };
 
@@ -171,10 +205,34 @@ const DeviceManagement = () => {
     {
       title: 'Actions',
       key: 'actions',
-      width: 120,
+      width: 200,
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
+          {record.status === 'Disconnected' && (
+            <Tooltip title="Enroll device in the system">
+              <Button 
+                type="link" 
+                icon={<UserAddOutlined />}
+                size="small"
+                onClick={() => handleEnrollDevice(record.id)}
+              >
+                Enroll
+              </Button>
+            </Tooltip>
+          )}
+          {record.status === 'Enrolled' && (
+            <Tooltip title="Connect device to gateway">
+              <Button 
+                type="link" 
+                icon={<LinkOutlined />}
+                size="small"
+                onClick={() => handleConnectDevice(record.id)}
+              >
+                Connect
+              </Button>
+            </Tooltip>
+          )}
           <Popconfirm
             title="Are you sure you want to delete this device?"
             onConfirm={() => handleDeleteDevice(record.id)}

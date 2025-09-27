@@ -7,7 +7,9 @@ import {
   WifiOutlined,
   DisconnectOutlined,
   CheckCircleOutlined,
-  ExclamationCircleOutlined
+  ExclamationCircleOutlined,
+  ArrowRightOutlined,
+  ArrowDownOutlined
 } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
@@ -95,6 +97,15 @@ const NetworkTopology = () => {
 
   return (
     <div>
+      <style>
+        {`
+          @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+          }
+        `}
+      </style>
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Title level={2}>Network Topology</Title>
         <div style={{ textAlign: 'right' }}>
@@ -124,9 +135,9 @@ const NetworkTopology = () => {
               alignItems: 'center', 
               justifyContent: 'space-between',
               padding: '12px',
-              background: '#f6ffed',
+              background: 'rgba(24, 144, 255, 0.1)',
               borderRadius: '6px',
-              border: '1px solid #b7eb8f'
+              border: '1px solid rgba(24, 144, 255, 0.3)'
             }}>
               <div>
                 <Text strong>Infrastructure Service</Text>
@@ -148,6 +159,15 @@ const NetworkTopology = () => {
             </div>
           </Col>
         </Row>
+        
+        {/* Connection Arrow */}
+        <div style={{ textAlign: 'center', margin: '16px 0' }}>
+          <ArrowDownOutlined style={{ 
+            fontSize: '24px', 
+            color: '#1890ff',
+            animation: 'pulse 2s infinite'
+          }} />
+        </div>
       </Card>
 
       {/* Gateway Layer */}
@@ -162,38 +182,57 @@ const NetworkTopology = () => {
         size="small"
       >
         <Row gutter={[16, 16]}>
-          {topologyData.gateways.map(gateway => (
+          {topologyData.gateways.map((gateway, index) => (
             <Col xs={24} sm={12} lg={8} key={gateway.id}>
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'space-between',
-                padding: '12px',
-                background: '#f6ffed',
-                borderRadius: '6px',
-                border: '1px solid #b7eb8f'
-              }}>
-                <div>
-                  <Text strong>{gateway.name}</Text>
-                  <br />
-                  <Text type="secondary" style={{ fontSize: '12px' }}>
-                    {gateway.endpoint}
-                  </Text>
-                  <br />
-                  <Text type="secondary" style={{ fontSize: '11px' }}>
-                    Region: {gateway.region}
-                  </Text>
+              <div style={{ position: 'relative' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between',
+                  padding: '12px',
+                  background: 'rgba(82, 196, 26, 0.1)',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(82, 196, 26, 0.3)'
+                }}>
+                  <div>
+                    <Text strong>{gateway.name}</Text>
+                    <br />
+                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                      {gateway.endpoint}
+                    </Text>
+                    <br />
+                    <Text type="secondary" style={{ fontSize: '11px' }}>
+                      Region: {gateway.region}
+                    </Text>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <Tag color={getStatusColor(gateway.status)}>
+                      {getStatusIcon(gateway.status)}
+                      {gateway.status.toUpperCase()}
+                    </Tag>
+                    <br />
+                    <Text type="secondary" style={{ fontSize: '11px' }}>
+                      {gateway.devices} devices
+                    </Text>
+                  </div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <Tag color={getStatusColor(gateway.status)}>
-                    {getStatusIcon(gateway.status)}
-                    {gateway.status.toUpperCase()}
-                  </Tag>
-                  <br />
-                  <Text type="secondary" style={{ fontSize: '11px' }}>
-                    {gateway.devices} devices
-                  </Text>
-                </div>
+                
+                {/* Connection arrows to devices */}
+                {gateway.devices > 0 && (
+                  <div style={{ 
+                    position: 'absolute', 
+                    bottom: '-8px', 
+                    left: '50%', 
+                    transform: 'translateX(-50%)',
+                    zIndex: 10
+                  }}>
+                    <ArrowDownOutlined style={{ 
+                      fontSize: '16px', 
+                      color: '#52c41a',
+                      animation: 'pulse 2s infinite'
+                    }} />
+                  </div>
+                )}
               </div>
             </Col>
           ))}
@@ -213,15 +252,20 @@ const NetworkTopology = () => {
         <Row gutter={[16, 16]}>
           {topologyData.devices.map(device => (
             <Col xs={24} sm={12} lg={8} xl={6} key={device.id}>
-              <Tooltip title={`Architecture: ${device.architecture}`}>
+              <Tooltip title={`Architecture: ${device.architecture} • Gateway: ${device.gateway}`}>
                 <div style={{ 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'space-between',
                   padding: '12px',
-                  background: device.status === 'connected' ? '#f6ffed' : '#fff2f0',
+                  background: device.status === 'connected' 
+                    ? 'rgba(82, 196, 26, 0.1)' 
+                    : 'rgba(255, 77, 79, 0.1)',
                   borderRadius: '6px',
-                  border: `1px solid ${device.status === 'connected' ? '#b7eb8f' : '#ffccc7'}`
+                  border: `1px solid ${device.status === 'connected' 
+                    ? 'rgba(82, 196, 26, 0.3)' 
+                    : 'rgba(255, 77, 79, 0.3)'}`,
+                  position: 'relative'
                 }}>
                   <div>
                     <Space>
@@ -239,6 +283,20 @@ const NetworkTopology = () => {
                       {device.status.toUpperCase()}
                     </Tag>
                   </div>
+                  
+                  {/* Connection indicator */}
+                  {device.status === 'connected' && (
+                    <div style={{ 
+                      position: 'absolute', 
+                      top: '8px', 
+                      right: '8px',
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      background: '#52c41a',
+                      animation: 'pulse 2s infinite'
+                    }} />
+                  )}
                 </div>
               </Tooltip>
             </Col>

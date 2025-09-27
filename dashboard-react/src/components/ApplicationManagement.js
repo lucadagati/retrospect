@@ -43,8 +43,8 @@ const { TextArea } = Input;
 
 // Initial mock data
 const initialApplications = [
-  { id: 1, name: 'test-app-1', status: 'Running', description: 'Test Application 1', targetDevices: ['mcu-board-1', 'mcu-board-2'] },
-  { id: 2, name: 'test-app-2', status: 'Running', description: 'Test Application 2', targetDevices: ['riscv-board-1', 'riscv-board-2'] }
+  { id: 1, name: 'test-app-1', status: 'Pending', description: 'Test Application 1', targetDevices: ['mcu-board-1', 'mcu-board-2'] },
+  { id: 2, name: 'test-app-2', status: 'Pending', description: 'Test Application 2', targetDevices: ['riscv-board-1', 'riscv-board-2'] }
 ];
 
 const initialDevices = [
@@ -144,6 +144,13 @@ const ApplicationManagement = () => {
           )
         );
       }, 2000);
+      
+      // Check if there are connected devices
+      const connectedDevices = devices.filter(device => device.status === 'Connected');
+      if (connectedDevices.length === 0) {
+        console.log('No connected devices available for deployment');
+        return;
+      }
       
       console.log('Application deployment started:', appId);
     } catch (error) {
