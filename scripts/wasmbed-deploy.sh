@@ -105,12 +105,14 @@ print_status "SUCCESS" "Test resources created successfully"
 # Start services
 print_status "INFO" "Starting all services..."
 
-# Start Infrastructure
-./target/release/wasmbed-infrastructure --port 30460 &
+# Start Infrastructure (non-blocking)
+nohup ./target/release/wasmbed-infrastructure --port 30460 > logs/infrastructure.log 2>&1 &
 INFRASTRUCTURE_PID=$!
+echo $INFRASTRUCTURE_PID > .infrastructure.pid
+disown
 
-# Start Gateway (using internal ports to avoid k3d conflicts)
-./target/release/wasmbed-gateway \
+# Start Gateway (using internal ports to avoid k3d conflicts) (non-blocking)
+nohup ./target/release/wasmbed-gateway \
     --bind-addr 127.0.0.1:30452 \
     --http-addr 127.0.0.1:30453 \
     --private-key certs/server-key.pem \
@@ -118,33 +120,46 @@ INFRASTRUCTURE_PID=$!
     --client-ca certs/ca-cert.pem \
     --namespace wasmbed \
     --pod-namespace wasmbed \
-    --pod-name gateway-1 &
+    --pod-name gateway-1 > logs/gateway.log 2>&1 &
 GATEWAY_PID=$!
+echo $GATEWAY_PID > .gateway.pid
+disown
 
-# Start Controllers
-./target/release/wasmbed-device-controller &
+# Start Controllers (non-blocking)
+nohup ./target/release/wasmbed-device-controller > logs/device-controller.log 2>&1 &
 DEVICE_CONTROLLER_PID=$!
+echo $DEVICE_CONTROLLER_PID > .device-controller.pid
+disown
 
-./target/release/wasmbed-application-controller &
+nohup ./target/release/wasmbed-application-controller > logs/application-controller.log 2>&1 &
 APPLICATION_CONTROLLER_PID=$!
+echo $APPLICATION_CONTROLLER_PID > .application-controller.pid
+disown
 
-./target/release/wasmbed-gateway-controller &
+nohup ./target/release/wasmbed-gateway-controller > logs/gateway-controller.log 2>&1 &
 GATEWAY_CONTROLLER_PID=$!
+echo $GATEWAY_CONTROLLER_PID > .gateway-controller.pid
+disown
 
-# Start Dashboard
-./target/release/wasmbed-dashboard \
+# Start Dashboard (non-blocking)
+nohup ./target/release/wasmbed-dashboard \
     --port 30470 \
     --gateway-endpoint http://localhost:30453 \
-    --infrastructure-endpoint http://localhost:30460 &
+    --infrastructure-endpoint http://localhost:30460 > logs/dashboard.log 2>&1 &
 DASHBOARD_PID=$!
+echo $DASHBOARD_PID > .dashboard.pid
+disown
 
 sleep 5
 
 print_status "SUCCESS" "All services started successfully"
 
-# Deploy Multi-Gateway System
+# Deploy Multi-Gateway System (non-blocking)
 print_status "INFO" "Deploying Multi-Gateway System..."
-./scripts/quick-multi-gateway.sh deploy
+nohup ./scripts/wasmbed-deploy-multi-gateway.sh deploy > logs/multi-gateway.log 2>&1 &
+MULTI_GATEWAY_PID=$!
+echo $MULTI_GATEWAY_PID > .multi-gateway.pid
+disown
 
 # Summary
 print_status "INFO" "=== DEPLOYMENT SUMMARY ==="

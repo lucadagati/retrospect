@@ -74,8 +74,9 @@ if ! pgrep -f "wasmbed-gateway.*30454" >/dev/null; then
         --client-ca certs/ca-cert.pem \
         --namespace wasmbed \
         --pod-namespace wasmbed \
-        --pod-name gateway-2 >/dev/null 2>&1 &
-    disown $!
+        --pod-name gateway-2 > logs/gateway-2.log 2>&1 &
+    echo $! > .gateway-2.pid
+    disown
     print_status "SUCCESS" "Gateway 2 started"
 fi
 
@@ -90,8 +91,9 @@ if ! pgrep -f "wasmbed-gateway.*30456" >/dev/null; then
         --client-ca certs/ca-cert.pem \
         --namespace wasmbed \
         --pod-namespace wasmbed \
-        --pod-name gateway-3 >/dev/null 2>&1 &
-    disown $!
+        --pod-name gateway-3 > logs/gateway-3.log 2>&1 &
+    echo $! > .gateway-3.pid
+    disown
     print_status "SUCCESS" "Gateway 3 started"
 fi
 

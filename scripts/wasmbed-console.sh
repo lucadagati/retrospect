@@ -36,15 +36,37 @@ print_status() {
 start_all_services() {
     print_status "INFO" "Starting all Wasmbed services..."
     
-    # Start services using screen sessions (completely non-blocking)
-    screen -dmS wasmbed-infrastructure ./target/release/wasmbed-infrastructure --port 30460
-    screen -dmS wasmbed-gateway ./target/release/wasmbed-gateway --bind-addr 127.0.0.1:30452 --http-addr 127.0.0.1:30453 --private-key certs/server-key.pem --certificate certs/server-cert.pem --client-ca certs/ca-cert.pem --namespace wasmbed --pod-namespace wasmbed --pod-name gateway-1
-    # Dashboard React will be started separately on port 3000
-    screen -dmS wasmbed-device-controller ./target/release/wasmbed-device-controller
-    screen -dmS wasmbed-application-controller ./target/release/wasmbed-application-controller
-    screen -dmS wasmbed-gateway-controller ./target/release/wasmbed-gateway-controller
-    screen -dmS wasmbed-gateway-2 ./target/release/wasmbed-gateway --bind-addr 127.0.0.1:30454 --http-addr 127.0.0.1:30455 --private-key certs/server-key.pem --certificate certs/server-cert.pem --client-ca certs/ca-cert.pem --namespace wasmbed --pod-namespace wasmbed --pod-name gateway-2
-    screen -dmS wasmbed-gateway-3 ./target/release/wasmbed-gateway --bind-addr 127.0.0.1:30456 --http-addr 127.0.0.1:30457 --private-key certs/server-key.pem --certificate certs/server-cert.pem --client-ca certs/ca-cert.pem --namespace wasmbed --pod-namespace wasmbed --pod-name gateway-3
+    # Create logs directory if it doesn't exist
+    mkdir -p logs
+    
+    # Start services using nohup + disown (completely non-blocking)
+    nohup ./target/release/wasmbed-infrastructure --port 30460 > logs/infrastructure.log 2>&1 &
+    echo $! > .infrastructure.pid
+    disown
+    
+    nohup ./target/release/wasmbed-gateway --bind-addr 127.0.0.1:30452 --http-addr 127.0.0.1:30453 --private-key certs/server-key.pem --certificate certs/server-cert.pem --client-ca certs/ca-cert.pem --namespace wasmbed --pod-namespace wasmbed --pod-name gateway-1 > logs/gateway.log 2>&1 &
+    echo $! > .gateway.pid
+    disown
+    
+    nohup ./target/release/wasmbed-device-controller > logs/device-controller.log 2>&1 &
+    echo $! > .device-controller.pid
+    disown
+    
+    nohup ./target/release/wasmbed-application-controller > logs/application-controller.log 2>&1 &
+    echo $! > .application-controller.pid
+    disown
+    
+    nohup ./target/release/wasmbed-gateway-controller > logs/gateway-controller.log 2>&1 &
+    echo $! > .gateway-controller.pid
+    disown
+    
+    nohup ./target/release/wasmbed-gateway --bind-addr 127.0.0.1:30454 --http-addr 127.0.0.1:30455 --private-key certs/server-key.pem --certificate certs/server-cert.pem --client-ca certs/ca-cert.pem --namespace wasmbed --pod-namespace wasmbed --pod-name gateway-2 > logs/gateway-2.log 2>&1 &
+    echo $! > .gateway-2.pid
+    disown
+    
+    nohup ./target/release/wasmbed-gateway --bind-addr 127.0.0.1:30456 --http-addr 127.0.0.1:30457 --private-key certs/server-key.pem --certificate certs/server-cert.pem --client-ca certs/ca-cert.pem --namespace wasmbed --pod-namespace wasmbed --pod-name gateway-3 > logs/gateway-3.log 2>&1 &
+    echo $! > .gateway-3.pid
+    disown
     
     print_status "SUCCESS" "All services started!"
 }
@@ -53,14 +75,20 @@ start_all_services() {
 stop_all_services() {
     print_status "INFO" "Stopping all Wasmbed services..."
     
-    # Kill screen sessions (non-blocking)
-    screen -S wasmbed-infrastructure -X quit 2>/dev/null || true
-    screen -S wasmbed-gateway -X quit 2>/dev/null || true
-    screen -S wasmbed-device-controller -X quit 2>/dev/null || true
-    screen -S wasmbed-application-controller -X quit 2>/dev/null || true
-    screen -S wasmbed-gateway-controller -X quit 2>/dev/null || true
-    screen -S wasmbed-gateway-2 -X quit 2>/dev/null || true
-    screen -S wasmbed-gateway-3 -X quit 2>/dev/null || true
+    # Stop services using individual PID files
+    services=("infrastructure" "gateway" "device-controller" "application-controller" "gateway-controller" "gateway-2" "gateway-3")
+    
+    for service in "${services[@]}"; do
+        pid_file=".${service}.pid"
+        if [ -f "$pid_file" ]; then
+            pid=$(cat "$pid_file")
+            if kill -0 "$pid" 2>/dev/null; then
+                print_status "INFO" "Stopping $service (PID: $pid)"
+                kill "$pid" 2>/dev/null || true
+            fi
+            rm -f "$pid_file"
+        fi
+    done
     
     # Also kill any remaining processes
     pkill -f "wasmbed-infrastructure" 2>/dev/null || true
@@ -77,50 +105,23 @@ stop_all_services() {
 show_all_status() {
     print_status "INFO" "=== WASMBED SERVICES STATUS ==="
     
-    # Check screen sessions (non-blocking)
-    if screen -list | grep -q "wasmbed-infrastructure"; then
-        print_status "SUCCESS" "infrastructure is running"
-    else
-        print_status "ERROR" "infrastructure is not running"
-    fi
+    # Check services using PID files (non-blocking)
+    services=("infrastructure" "gateway" "device-controller" "application-controller" "gateway-controller" "gateway-2" "gateway-3")
     
-    if screen -list | grep -q "wasmbed-gateway"; then
-        print_status "SUCCESS" "gateway is running"
-    else
-        print_status "ERROR" "gateway is not running"
-    fi
-    
-    # Dashboard React runs separately on port 3000
-    
-    if screen -list | grep -q "wasmbed-device-controller"; then
-        print_status "SUCCESS" "device-controller is running"
-    else
-        print_status "ERROR" "device-controller is not running"
-    fi
-    
-    if screen -list | grep -q "wasmbed-application-controller"; then
-        print_status "SUCCESS" "application-controller is running"
-    else
-        print_status "ERROR" "application-controller is not running"
-    fi
-    
-    if screen -list | grep -q "wasmbed-gateway-controller"; then
-        print_status "SUCCESS" "gateway-controller is running"
-    else
-        print_status "ERROR" "gateway-controller is not running"
-    fi
-    
-    if screen -list | grep -q "wasmbed-gateway-2"; then
-        print_status "SUCCESS" "gateway-2 is running"
-    else
-        print_status "ERROR" "gateway-2 is not running"
-    fi
-    
-    if screen -list | grep -q "wasmbed-gateway-3"; then
-        print_status "SUCCESS" "gateway-3 is running"
-    else
-        print_status "ERROR" "gateway-3 is not running"
-    fi
+    for service in "${services[@]}"; do
+        pid_file=".${service}.pid"
+        if [ -f "$pid_file" ]; then
+            pid=$(cat "$pid_file")
+            if kill -0 "$pid" 2>/dev/null; then
+                print_status "SUCCESS" "$service is running (PID: $pid)"
+            else
+                print_status "ERROR" "$service is not running (stale PID file)"
+                rm -f "$pid_file"
+            fi
+        else
+            print_status "ERROR" "$service is not running (no PID file)"
+        fi
+    done
     
     echo ""
     print_status "INFO" "=== SERVICE ENDPOINTS ==="
@@ -154,13 +155,21 @@ test_endpoints() {
 start_react_dashboard() {
     print_status "INFO" "Starting React Dashboard..."
     
-    if screen -list | grep -q "wasmbed-react-dashboard"; then
-        print_status "WARNING" "React Dashboard is already running"
-        return 0
+    # Check if already running
+    if [ -f ".react-dashboard.pid" ]; then
+        pid=$(cat ".react-dashboard.pid")
+        if kill -0 "$pid" 2>/dev/null; then
+            print_status "WARNING" "React Dashboard is already running (PID: $pid)"
+            return 0
+        else
+            rm -f ".react-dashboard.pid"
+        fi
     fi
     
     cd dashboard-react
-    screen -dmS wasmbed-react-dashboard npm start
+    nohup npm start > ../logs/react-dashboard.log 2>&1 &
+    echo $! > ../.react-dashboard.pid
+    disown
     cd ..
     
     print_status "SUCCESS" "React Dashboard started!"
@@ -170,7 +179,17 @@ start_react_dashboard() {
 stop_react_dashboard() {
     print_status "INFO" "Stopping React Dashboard..."
     
-    screen -S wasmbed-react-dashboard -X quit 2>/dev/null || true
+    # Stop using PID file
+    if [ -f ".react-dashboard.pid" ]; then
+        pid=$(cat ".react-dashboard.pid")
+        if kill -0 "$pid" 2>/dev/null; then
+            print_status "INFO" "Stopping React Dashboard (PID: $pid)"
+            kill "$pid" 2>/dev/null || true
+        fi
+        rm -f ".react-dashboard.pid"
+    fi
+    
+    # Also kill any remaining processes
     pkill -f "react-scripts" 2>/dev/null || true
     
     print_status "SUCCESS" "React Dashboard stopped!"

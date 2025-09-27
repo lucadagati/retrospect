@@ -36,21 +36,25 @@ print_status() {
 
 print_status "INFO" "Stopping Wasmbed Platform services..."
 
-# Stop services using saved PIDs
-if [ -f ".wasmbed-pids" ]; then
-    print_status "INFO" "Stopping services using saved PIDs..."
-    PIDS=$(cat .wasmbed-pids)
-    for pid in $PIDS; do
+# Stop services using individual PID files
+print_status "INFO" "Stopping services using PID files..."
+
+# List of services to stop
+services=("infrastructure" "gateway" "device-controller" "application-controller" "gateway-controller" "dashboard" "multi-gateway")
+
+for service in "${services[@]}"; do
+    pid_file=".${service}.pid"
+    if [ -f "$pid_file" ]; then
+        pid=$(cat "$pid_file")
         if kill -0 "$pid" 2>/dev/null; then
-            print_status "INFO" "Stopping process $pid"
+            print_status "INFO" "Stopping $service (PID: $pid)"
             kill "$pid" 2>/dev/null || true
         fi
-    done
-    rm -f .wasmbed-pids
-    print_status "SUCCESS" "Services stopped using saved PIDs"
-else
-    print_status "INFO" "No saved PIDs found, stopping by process name..."
-fi
+        rm -f "$pid_file"
+    fi
+done
+
+print_status "SUCCESS" "Services stopped using PID files"
 
 # Stop any remaining Wasmbed processes
 print_status "INFO" "Stopping any remaining Wasmbed processes..."
