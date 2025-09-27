@@ -31,34 +31,27 @@ import {
 const { Title } = Typography;
 const { Option } = Select;
 
-// Initial mock data
-const initialDevices = [
-  { id: 1, name: 'mcu-board-1', status: 'Disconnected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z', enrolled: false, connected: false },
-  { id: 2, name: 'mcu-board-2', status: 'Disconnected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z', enrolled: false, connected: false },
-  { id: 3, name: 'mcu-board-3', status: 'Disconnected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z', enrolled: false, connected: false },
-  { id: 4, name: 'riscv-board-1', status: 'Disconnected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z', enrolled: false, connected: false },
-  { id: 5, name: 'riscv-board-2', status: 'Disconnected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z', enrolled: false, connected: false },
-  { id: 6, name: 'riscv-board-3', status: 'Disconnected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z', enrolled: false, connected: false }
-];
-
 const DeviceManagement = () => {
-  const [devices, setDevices] = useState(initialDevices);
+  const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [form] = Form.useForm();
 
   // Initialize devices only once
   useEffect(() => {
-    // Only set loading state, devices are already initialized
-    setLoading(false);
+    fetchDevices();
   }, []);
 
   const fetchDevices = async () => {
     setLoading(true);
     try {
-      // In a real application, this would fetch from an API
-      // For now, we just update the loading state
-      console.log('Refreshing devices list...');
+      const response = await fetch('/api/v1/devices');
+      if (response.ok) {
+        const data = await response.json();
+        setDevices(data.devices || []);
+      } else {
+        console.error('Failed to fetch devices:', response.status);
+      }
     } catch (error) {
       console.error('Error fetching devices:', error);
     } finally {
@@ -68,22 +61,28 @@ const DeviceManagement = () => {
 
   const handleCreateDevice = async (values) => {
     try {
-      // Create new device with unique ID
-      const newDevice = {
-        id: Date.now(), // Simple unique ID
-        name: values.name,
-        status: 'Enrolled',
-        type: values.type,
-        architecture: values.architecture,
-        lastHeartbeat: new Date().toISOString()
-      };
+      const response = await fetch('/api/v1/devices', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: values.name,
+          type: values.type,
+          architecture: values.architecture,
+          publicKey: values.publicKey || 'auto-generated'
+        })
+      });
       
-      // Add to devices list
-      setDevices(prevDevices => [...prevDevices, newDevice]);
-      
-      console.log('Device created successfully:', newDevice);
-      setModalVisible(false);
-      form.resetFields();
+      if (response.ok) {
+        const newDevice = await response.json();
+        setDevices(prevDevices => [...prevDevices, newDevice]);
+        console.log('Device created successfully:', newDevice.name);
+        setModalVisible(false);
+        form.resetFields();
+      } else {
+        console.error('Failed to create device:', response.status);
+      }
     } catch (error) {
       console.error('Error creating device:', error);
     }
@@ -91,9 +90,16 @@ const DeviceManagement = () => {
 
   const handleDeleteDevice = async (deviceId) => {
     try {
-      // Remove device from list
-      setDevices(prevDevices => prevDevices.filter(device => device.id !== deviceId));
-      console.log('Device deleted successfully:', deviceId);
+      const response = await fetch(`/api/v1/devices/${deviceId}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.ok) {
+        setDevices(prevDevices => prevDevices.filter(device => device.id !== deviceId));
+        console.log('Device deleted successfully:', deviceId);
+      } else {
+        console.error('Failed to delete device:', response.status);
+      }
     } catch (error) {
       console.error('Error deleting device:', error);
     }
@@ -101,15 +107,49 @@ const DeviceManagement = () => {
 
   const handleEnrollDevice = async (deviceId) => {
     try {
-      // Simulate device enrollment
-      setDevices(prevDevices => 
-        prevDevices.map(device => 
-          device.id === deviceId 
-            ? { ...device, status: 'Enrolled', enrolled: true }
-            : device
-        )
-      );
-      console.log('Device enrolled successfully:', deviceId);
+      // First, get available gateways
+      const gatewaysResponse = await fetch('/api/v1/gateways');
+      if (!gatewaysResponse.ok) {
+        console.error('Failed to fetch gateways for enrollment');
+        return;
+      }
+      
+      const gateways = await gatewaysResponse.json();
+      const availableGateways = gateways.gateways?.filter(g => g.status === 'Active') || [];
+      
+      if (availableGateways.length === 0) {
+        console.error('No active gateways available for enrollment');
+        return;
+      }
+      
+      // For now, select the first available gateway
+      // In a real implementation, this could be a user selection
+      const selectedGateway = availableGateways[0];
+      
+      const response = await fetch(`/api/v1/devices/${deviceId}/enroll`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          gatewayId: selectedGateway.id,
+          gatewayName: selectedGateway.name
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setDevices(prevDevices => 
+          prevDevices.map(device => 
+            device.id === deviceId 
+              ? { ...device, enrolled: true, status: 'Enrolled', gatewayId: data.gatewayId, gatewayName: data.gatewayName }
+              : device
+          )
+        );
+        console.log(`Device ${deviceId} enrolled successfully to gateway ${selectedGateway.name}`);
+      } else {
+        console.error('Failed to enroll device:', response.status);
+      }
     } catch (error) {
       console.error('Error enrolling device:', error);
     }
@@ -117,15 +157,26 @@ const DeviceManagement = () => {
 
   const handleConnectDevice = async (deviceId) => {
     try {
-      // Simulate device connection
-      setDevices(prevDevices => 
-        prevDevices.map(device => 
-          device.id === deviceId 
-            ? { ...device, status: 'Connected', connected: true }
-            : device
-        )
-      );
-      console.log('Device connected successfully:', deviceId);
+      const response = await fetch(`/api/v1/devices/${deviceId}/connect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setDevices(prevDevices => 
+          prevDevices.map(device => 
+            device.id === deviceId 
+              ? { ...device, status: 'Connected', connected: true, lastHeartbeat: data.lastHeartbeat }
+              : device
+          )
+        );
+        console.log(`Device ${deviceId} connected successfully`);
+      } else {
+        console.error('Failed to connect device:', response.status);
+      }
     } catch (error) {
       console.error('Error connecting device:', error);
     }

@@ -26,53 +26,41 @@ const Dashboard = () => {
 
   const fetchSystemStatus = async () => {
     try {
-      // Use mock data for development since Gateway APIs return empty data
-      const mockDevices = [
-        { name: 'mcu-board-1', status: 'Connected', type: 'MCU', architecture: 'riscv32' },
-        { name: 'mcu-board-2', status: 'Connected', type: 'MCU', architecture: 'riscv32' },
-        { name: 'mcu-board-3', status: 'Connected', type: 'MCU', architecture: 'riscv32' },
-        { name: 'riscv-board-1', status: 'Connected', type: 'RISC-V', architecture: 'riscv64' },
-        { name: 'riscv-board-2', status: 'Connected', type: 'RISC-V', architecture: 'riscv64' },
-        { name: 'riscv-board-3', status: 'Connected', type: 'RISC-V', architecture: 'riscv64' }
-      ];
+      const [devicesResponse, applicationsResponse, gatewaysResponse] = await Promise.all([
+        fetch('/api/v1/devices'),
+        fetch('/api/v1/applications'),
+        fetch('/api/v1/gateways')
+      ]);
 
-      const mockApplications = [
-        { name: 'test-app-1', status: 'Running', description: 'Test Application 1' },
-        { name: 'test-app-2', status: 'Running', description: 'Test Application 2' }
-      ];
+      const devices = devicesResponse.ok ? await devicesResponse.json() : { devices: [] };
+      const applications = applicationsResponse.ok ? await applicationsResponse.json() : { applications: [] };
+      const gateways = gatewaysResponse.ok ? await gatewaysResponse.json() : { gateways: [] };
 
-      const mockGateways = [
-        { name: 'gateway-1', status: 'Active', endpoint: '127.0.0.1:30452', connectedDevices: 2, enrolledDevices: 6 },
-        { name: 'gateway-2', status: 'Active', endpoint: '127.0.0.1:30454', connectedDevices: 2, enrolledDevices: 6 },
-        { name: 'gateway-3', status: 'Active', endpoint: '127.0.0.1:30456', connectedDevices: 2, enrolledDevices: 6 }
-      ];
-
-      // Calculate stats from mock data
-      const devices = mockDevices;
-      const applications = mockApplications;
-      const gateways = mockGateways;
+      const deviceList = devices.devices || [];
+      const applicationList = applications.applications || [];
+      const gatewayList = gateways.gateways || [];
 
       setSystemStatus({
         devices: {
-          total: devices.length,
-          active: devices.filter(d => d.status === 'Connected').length,
-          inactive: devices.filter(d => d.status !== 'Connected').length,
-          enrolling: devices.filter(d => d.status === 'Enrolling').length,
-          connected: devices.filter(d => d.status === 'Connected').length,
-          enrolled: devices.filter(d => d.status === 'Enrolled').length,
-          unreachable: devices.filter(d => d.status === 'Unreachable').length
+          total: deviceList.length,
+          active: deviceList.filter(d => d.status === 'Connected').length,
+          inactive: deviceList.filter(d => d.status !== 'Connected').length,
+          enrolling: deviceList.filter(d => d.status === 'Enrolling').length,
+          connected: deviceList.filter(d => d.status === 'Connected').length,
+          enrolled: deviceList.filter(d => d.enrolled).length,
+          unreachable: deviceList.filter(d => d.status === 'Unreachable').length
         },
         applications: {
-          total: applications.length,
-          running: applications.filter(a => a.status === 'Running').length,
-          stopped: applications.filter(a => a.status === 'Stopped').length,
-          failed: applications.filter(a => a.status === 'Failed').length,
-          pending: applications.filter(a => a.status === 'Pending').length
+          total: applicationList.length,
+          running: applicationList.filter(a => a.status === 'Running').length,
+          stopped: applicationList.filter(a => a.status === 'Stopped').length,
+          failed: applicationList.filter(a => a.status === 'Failed').length,
+          pending: applicationList.filter(a => a.status === 'Pending').length
         },
         gateways: {
-          total: gateways.length,
-          active: gateways.filter(g => g.status === 'Active').length,
-          inactive: gateways.filter(g => g.status !== 'Active').length
+          total: gatewayList.length,
+          active: gatewayList.filter(g => g.status === 'Active').length,
+          inactive: gatewayList.filter(g => g.status !== 'Active').length
         },
         infrastructure: {
           ca: 'active',

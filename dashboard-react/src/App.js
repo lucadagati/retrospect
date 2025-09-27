@@ -217,58 +217,71 @@ function App() {
           <Layout>
             <Header
               style={{
-                padding: 0,
+                padding: '0 16px',
                 background: colorBgContainer,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                paddingRight: 24,
+                height: '64px',
+                minHeight: '64px',
+                borderBottom: '1px solid #4a5568'
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <button
                   onClick={() => setCollapsed(!collapsed)}
                   style={{
                     fontSize: '16px',
-                    width: 64,
-                    height: 64,
+                    width: 48,
+                    height: 48,
                     border: 'none',
                     background: 'transparent',
                     cursor: 'pointer',
+                    color: '#e2e8f0'
                   }}
                 >
                   {collapsed ? '☰' : '✕'}
                 </button>
-                <h1 style={{ margin: 0, marginLeft: 16, fontSize: '20px', fontWeight: 'bold' }}>
-                  RETROSPECT Dashboard
-                </h1>
                 <div style={{ 
-                  marginLeft: 16, 
-                  fontSize: '12px', 
-                  color: '#666',
-                  fontStyle: 'italic'
+                  color: '#e2e8f0', 
+                  fontSize: '18px', 
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gap: '1px'
                 }}>
-                  secuRE inTegration middlewaRe fOr cpS in the comPutE ConTinuum
+                  <div>RETROSPECT Dashboard</div>
+                  <div style={{ 
+                    fontSize: '10px', 
+                    color: '#a0aec0',
+                    fontStyle: 'italic',
+                    fontWeight: 'normal'
+                  }}>
+                    secuRE inTegration middlewaRe fOr cpS
+                  </div>
                 </div>
               </div>
               <div style={{ 
                 color: '#a0aec0', 
-                fontSize: '14px', 
+                fontSize: '11px', 
                 textAlign: 'right',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'flex-end',
-                gap: '4px'
+                gap: '1px',
+                maxWidth: '250px'
               }}>
-                <div style={{ fontWeight: '500' }}>
-                  MdsLab - Università degli Studi di Messina
+                <div style={{ fontWeight: '500', lineHeight: '1.1' }}>
+                  MdsLab - UniMe
                 </div>
                 <div style={{ 
-                  fontSize: '12px', 
+                  fontSize: '9px', 
                   color: '#718096',
-                  fontStyle: 'italic'
+                  fontStyle: 'italic',
+                  lineHeight: '1.1'
                 }}>
-                  Edge Device Management Platform
+                  Edge Device Management
                 </div>
               </div>
             </Header>

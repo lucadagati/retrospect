@@ -32,15 +32,8 @@ import {
 const { Title } = Typography;
 const { Option } = Select;
 
-// Initial mock data
-const initialGateways = [
-  { id: 1, name: 'gateway-1', status: 'Active', endpoint: '127.0.0.1:30452', connectedDevices: 2, enrolledDevices: 6 },
-  { id: 2, name: 'gateway-2', status: 'Active', endpoint: '127.0.0.1:30454', connectedDevices: 2, enrolledDevices: 6 },
-  { id: 3, name: 'gateway-3', status: 'Active', endpoint: '127.0.0.1:30456', connectedDevices: 2, enrolledDevices: 6 }
-];
-
 const GatewayManagement = () => {
-  const [gateways, setGateways] = useState(initialGateways);
+  const [gateways, setGateways] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [configModalVisible, setConfigModalVisible] = useState(false);
@@ -50,14 +43,19 @@ const GatewayManagement = () => {
 
   // Initialize data only once
   useEffect(() => {
-    setLoading(false);
+    fetchGateways();
   }, []);
 
   const fetchGateways = async () => {
     setLoading(true);
     try {
-      // In a real application, this would fetch from an API
-      console.log('Refreshing gateways list...');
+      const response = await fetch('/api/v1/gateways');
+      if (response.ok) {
+        const data = await response.json();
+        setGateways(data.gateways || []);
+      } else {
+        console.error('Failed to fetch gateways:', response.status);
+      }
     } catch (error) {
       console.error('Error fetching gateways:', error);
     } finally {
@@ -67,23 +65,28 @@ const GatewayManagement = () => {
 
   const handleCreateGateway = async (values) => {
     try {
-      // Create new gateway with unique ID
-      const newGateway = {
-        id: Date.now(), // Simple unique ID
-        name: values.name,
-        status: 'Active',
-        endpoint: values.endpoint,
-        connectedDevices: 0,
-        enrolledDevices: 0,
-        createdAt: new Date().toISOString()
-      };
+      const response = await fetch('/api/v1/gateways', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: values.name,
+          endpoint: values.endpoint,
+          maxDevices: values.maxDevices || 10,
+          region: values.region || 'us-west-1'
+        })
+      });
       
-      // Add to gateways list
-      setGateways(prevGateways => [...prevGateways, newGateway]);
-      
-      console.log('Gateway created successfully:', newGateway);
-      setModalVisible(false);
-      form.resetFields();
+      if (response.ok) {
+        const newGateway = await response.json();
+        setGateways(prevGateways => [...prevGateways, newGateway]);
+        console.log('Gateway created successfully:', newGateway.name);
+        setModalVisible(false);
+        form.resetFields();
+      } else {
+        console.error('Failed to create gateway:', response.status);
+      }
     } catch (error) {
       console.error('Error creating gateway:', error);
     }
@@ -91,9 +94,16 @@ const GatewayManagement = () => {
 
   const handleDeleteGateway = async (gatewayId) => {
     try {
-      // Remove gateway from list
-      setGateways(prevGateways => prevGateways.filter(gateway => gateway.id !== gatewayId));
-      console.log('Gateway deleted successfully:', gatewayId);
+      const response = await fetch(`/api/v1/gateways/${gatewayId}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.ok) {
+        setGateways(prevGateways => prevGateways.filter(gateway => gateway.id !== gatewayId));
+        console.log('Gateway deleted successfully:', gatewayId);
+      } else {
+        console.error('Failed to delete gateway:', response.status);
+      }
     } catch (error) {
       console.error('Error deleting gateway:', error);
     }
@@ -101,19 +111,30 @@ const GatewayManagement = () => {
 
   const handleUpdateGatewayConfig = async (values) => {
     try {
-      // Update gateway configuration
-      setGateways(prevGateways => 
-        prevGateways.map(gateway => 
-          gateway.id === selectedGateway.id 
-            ? { ...gateway, ...values }
-            : gateway
-        )
-      );
+      const response = await fetch(`/api/v1/gateways/${selectedGateway.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(values)
+      });
       
-      console.log('Gateway configuration updated successfully:', values);
-      setConfigModalVisible(false);
-      configForm.resetFields();
-      setSelectedGateway(null);
+      if (response.ok) {
+        const updatedGateway = await response.json();
+        setGateways(prevGateways => 
+          prevGateways.map(gateway => 
+            gateway.id === selectedGateway.id 
+              ? updatedGateway
+              : gateway
+          )
+        );
+        console.log('Gateway configuration updated successfully');
+        setConfigModalVisible(false);
+        configForm.resetFields();
+        setSelectedGateway(null);
+      } else {
+        console.error('Failed to update gateway configuration:', response.status);
+      }
     } catch (error) {
       console.error('Error updating gateway configuration:', error);
     }
@@ -121,16 +142,27 @@ const GatewayManagement = () => {
 
   const handleToggleGateway = async (gatewayId, enabled) => {
     try {
-      // Update gateway status
-      setGateways(prevGateways => 
-        prevGateways.map(gateway => 
-          gateway.id === gatewayId 
-            ? { ...gateway, status: enabled ? 'Active' : 'Inactive' }
-            : gateway
-        )
-      );
+      const response = await fetch(`/api/v1/gateways/${gatewayId}/toggle`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ enabled })
+      });
       
-      console.log(`Gateway ${enabled ? 'enabled' : 'disabled'} successfully:`, gatewayId);
+      if (response.ok) {
+        const updatedGateway = await response.json();
+        setGateways(prevGateways => 
+          prevGateways.map(gateway => 
+            gateway.id === gatewayId 
+              ? updatedGateway
+              : gateway
+          )
+        );
+        console.log(`Gateway ${enabled ? 'enabled' : 'disabled'} successfully:`, gatewayId);
+      } else {
+        console.error('Failed to update gateway status:', response.status);
+      }
     } catch (error) {
       console.error('Error toggling gateway:', error);
     }
@@ -203,6 +235,8 @@ const GatewayManagement = () => {
         <Switch
           checked={enabled}
           onChange={(checked) => handleToggleGateway(record.id, checked)}
+          checkedChildren="Active"
+          unCheckedChildren="Inactive"
         />
       ),
     },

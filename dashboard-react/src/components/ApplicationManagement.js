@@ -41,24 +41,9 @@ const { Title } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
 
-// Initial mock data
-const initialApplications = [
-  { id: 1, name: 'test-app-1', status: 'Pending', description: 'Test Application 1', targetDevices: ['mcu-board-1', 'mcu-board-2'] },
-  { id: 2, name: 'test-app-2', status: 'Pending', description: 'Test Application 2', targetDevices: ['riscv-board-1', 'riscv-board-2'] }
-];
-
-const initialDevices = [
-  { id: 1, name: 'mcu-board-1', status: 'Connected', type: 'MCU' },
-  { id: 2, name: 'mcu-board-2', status: 'Connected', type: 'MCU' },
-  { id: 3, name: 'mcu-board-3', status: 'Connected', type: 'MCU' },
-  { id: 4, name: 'riscv-board-1', status: 'Connected', type: 'RISC-V' },
-  { id: 5, name: 'riscv-board-2', status: 'Connected', type: 'RISC-V' },
-  { id: 6, name: 'riscv-board-3', status: 'Connected', type: 'RISC-V' }
-];
-
 const ApplicationManagement = () => {
-  const [applications, setApplications] = useState(initialApplications);
-  const [devices, setDevices] = useState(initialDevices);
+  const [applications, setApplications] = useState([]);
+  const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [guidedDeploymentVisible, setGuidedDeploymentVisible] = useState(false);
@@ -66,14 +51,20 @@ const ApplicationManagement = () => {
 
   // Initialize data only once
   useEffect(() => {
-    setLoading(false);
+    fetchApplications();
+    fetchDevices();
   }, []);
 
   const fetchApplications = async () => {
     setLoading(true);
     try {
-      // In a real application, this would fetch from an API
-      console.log('Refreshing applications list...');
+      const response = await fetch('/api/v1/applications');
+      if (response.ok) {
+        const data = await response.json();
+        setApplications(data.applications || []);
+      } else {
+        console.error('Failed to fetch applications:', response.status);
+      }
     } catch (error) {
       console.error('Error fetching applications:', error);
     } finally {
@@ -83,8 +74,13 @@ const ApplicationManagement = () => {
 
   const fetchDevices = async () => {
     try {
-      // In a real application, this would fetch from an API
-      console.log('Refreshing devices list...');
+      const response = await fetch('/api/v1/devices');
+      if (response.ok) {
+        const data = await response.json();
+        setDevices(data.devices || []);
+      } else {
+        console.error('Failed to fetch devices:', response.status);
+      }
     } catch (error) {
       console.error('Error fetching devices:', error);
     }

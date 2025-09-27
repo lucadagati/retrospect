@@ -16,39 +16,48 @@ const { Title, Text } = Typography;
 
 const NetworkTopology = () => {
   const [topologyData, setTopologyData] = useState({
-    gateways: [
-      { id: 1, name: 'gateway-1', status: 'active', endpoint: '127.0.0.1:30452', devices: 2, region: 'us-west-1' },
-      { id: 2, name: 'gateway-2', status: 'active', endpoint: '127.0.0.1:30454', devices: 2, region: 'us-west-1' },
-      { id: 3, name: 'gateway-3', status: 'active', endpoint: '127.0.0.1:30456', devices: 2, region: 'us-west-1' }
-    ],
-    devices: [
-      { id: 1, name: 'mcu-board-1', type: 'MCU', status: 'connected', gateway: 'gateway-1', architecture: 'riscv32' },
-      { id: 2, name: 'mcu-board-2', type: 'MCU', status: 'connected', gateway: 'gateway-1', architecture: 'riscv32' },
-      { id: 3, name: 'mcu-board-3', type: 'MCU', status: 'connected', gateway: 'gateway-2', architecture: 'riscv32' },
-      { id: 4, name: 'riscv-board-1', type: 'RISC-V', status: 'connected', gateway: 'gateway-2', architecture: 'riscv64' },
-      { id: 5, name: 'riscv-board-2', type: 'RISC-V', status: 'connected', gateway: 'gateway-3', architecture: 'riscv64' },
-      { id: 6, name: 'riscv-board-3', type: 'RISC-V', status: 'connected', gateway: 'gateway-3', architecture: 'riscv64' }
-    ],
+    gateways: [],
+    devices: [],
     infrastructure: {
-      status: 'active',
-      endpoint: '127.0.0.1:30460',
+      status: 'unknown',
+      endpoint: 'localhost:30460',
       services: ['Certificate Authority', 'Secret Store', 'Monitoring']
     }
   });
 
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLastUpdate(new Date());
-      // Simulate real-time updates
+  const fetchTopologyData = async () => {
+    try {
+      const [infrastructureResponse, gatewaysResponse, devicesResponse] = await Promise.all([
+        fetch('/api/v1/infrastructure/status'),
+        fetch('/api/v1/gateways'),
+        fetch('/api/v1/devices')
+      ]);
+
+      const infrastructure = infrastructureResponse.ok ? await infrastructureResponse.json() : { status: 'unknown' };
+      const gateways = gatewaysResponse.ok ? await gatewaysResponse.json() : { gateways: [] };
+      const devices = devicesResponse.ok ? await devicesResponse.json() : { devices: [] };
+
       setTopologyData(prev => ({
         ...prev,
-        devices: prev.devices.map(device => ({
-          ...device,
-          status: Math.random() > 0.1 ? 'connected' : 'disconnected'
-        }))
+        infrastructure: {
+          ...prev.infrastructure,
+          status: infrastructure.status || 'unknown'
+        },
+        gateways: gateways.gateways || [],
+        devices: devices.devices || []
       }));
+    } catch (error) {
+      console.error('Error fetching topology data:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchTopologyData();
+    const interval = setInterval(() => {
+      setLastUpdate(new Date());
+      fetchTopologyData();
     }, 5000);
 
     return () => clearInterval(interval);
@@ -97,15 +106,6 @@ const NetworkTopology = () => {
 
   return (
     <div>
-      <style>
-        {`
-          @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-          }
-        `}
-      </style>
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Title level={2}>Network Topology</Title>
         <div style={{ textAlign: 'right' }}>
@@ -160,12 +160,24 @@ const NetworkTopology = () => {
           </Col>
         </Row>
         
-        {/* Connection Arrow */}
-        <div style={{ textAlign: 'center', margin: '16px 0' }}>
-          <ArrowDownOutlined style={{ 
-            fontSize: '24px', 
-            color: '#63b3ed',
-            animation: 'pulse 2s infinite'
+        {/* Connection Line */}
+        <div style={{ 
+          textAlign: 'center', 
+          margin: '16px 0',
+          height: '2px',
+          background: 'linear-gradient(90deg, transparent 0%, #4a5568 20%, #4a5568 80%, transparent 100%)',
+          position: 'relative'
+        }}>
+          <div style={{
+            position: 'absolute',
+            top: '-6px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '0',
+            height: '0',
+            borderLeft: '6px solid transparent',
+            borderRight: '6px solid transparent',
+            borderTop: '8px solid #4a5568'
           }} />
         </div>
       </Card>
@@ -219,19 +231,18 @@ const NetworkTopology = () => {
                 
                 {/* Connection arrows to devices */}
                 {gateway.devices > 0 && (
-                  <div style={{ 
-                    position: 'absolute', 
-                    bottom: '-8px', 
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '-6px', 
                     left: '50%', 
                     transform: 'translateX(-50%)',
-                    zIndex: 10
-                  }}>
-                    <ArrowDownOutlined style={{ 
-                      fontSize: '16px', 
-                      color: '#68d391',
-                      animation: 'pulse 2s infinite'
-                    }} />
-                  </div>
+                    zIndex: 10,
+                    width: '0',
+                    height: '0',
+                    borderLeft: '4px solid transparent',
+                    borderRight: '4px solid transparent',
+                    borderTop: '6px solid #4a5568'
+                  }} />
                 )}
               </div>
             </Col>
@@ -286,15 +297,14 @@ const NetworkTopology = () => {
                   
                   {/* Connection indicator */}
                   {device.status === 'connected' && (
-                    <div style={{ 
-                      position: 'absolute', 
+                    <div style={{
+                      position: 'absolute',
                       top: '8px', 
                       right: '8px',
                       width: '8px',
                       height: '8px',
                       borderRadius: '50%',
-                      background: '#68d391',
-                      animation: 'pulse 2s infinite'
+                      background: '#68d391'
                     }} />
                   )}
                 </div>
