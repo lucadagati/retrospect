@@ -18,6 +18,7 @@ import {
   Descriptions,
   Alert,
   Divider,
+  Tooltip,
 } from 'antd';
 import {
   PlusOutlined,
@@ -32,6 +33,7 @@ import {
   RocketOutlined,
   CodeOutlined,
   InfoCircleOutlined,
+  QuestionCircleOutlined,
 } from '@ant-design/icons';
 import GuidedDeployment from './GuidedDeployment';
 
@@ -85,11 +87,22 @@ const ApplicationManagement = () => {
 
   const handleCreateApplication = async (values) => {
     try {
-      // Mock create application
-      console.log('Application created successfully:', values);
+      // Create new application with unique ID
+      const newApplication = {
+        id: Date.now(), // Simple unique ID
+        name: values.name,
+        status: 'Pending',
+        description: values.description,
+        targetDevices: values.targetDevices || [],
+        createdAt: new Date().toISOString()
+      };
+      
+      // Add to applications list
+      setApplications(prevApplications => [...prevApplications, newApplication]);
+      
+      console.log('Application created successfully:', newApplication);
       setModalVisible(false);
       form.resetFields();
-      fetchApplications();
     } catch (error) {
       console.error('Error creating application:', error);
     }
@@ -97,9 +110,9 @@ const ApplicationManagement = () => {
 
   const handleDeleteApplication = async (appId) => {
     try {
-      // Mock delete application
+      // Remove application from list
+      setApplications(prevApplications => prevApplications.filter(app => app.id !== appId));
       console.log('Application deleted successfully:', appId);
-      fetchApplications();
     } catch (error) {
       console.error('Error deleting application:', error);
     }
@@ -107,9 +120,27 @@ const ApplicationManagement = () => {
 
   const handleDeployApplication = async (appId) => {
     try {
-      // Mock deploy application
+      // Update application status to Deploying, then Running
+      setApplications(prevApplications => 
+        prevApplications.map(app => 
+          app.id === appId 
+            ? { ...app, status: 'Deploying' }
+            : app
+        )
+      );
+      
+      // Simulate deployment process
+      setTimeout(() => {
+        setApplications(prevApplications => 
+          prevApplications.map(app => 
+            app.id === appId 
+              ? { ...app, status: 'Running' }
+              : app
+          )
+        );
+      }, 2000);
+      
       console.log('Application deployment started:', appId);
-      fetchApplications();
     } catch (error) {
       console.error('Error deploying application:', error);
     }
@@ -117,9 +148,16 @@ const ApplicationManagement = () => {
 
   const handleStopApplication = async (appId) => {
     try {
-      // Mock stop application
+      // Update application status to Stopped
+      setApplications(prevApplications => 
+        prevApplications.map(app => 
+          app.id === appId 
+            ? { ...app, status: 'Stopped' }
+            : app
+        )
+      );
+      
       console.log('Application stopped:', appId);
-      fetchApplications();
     } catch (error) {
       console.error('Error stopping application:', error);
     }
@@ -340,27 +378,33 @@ const ApplicationManagement = () => {
       <Card>
         <div style={{ marginBottom: 16 }}>
           <Space>
-            <Button
-              type="primary"
-              icon={<RocketOutlined />}
-              onClick={() => setGuidedDeploymentVisible(true)}
-              size="large"
-            >
-              Guided Deployment
-            </Button>
-            <Button
-              icon={<PlusOutlined />}
-              onClick={() => setModalVisible(true)}
-            >
-              Quick Create
-            </Button>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={fetchApplications}
-              loading={loading}
-            >
-              Refresh
-            </Button>
+            <Tooltip title="Use the step-by-step wizard to compile and deploy WASM applications">
+              <Button
+                type="primary"
+                icon={<RocketOutlined />}
+                onClick={() => setGuidedDeploymentVisible(true)}
+                size="large"
+              >
+                Guided Deployment
+              </Button>
+            </Tooltip>
+            <Tooltip title="Quickly create a new application with basic settings">
+              <Button
+                icon={<PlusOutlined />}
+                onClick={() => setModalVisible(true)}
+              >
+                Quick Create
+              </Button>
+            </Tooltip>
+            <Tooltip title="Refresh the application list to get the latest status">
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={fetchApplications}
+                loading={loading}
+              >
+                Refresh
+              </Button>
+            </Tooltip>
           </Space>
         </div>
 

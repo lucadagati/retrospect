@@ -14,6 +14,7 @@ import {
   Row,
   Col,
   Statistic,
+  Tooltip,
 } from 'antd';
 import {
   PlusOutlined,
@@ -22,6 +23,7 @@ import {
   CheckCircleOutlined,
   ExclamationCircleOutlined,
   ClockCircleOutlined,
+  QuestionCircleOutlined,
 } from '@ant-design/icons';
 
 const { Title } = Typography;
@@ -58,11 +60,22 @@ const DeviceManagement = () => {
 
   const handleCreateDevice = async (values) => {
     try {
-      // Mock create device
-      console.log('Device created successfully:', values);
+      // Create new device with unique ID
+      const newDevice = {
+        id: Date.now(), // Simple unique ID
+        name: values.name,
+        status: 'Enrolled',
+        type: values.type,
+        architecture: values.architecture,
+        lastHeartbeat: new Date().toISOString()
+      };
+      
+      // Add to devices list
+      setDevices(prevDevices => [...prevDevices, newDevice]);
+      
+      console.log('Device created successfully:', newDevice);
       setModalVisible(false);
       form.resetFields();
-      fetchDevices();
     } catch (error) {
       console.error('Error creating device:', error);
     }
@@ -70,9 +83,9 @@ const DeviceManagement = () => {
 
   const handleDeleteDevice = async (deviceId) => {
     try {
-      // Mock delete device
+      // Remove device from list
+      setDevices(prevDevices => prevDevices.filter(device => device.id !== deviceId));
       console.log('Device deleted successfully:', deviceId);
-      fetchDevices();
     } catch (error) {
       console.error('Error deleting device:', error);
     }
@@ -228,20 +241,24 @@ const DeviceManagement = () => {
       <Card>
         <div style={{ marginBottom: 16 }}>
           <Space>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setModalVisible(true)}
-            >
-              Add Device
-            </Button>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={fetchDevices}
-              loading={loading}
-            >
-              Refresh
-            </Button>
+            <Tooltip title="Create a new device with custom configuration">
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setModalVisible(true)}
+              >
+                Add Device
+              </Button>
+            </Tooltip>
+            <Tooltip title="Refresh the device list to get the latest status">
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={fetchDevices}
+                loading={loading}
+              >
+                Refresh
+              </Button>
+            </Tooltip>
           </Space>
         </div>
 
@@ -276,7 +293,14 @@ const DeviceManagement = () => {
         >
           <Form.Item
             name="name"
-            label="Device Name"
+            label={
+              <Space>
+                <span>Device Name</span>
+                <Tooltip title="Unique identifier for the device (e.g., mcu-board-1, riscv-board-2)">
+                  <QuestionCircleOutlined style={{ color: '#1890ff' }} />
+                </Tooltip>
+              </Space>
+            }
             rules={[{ required: true, message: 'Please enter device name' }]}
           >
             <Input placeholder="Enter device name" />
@@ -284,7 +308,14 @@ const DeviceManagement = () => {
 
           <Form.Item
             name="architecture"
-            label="Architecture"
+            label={
+              <Space>
+                <span>Architecture</span>
+                <Tooltip title="CPU architecture of the device (ARM64, x86_64, RISC-V 64)">
+                  <QuestionCircleOutlined style={{ color: '#1890ff' }} />
+                </Tooltip>
+              </Space>
+            }
             rules={[{ required: true, message: 'Please select architecture' }]}
           >
             <Select placeholder="Select architecture">
@@ -296,7 +327,14 @@ const DeviceManagement = () => {
 
           <Form.Item
             name="deviceType"
-            label="Device Type"
+            label={
+              <Space>
+                <span>Device Type</span>
+                <Tooltip title="Type of device (MCU: Microcontroller, MPU: Microprocessor, RISC-V: RISC-V processor)">
+                  <QuestionCircleOutlined style={{ color: '#1890ff' }} />
+                </Tooltip>
+              </Space>
+            }
             rules={[{ required: true, message: 'Please select device type' }]}
           >
             <Select placeholder="Select device type">
@@ -308,7 +346,14 @@ const DeviceManagement = () => {
 
           <Form.Item
             name="gatewayEndpoint"
-            label="Gateway Endpoint"
+            label={
+              <Space>
+                <span>Gateway Endpoint</span>
+                <Tooltip title="Network endpoint where the device will connect to the gateway">
+                  <QuestionCircleOutlined style={{ color: '#1890ff' }} />
+                </Tooltip>
+              </Space>
+            }
             rules={[{ required: true, message: 'Please enter gateway endpoint' }]}
           >
             <Input placeholder="gateway-1.wasmbed.svc.cluster.local:30430" />

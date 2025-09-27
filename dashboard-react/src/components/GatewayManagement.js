@@ -16,6 +16,7 @@ import {
   Statistic,
   Descriptions,
   Switch,
+  Tooltip,
 } from 'antd';
 import {
   PlusOutlined,
@@ -25,6 +26,7 @@ import {
   ExclamationCircleOutlined,
   ClockCircleOutlined,
   SettingOutlined,
+  QuestionCircleOutlined,
 } from '@ant-design/icons';
 
 const { Title } = Typography;
@@ -61,11 +63,23 @@ const GatewayManagement = () => {
 
   const handleCreateGateway = async (values) => {
     try {
-      // Mock create gateway
-      console.log('Gateway created successfully:', values);
+      // Create new gateway with unique ID
+      const newGateway = {
+        id: Date.now(), // Simple unique ID
+        name: values.name,
+        status: 'Active',
+        endpoint: values.endpoint,
+        connectedDevices: 0,
+        enrolledDevices: 0,
+        createdAt: new Date().toISOString()
+      };
+      
+      // Add to gateways list
+      setGateways(prevGateways => [...prevGateways, newGateway]);
+      
+      console.log('Gateway created successfully:', newGateway);
       setModalVisible(false);
       form.resetFields();
-      fetchGateways();
     } catch (error) {
       console.error('Error creating gateway:', error);
     }
@@ -73,9 +87,9 @@ const GatewayManagement = () => {
 
   const handleDeleteGateway = async (gatewayId) => {
     try {
-      // Mock delete gateway
+      // Remove gateway from list
+      setGateways(prevGateways => prevGateways.filter(gateway => gateway.id !== gatewayId));
       console.log('Gateway deleted successfully:', gatewayId);
-      fetchGateways();
     } catch (error) {
       console.error('Error deleting gateway:', error);
     }
@@ -83,12 +97,19 @@ const GatewayManagement = () => {
 
   const handleUpdateGatewayConfig = async (values) => {
     try {
-      // Mock update gateway config
+      // Update gateway configuration
+      setGateways(prevGateways => 
+        prevGateways.map(gateway => 
+          gateway.id === selectedGateway.id 
+            ? { ...gateway, ...values }
+            : gateway
+        )
+      );
+      
       console.log('Gateway configuration updated successfully:', values);
       setConfigModalVisible(false);
       configForm.resetFields();
       setSelectedGateway(null);
-      fetchGateways();
     } catch (error) {
       console.error('Error updating gateway configuration:', error);
     }
@@ -96,9 +117,16 @@ const GatewayManagement = () => {
 
   const handleToggleGateway = async (gatewayId, enabled) => {
     try {
-      // Mock toggle gateway
+      // Update gateway status
+      setGateways(prevGateways => 
+        prevGateways.map(gateway => 
+          gateway.id === gatewayId 
+            ? { ...gateway, status: enabled ? 'Active' : 'Inactive' }
+            : gateway
+        )
+      );
+      
       console.log(`Gateway ${enabled ? 'enabled' : 'disabled'} successfully:`, gatewayId);
-      fetchGateways();
     } catch (error) {
       console.error('Error toggling gateway:', error);
     }
