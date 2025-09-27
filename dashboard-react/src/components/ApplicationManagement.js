@@ -41,27 +41,39 @@ const { Title } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
 
+// Initial mock data
+const initialApplications = [
+  { id: 1, name: 'test-app-1', status: 'Running', description: 'Test Application 1', targetDevices: ['mcu-board-1', 'mcu-board-2'] },
+  { id: 2, name: 'test-app-2', status: 'Running', description: 'Test Application 2', targetDevices: ['riscv-board-1', 'riscv-board-2'] }
+];
+
+const initialDevices = [
+  { id: 1, name: 'mcu-board-1', status: 'Connected', type: 'MCU' },
+  { id: 2, name: 'mcu-board-2', status: 'Connected', type: 'MCU' },
+  { id: 3, name: 'mcu-board-3', status: 'Connected', type: 'MCU' },
+  { id: 4, name: 'riscv-board-1', status: 'Connected', type: 'RISC-V' },
+  { id: 5, name: 'riscv-board-2', status: 'Connected', type: 'RISC-V' },
+  { id: 6, name: 'riscv-board-3', status: 'Connected', type: 'RISC-V' }
+];
+
 const ApplicationManagement = () => {
-  const [applications, setApplications] = useState([]);
-  const [devices, setDevices] = useState([]);
+  const [applications, setApplications] = useState(initialApplications);
+  const [devices, setDevices] = useState(initialDevices);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [guidedDeploymentVisible, setGuidedDeploymentVisible] = useState(false);
   const [form] = Form.useForm();
 
+  // Initialize data only once
   useEffect(() => {
-    fetchApplications();
-    fetchDevices();
+    setLoading(false);
   }, []);
 
   const fetchApplications = async () => {
     setLoading(true);
     try {
-      // Use mock data for development
-      setApplications([
-        { id: 1, name: 'test-app-1', status: 'Running', description: 'Test Application 1', targetDevices: ['mcu-board-1', 'mcu-board-2'] },
-        { id: 2, name: 'test-app-2', status: 'Running', description: 'Test Application 2', targetDevices: ['riscv-board-1', 'riscv-board-2'] }
-      ]);
+      // In a real application, this would fetch from an API
+      console.log('Refreshing applications list...');
     } catch (error) {
       console.error('Error fetching applications:', error);
     } finally {
@@ -71,15 +83,8 @@ const ApplicationManagement = () => {
 
   const fetchDevices = async () => {
     try {
-      // Use mock data for development
-      setDevices([
-        { id: 1, name: 'mcu-board-1', status: 'Connected', type: 'MCU' },
-        { id: 2, name: 'mcu-board-2', status: 'Connected', type: 'MCU' },
-        { id: 3, name: 'mcu-board-3', status: 'Connected', type: 'MCU' },
-        { id: 4, name: 'riscv-board-1', status: 'Connected', type: 'RISC-V' },
-        { id: 5, name: 'riscv-board-2', status: 'Connected', type: 'RISC-V' },
-        { id: 6, name: 'riscv-board-3', status: 'Connected', type: 'RISC-V' }
-      ]);
+      // In a real application, this would fetch from an API
+      console.log('Refreshing devices list...');
     } catch (error) {
       console.error('Error fetching devices:', error);
     }

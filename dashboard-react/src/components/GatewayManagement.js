@@ -32,8 +32,15 @@ import {
 const { Title } = Typography;
 const { Option } = Select;
 
+// Initial mock data
+const initialGateways = [
+  { id: 1, name: 'gateway-1', status: 'Active', endpoint: '127.0.0.1:30452', connectedDevices: 2, enrolledDevices: 6 },
+  { id: 2, name: 'gateway-2', status: 'Active', endpoint: '127.0.0.1:30454', connectedDevices: 2, enrolledDevices: 6 },
+  { id: 3, name: 'gateway-3', status: 'Active', endpoint: '127.0.0.1:30456', connectedDevices: 2, enrolledDevices: 6 }
+];
+
 const GatewayManagement = () => {
-  const [gateways, setGateways] = useState([]);
+  const [gateways, setGateways] = useState(initialGateways);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [configModalVisible, setConfigModalVisible] = useState(false);
@@ -41,19 +48,16 @@ const GatewayManagement = () => {
   const [form] = Form.useForm();
   const [configForm] = Form.useForm();
 
+  // Initialize data only once
   useEffect(() => {
-    fetchGateways();
+    setLoading(false);
   }, []);
 
   const fetchGateways = async () => {
     setLoading(true);
     try {
-      // Use mock data for development
-      setGateways([
-        { id: 1, name: 'gateway-1', status: 'Active', endpoint: '127.0.0.1:30452', connectedDevices: 2, enrolledDevices: 6 },
-        { id: 2, name: 'gateway-2', status: 'Active', endpoint: '127.0.0.1:30454', connectedDevices: 2, enrolledDevices: 6 },
-        { id: 3, name: 'gateway-3', status: 'Active', endpoint: '127.0.0.1:30456', connectedDevices: 2, enrolledDevices: 6 }
-      ]);
+      // In a real application, this would fetch from an API
+      console.log('Refreshing gateways list...');
     } catch (error) {
       console.error('Error fetching gateways:', error);
     } finally {
