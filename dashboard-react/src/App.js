@@ -61,7 +61,6 @@ function App() {
   return (
     <ConfigProvider
       theme={{
-        algorithm: 'dark',
         token: {
           colorPrimary: '#1890ff',
           borderRadius: 8,
