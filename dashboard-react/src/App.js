@@ -62,58 +62,95 @@ function App() {
     <ConfigProvider
       theme={{
         token: {
-          colorPrimary: '#1890ff',
+          colorPrimary: '#4a5568',
           borderRadius: 8,
-          colorBgContainer: '#2f2f2f',
-          colorBgElevated: '#3a3a3a',
-          colorBgLayout: '#1f1f1f',
-          colorBorder: '#434343',
-          colorText: '#ffffff',
-          colorTextSecondary: '#b8b8b8',
-          colorTextTertiary: '#8c8c8c',
-          colorBgBase: '#1f1f1f',
+          colorBgContainer: '#2d3748',
+          colorBgElevated: '#4a5568',
+          colorBgLayout: '#1a202c',
+          colorBorder: '#4a5568',
+          colorText: '#e2e8f0',
+          colorTextSecondary: '#a0aec0',
+          colorTextTertiary: '#718096',
+          colorBgBase: '#1a202c',
+          colorSuccess: '#68d391',
+          colorWarning: '#f6e05e',
+          colorError: '#fc8181',
+          colorInfo: '#63b3ed',
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
         },
         components: {
           Layout: {
-            headerBg: '#2f2f2f',
-            siderBg: '#1f1f1f',
-            bodyBg: '#1f1f1f',
+            headerBg: '#2d3748',
+            siderBg: '#1a202c',
+            bodyBg: '#1a202c',
           },
           Menu: {
             itemBg: 'transparent',
-            itemSelectedBg: '#1890ff',
-            itemHoverBg: '#3a3a3a',
-            darkItemBg: '#1f1f1f',
-            darkItemSelectedBg: '#1890ff',
-            darkItemHoverBg: '#3a3a3a',
+            itemSelectedBg: '#4a5568',
+            itemHoverBg: '#2d3748',
+            darkItemBg: '#1a202c',
+            darkItemSelectedBg: '#4a5568',
+            darkItemHoverBg: '#2d3748',
+            colorText: '#e2e8f0',
+            colorTextSecondary: '#a0aec0',
           },
           Card: {
             borderRadius: 8,
-            colorBgContainer: '#2f2f2f',
-            boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 1px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px 0 rgba(0, 0, 0, 0.2)',
+            colorBgContainer: '#2d3748',
+            colorBorder: '#4a5568',
+            boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.4), 0 1px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px 0 rgba(0, 0, 0, 0.3)',
           },
           Table: {
             borderRadius: 8,
-            headerBg: '#3a3a3a',
-            colorBgContainer: '#2f2f2f',
-            colorText: '#ffffff',
-            colorTextHeading: '#ffffff',
+            headerBg: '#4a5568',
+            colorBgContainer: '#2d3748',
+            colorText: '#e2e8f0',
+            colorTextHeading: '#e2e8f0',
+            colorBorder: '#4a5568',
+            colorSplit: '#4a5568',
           },
           Button: {
-            colorBgContainer: '#3a3a3a',
-            colorBorder: '#434343',
-            colorText: '#ffffff',
+            colorBgContainer: '#4a5568',
+            colorBorder: '#4a5568',
+            colorText: '#e2e8f0',
+            colorPrimary: '#4a5568',
+            colorPrimaryHover: '#2d3748',
+            colorPrimaryActive: '#1a202c',
           },
           Input: {
-            colorBgContainer: '#3a3a3a',
-            colorBorder: '#434343',
-            colorText: '#ffffff',
+            colorBgContainer: '#4a5568',
+            colorBorder: '#4a5568',
+            colorText: '#e2e8f0',
+            colorTextPlaceholder: '#a0aec0',
           },
           Select: {
-            colorBgContainer: '#3a3a3a',
-            colorBorder: '#434343',
-            colorText: '#ffffff',
+            colorBgContainer: '#4a5568',
+            colorBorder: '#4a5568',
+            colorText: '#e2e8f0',
+            colorTextPlaceholder: '#a0aec0',
+          },
+          Modal: {
+            colorBgElevated: '#2d3748',
+            colorText: '#e2e8f0',
+          },
+          Form: {
+            labelColor: '#e2e8f0',
+          },
+          Typography: {
+            colorText: '#e2e8f0',
+            colorTextSecondary: '#a0aec0',
+            colorTextTertiary: '#718096',
+          },
+          Tag: {
+            colorText: '#e2e8f0',
+          },
+          Tooltip: {
+            colorBgSpotlight: '#1a202c',
+            colorTextLightSolid: '#e2e8f0',
+          },
+          Popconfirm: {
+            colorBgElevated: '#2d3748',
+            colorText: '#e2e8f0',
           },
         },
       }}
@@ -131,14 +168,14 @@ function App() {
             <div className="logo" style={{ 
               height: 80, 
               margin: 16, 
-              background: 'rgba(255, 255, 255, 0.1)',
+              background: '#2d3748',
               borderRadius: borderRadiusLG,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexDirection: 'column',
               padding: '12px',
-              border: '1px solid rgba(255, 255, 255, 0.1)'
+              border: '1px solid #4a5568'
             }}>
               <img 
                 src="/Logo_Serics.png" 
@@ -153,13 +190,13 @@ function App() {
                 <div style={{ 
                   fontSize: '12px', 
                   fontWeight: 'bold', 
-                  color: '#1890ff',
+                  color: '#e2e8f0',
                   textAlign: 'center',
                   lineHeight: 1.2
                 }}>
                   RETROSPECT
                   <br />
-                  <span style={{ fontSize: '9px', color: '#b8b8b8' }}>
+                  <span style={{ fontSize: '9px', color: '#a0aec0' }}>
                     MdsLab - UniMe
                   </span>
                 </div>
@@ -215,7 +252,7 @@ function App() {
                 </div>
               </div>
               <div style={{ 
-                color: '#b8b8b8', 
+                color: '#a0aec0', 
                 fontSize: '14px', 
                 textAlign: 'right',
                 display: 'flex',
@@ -228,7 +265,7 @@ function App() {
                 </div>
                 <div style={{ 
                   fontSize: '12px', 
-                  color: '#8c8c8c',
+                  color: '#718096',
                   fontStyle: 'italic'
                 }}>
                   Edge Device Management Platform

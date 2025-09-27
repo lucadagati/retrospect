@@ -87,11 +87,11 @@ const NetworkTopology = () => {
   const getDeviceIcon = (type) => {
     switch (type) {
       case 'MCU':
-        return <DesktopOutlined style={{ color: '#1890ff' }} />;
+        return <DesktopOutlined style={{ color: '#63b3ed' }} />;
       case 'RISC-V':
-        return <DesktopOutlined style={{ color: '#722ed1' }} />;
+        return <DesktopOutlined style={{ color: '#b794f6' }} />;
       default:
-        return <DesktopOutlined style={{ color: '#666' }} />;
+        return <DesktopOutlined style={{ color: '#a0aec0' }} />;
     }
   };
 
@@ -121,7 +121,7 @@ const NetworkTopology = () => {
       <Card 
         title={
           <Space>
-            <CloudServerOutlined style={{ color: '#1890ff' }} />
+            <CloudServerOutlined style={{ color: '#63b3ed' }} />
             <span>Infrastructure Layer</span>
           </Space>
         }
@@ -135,9 +135,9 @@ const NetworkTopology = () => {
               alignItems: 'center', 
               justifyContent: 'space-between',
               padding: '12px',
-              background: 'rgba(24, 144, 255, 0.1)',
+              background: 'rgba(99, 179, 237, 0.1)',
               borderRadius: '6px',
-              border: '1px solid rgba(24, 144, 255, 0.3)'
+              border: '1px solid rgba(99, 179, 237, 0.3)'
             }}>
               <div>
                 <Text strong>Infrastructure Service</Text>
@@ -164,7 +164,7 @@ const NetworkTopology = () => {
         <div style={{ textAlign: 'center', margin: '16px 0' }}>
           <ArrowDownOutlined style={{ 
             fontSize: '24px', 
-            color: '#1890ff',
+            color: '#63b3ed',
             animation: 'pulse 2s infinite'
           }} />
         </div>
@@ -174,7 +174,7 @@ const NetworkTopology = () => {
       <Card 
         title={
           <Space>
-            <GatewayOutlined style={{ color: '#52c41a' }} />
+            <GatewayOutlined style={{ color: '#68d391' }} />
             <span>Gateway Layer</span>
           </Space>
         }
@@ -190,9 +190,9 @@ const NetworkTopology = () => {
                   alignItems: 'center', 
                   justifyContent: 'space-between',
                   padding: '12px',
-                  background: 'rgba(82, 196, 26, 0.1)',
+                  background: 'rgba(104, 211, 145, 0.1)',
                   borderRadius: '6px',
-                  border: '1px solid rgba(82, 196, 26, 0.3)'
+                  border: '1px solid rgba(104, 211, 145, 0.3)'
                 }}>
                   <div>
                     <Text strong>{gateway.name}</Text>
@@ -228,7 +228,7 @@ const NetworkTopology = () => {
                   }}>
                     <ArrowDownOutlined style={{ 
                       fontSize: '16px', 
-                      color: '#52c41a',
+                      color: '#68d391',
                       animation: 'pulse 2s infinite'
                     }} />
                   </div>
@@ -243,7 +243,7 @@ const NetworkTopology = () => {
       <Card 
         title={
           <Space>
-            <DesktopOutlined style={{ color: '#722ed1' }} />
+            <DesktopOutlined style={{ color: '#b794f6' }} />
             <span>Device Layer</span>
           </Space>
         }
@@ -259,12 +259,12 @@ const NetworkTopology = () => {
                   justifyContent: 'space-between',
                   padding: '12px',
                   background: device.status === 'connected' 
-                    ? 'rgba(82, 196, 26, 0.1)' 
-                    : 'rgba(255, 77, 79, 0.1)',
+                    ? 'rgba(104, 211, 145, 0.1)' 
+                    : 'rgba(252, 129, 129, 0.1)',
                   borderRadius: '6px',
                   border: `1px solid ${device.status === 'connected' 
-                    ? 'rgba(82, 196, 26, 0.3)' 
-                    : 'rgba(255, 77, 79, 0.3)'}`,
+                    ? 'rgba(104, 211, 145, 0.3)' 
+                    : 'rgba(252, 129, 129, 0.3)'}`,
                   position: 'relative'
                 }}>
                   <div>
@@ -293,7 +293,7 @@ const NetworkTopology = () => {
                       width: '8px',
                       height: '8px',
                       borderRadius: '50%',
-                      background: '#52c41a',
+                      background: '#68d391',
                       animation: 'pulse 2s infinite'
                     }} />
                   )}
@@ -313,7 +313,7 @@ const NetworkTopology = () => {
         <Row gutter={[16, 16]}>
           <Col xs={12} sm={6}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#52c41a' }}>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#68d391' }}>
                 {topologyData.gateways.filter(g => g.status === 'active').length}
               </div>
               <Text type="secondary">Active Gateways</Text>
@@ -321,7 +321,7 @@ const NetworkTopology = () => {
           </Col>
           <Col xs={12} sm={6}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#1890ff' }}>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#63b3ed' }}>
                 {topologyData.devices.length}
               </div>
               <Text type="secondary">Total Devices</Text>
@@ -329,7 +329,7 @@ const NetworkTopology = () => {
           </Col>
           <Col xs={12} sm={6}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#52c41a' }}>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#68d391' }}>
                 {topologyData.devices.filter(d => d.status === 'connected').length}
               </div>
               <Text type="secondary">Connected Devices</Text>
@@ -337,7 +337,7 @@ const NetworkTopology = () => {
           </Col>
           <Col xs={12} sm={6}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#faad14' }}>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f6e05e' }}>
                 {topologyData.devices.filter(d => d.status === 'disconnected').length}
               </div>
               <Text type="secondary">Disconnected Devices</Text>
