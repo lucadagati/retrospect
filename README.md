@@ -1,29 +1,22 @@
 # Wasmbed Platform
 
-A simple WebAssembly runtime platform for edge devices with hello world functionality.
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
+[![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
+[![Kubernetes](https://img.shields.io/badge/kubernetes-1.28+-blue.svg)](https://kubernetes.io/)
+[![WebAssembly](https://img.shields.io/badge/WebAssembly-1.0+-purple.svg)](https://webassembly.org/)
 
-## Table of Contents
+**A complete WebAssembly-based edge computing platform for IoT devices with Kubernetes orchestration, TLS security, and real-time monitoring.**
 
-1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Quick Start](#quick-start)
-4. [Documentation](#documentation)
-5. [Current Status](#current-status)
-6. [Contributing](#contributing)
-7. [License](#license)
+## 🚀 Overview
 
-## Overview
+Wasmbed Platform is a production-ready edge computing solution that enables secure deployment and management of WebAssembly applications on IoT devices. The platform provides:
 
-Wasmbed is a simple WebAssembly runtime designed to enable basic WASM execution on edge devices. The platform provides a minimal hello world environment for testing and development.
-
-### Key Features
-
-- **Kubernetes Integration**: Custom CRDs and controllers for application lifecycle management
-- **TLS Security**: Mutual authentication with custom TLS implementation
-- **QEMU Emulation**: Realistic emulation of edge devices for development and testing
-- **WebAssembly Runtime**: Simple runtime for basic WASM execution
-- **Hello World Functions**: Basic print and timestamp functions for testing
-- **Device Management**: Secure enrollment and connection workflows
+- **Secure Device Enrollment**: TLS-based authentication with Ed25519 keypairs
+- **Kubernetes Orchestration**: Full CRD-based management with controllers
+- **Real-time Monitoring**: Comprehensive metrics, logging, and health monitoring
+- **Edge Gateway**: High-performance gateway for device communication
+- **Modern Dashboard**: React-based web interface for platform management
+- **QEMU Integration**: Device emulation for development and testing
 
 ## Architecture
 
@@ -31,533 +24,605 @@ The platform follows a 3-layer architecture:
 
 ```mermaid
 graph TB
-    subgraph "Cloud Layer"
-        K8S[Kubernetes Cluster]
-        CTRL[Custom Controllers]
-        CRD[Application/Device CRDs]
-        RBAC[RBAC & Security Policies]
-        ETCD[etcd State Store]
+    subgraph "Control Plane (Kubernetes)"
+        CP[Kubernetes Cluster]
+        DC[Device Controller]
+        AC[Application Controller]
+        GC[Gateway Controller]
+        CRD[Custom Resources]
+        RBAC[RBAC Policies]
+        
+        CP --> DC
+        CP --> AC
+        CP --> GC
+        CP --> CRD
+        CP --> RBAC
     end
     
-    subgraph "Fog Layer"
-        GW[Gateway MPU]
-        TLS[TLS Bridge]
-        MR[microROS Bridge]
-        FDDS[FastDDS Middleware]
-        AUTH[Device Authentication]
+    subgraph "Gateway Layer (Edge)"
+        GW[Gateway Service]
+        TLS[TLS Server]
+        HTTP[HTTP API]
+        ENR[Enrollment Service]
+        DEP[Deployment Service]
+        HB[Heartbeat Manager]
+        CACHE[Local Cache]
+        
+        GW --> TLS
+        GW --> HTTP
+        GW --> ENR
+        GW --> DEP
+        GW --> HB
+        GW --> CACHE
     end
     
-    subgraph "Edge Layer"
-        MPU[MPU Devices]
-        MCU[MCU Devices]
-        RISCV[RISC-V Devices]
-        WASM[WebAssembly Runtime]
-        HW[Hello World Functions]
-        TLS_CLIENT[TLS Client]
+    subgraph "Device Layer (QEMU Emulated)"
+        QEMU[QEMU Emulation]
+        MCU[MCU Runtime]
+        MPU[MPU Runtime]
+        RISC[RISC-V Runtime]
+        RT[Common Runtime]
+        TLS_C[TLS Client]
+        ENR_C[Enrollment Client]
+        WASM[WASM Runtime]
+        KP[Keypair Generator]
+        
+        QEMU --> MCU
+        QEMU --> MPU
+        QEMU --> RISC
+        MCU --> RT
+        MPU --> RT
+        RISC --> RT
+        RT --> TLS_C
+        RT --> ENR_C
+        RT --> WASM
+        RT --> KP
     end
     
-    K8S --> GW
-    CTRL --> GW
-    CRD --> GW
-    RBAC --> GW
-    ETCD --> K8S
+    subgraph "Infrastructure"
+        CA[Certificate Authority]
+        SS[Secret Store]
+        MON[Monitoring & Logging]
+        METRICS[Metrics Collection]
+        
+        CA --> TLS
+        CA --> TLS_C
+        SS --> CP
+        MON --> GW
+        MON --> CP
+        METRICS --> MON
+    end
     
-    GW --> TLS
-    GW --> MR
-    GW --> FDDS
-    GW --> AUTH
+    subgraph "Management"
+        DASH[Dashboard Service]
+        REACT[React Frontend]
+        API[REST API]
+        
+        DASH --> REACT
+        DASH --> API
+        API --> GW
+        API --> CP
+    end
     
-    TLS --> MPU
-    TLS --> MCU
-    TLS --> RISCV
-    MR --> MPU
-    FDDS --> MCU
-    AUTH --> RISCV
-    
-    MPU --> WASM
-    MCU --> WASM
-    RISCV --> WASM
-    MPU --> TLS_CLIENT
-    MCU --> TLS_CLIENT
-    RISCV --> TLS_CLIENT
+    %% Connections
+    DC -.->|Device CRD| GW
+    AC -.->|Application CRD| GW
+    GC -.->|Gateway CRD| GW
+    TLS -.->|TLS Connection| TLS_C
+    HTTP -.->|REST API| DASH
+    ENR -.->|Enrollment| ENR_C
+    DEP -.->|WASM Deployment| WASM
+    HB -.->|Heartbeat| TLS_C
 ```
 
-### Cloud Layer
-- Kubernetes cluster with custom controllers
-- Application and Device CRDs
-- RBAC and security policies
-- etcd for state persistence
+## 🔧 Key Features
 
-### Fog Layer
-- Gateway MPU providing TLS-secured communication bridge
-- microROS bridge for PX4 integration
-- FastDDS middleware for real-time communication
-- Device enrollment and authentication
+### 🔐 **Security First**
+- **TLS 1.3**: End-to-end encryption for all communications
+- **Ed25519 Cryptography**: Modern elliptic curve digital signatures
+- **Certificate Management**: Automated CA and certificate lifecycle
+- **RBAC**: Role-based access control for Kubernetes resources
 
-### Edge Layer
-- Heterogeneous devices (MPU, MCU, RISC-V)
-- WebAssembly runtime for no_std environments
-- TLS client implementation
-- Real-time application execution
+### ⚡ **High Performance**
+- **WebAssembly Runtime**: Fast, secure, and portable application execution
+- **Edge Gateway**: Low-latency communication with devices
+- **QEMU Integration**: Hardware-accelerated device emulation
+- **Optimized Controllers**: Efficient Kubernetes resource management
 
-## Workflows
+### 📊 **Comprehensive Monitoring**
+- **Real-time Metrics**: System performance and health indicators
+- **Structured Logging**: Centralized log aggregation and analysis
+- **Health Checks**: Automated service health monitoring
+- **Alerting**: Proactive issue detection and notification
 
-### Device Enrollment Workflow
+### 🎛️ **Modern Management**
+- **React Dashboard**: Intuitive web-based management interface
+- **REST APIs**: Programmatic access to all platform features
+- **Kubernetes Native**: Full integration with Kubernetes ecosystem
+- **CLI Tools**: Command-line utilities for automation
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Rust 1.70+**: For building platform components
+- **Node.js 16+**: For React dashboard development
+- **Docker**: For containerization and QEMU integration
+- **k3d**: Lightweight Kubernetes for local development
+- **kubectl**: Kubernetes command-line tool
+
+### Installation
+
+1. **Clone the repository**:
+```bash
+git clone https://github.com/wasmbed/wasmbed-platform.git
+cd wasmbed-platform
+```
+
+2. **Install dependencies**:
+```bash
+# Install Rust (if not already installed)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Install Node.js dependencies
+cd dashboard-react && npm install && cd ..
+
+# Install k3d
+curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+```
+
+3. **Build the platform**:
+```bash
+./scripts/build.sh
+```
+
+4. **Deploy the platform**:
+```bash
+./scripts/deploy.sh
+```
+
+5. **Access the dashboard**:
+```bash
+# Open your browser to:
+http://localhost:30470
+```
+
+## 🎛️ Management Scripts
+
+The platform includes a comprehensive suite of management scripts accessible via the `wasmbed` command:
+
+### **Main Console**
+```bash
+wasmbed                    # Interactive management console
+wasmbed help              # Show all available commands
+```
+
+### **Core Operations**
+```bash
+wasmbed clean             # Clean up all resources
+wasmbed build             # Build all components
+wasmbed deploy            # Deploy the complete platform
+wasmbed stop              # Stop all services
+wasmbed status            # Check system status
+```
+
+### **Resource Management**
+```bash
+wasmbed devices           # Device management operations
+wasmbed applications      # Application management operations
+wasmbed monitor           # Monitoring and observability
+wasmbed logs              # View system logs
+wasmbed certs             # Certificate management
+```
+
+### **Development Tools**
+```bash
+wasmbed test              # Run end-to-end tests
+wasmbed dev               # Start development environment
+wasmbed shell             # Access platform shell
+```
+
+## 📊 Service Endpoints
+
+| Service | Port | Protocol | Description |
+|---------|------|----------|-------------|
+| **Dashboard** | 30470 | HTTP | React web interface |
+| **Gateway HTTP** | 30451 | HTTP | REST API for management |
+| **Gateway TLS** | 30450 | TLS | Secure device communication |
+| **Infrastructure** | 30460 | HTTP | CA, monitoring, logging |
+| **Kubernetes API** | 6443 | HTTPS | k3d cluster API |
+
+## 🔄 Workflows
+
+### **Device Enrollment Workflow**
 
 ```mermaid
 sequenceDiagram
     participant D as Device
     participant G as Gateway
     participant K as Kubernetes
-    participant C as Controller
+    participant CA as Certificate Authority
     
-    D->>G: 1. Connection Request
-    G->>D: 2. Certificate Request
-    D->>G: 3. Device Certificate + Public Key
-    G->>G: 4. Validate Certificate
-    G->>K: 5. Create Device CRD
-    K->>C: 6. Device Created Event
-    C->>C: 7. Reconcile Device
-    C->>K: 8. Update Device Status
-    K->>G: 9. Device Status Update
-    G->>D: 10. Enrollment Success
-    D->>G: 11. Start Heartbeat
+    Note over D,CA: Device Enrollment Process
+    
+    D->>D: Generate Ed25519 keypair
+    D->>G: Enrollment request (public key)
+    G->>CA: Validate public key
+    CA-->>G: Validation result
+    G->>K: Create Device CRD
+    K-->>G: Device UUID
+    G->>D: Return UUID
+    D->>D: Store UUID securely
+    
+    Note over D,CA: Device is now enrolled
 ```
 
-### Application Deployment Workflow
+### **Application Deployment Workflow**
 
 ```mermaid
 sequenceDiagram
     participant U as User
+    participant D as Dashboard
     participant K as Kubernetes
-    participant C as Controller
     participant G as Gateway
-    participant D as Device
+    participant DEV as Device
     
-    U->>K: 1. Deploy Application CRD
-    K->>C: 2. Application Created Event
-    C->>C: 3. Validate Application
-    C->>G: 4. Deploy to Gateway
-    G->>G: 5. Load WASM Binary
-    G->>D: 6. Send Application
-    D->>D: 7. Load WASM Runtime
-    D->>G: 8. Application Ready
-    G->>K: 9. Update Application Status
-    K->>C: 10. Status Update Event
-    C->>K: 11. Update Application CRD
+    Note over U,DEV: Application Deployment Process
+    
+    U->>D: Create application
+    D->>K: Submit Application CRD
+    K->>K: Application Controller reconciles
+    K->>G: Deployment request
+    G->>DEV: Deploy WASM bytecode
+    DEV->>DEV: Execute application
+    DEV->>G: Status update
+    G->>K: Update Application status
+    K->>D: Status notification
+    D->>U: Show deployment status
+    
+    Note over U,DEV: Application is running
 ```
 
-### PX4 Communication Workflow
+### **Device Connection Workflow**
 
 ```mermaid
 sequenceDiagram
-    participant PX4 as PX4 Autopilot
-    participant MR as microROS Bridge
-    participant FDDS as FastDDS
+    participant D as Device
     participant G as Gateway
-    participant APP as WASM App
+    participant K as Kubernetes
     
-    PX4->>MR: 1. UORB Topics
-    MR->>FDDS: 2. Convert to DDS
-    FDDS->>G: 3. DDS Messages
-    G->>APP: 4. Process Commands
-    APP->>G: 5. Control Commands
-    G->>FDDS: 6. Send Commands
-    FDDS->>MR: 7. DDS to microROS
-    MR->>PX4: 8. MAVLink Commands
-    PX4->>MR: 9. Status Updates
-    MR->>FDDS: 10. Status to DDS
-    FDDS->>G: 11. Status Messages
-    G->>APP: 12. Update Status
+    Note over D,K: Device Connection Process
+    
+    D->>G: TLS handshake (UUID + public key)
+    G->>K: Verify device in CRD
+    K-->>G: Device validation
+    G->>D: TLS connection established
+    
+    loop Heartbeat (every 30s)
+        D->>G: Heartbeat message
+        G->>K: Update device status
+    end
+    
+    Note over D,K: Device is connected and monitored
 ```
 
-## Quick Start
+## 🏛️ Architecture Components
 
-### Prerequisites
+### **Control Plane (Kubernetes)**
+The Kubernetes-based control plane provides orchestration and management capabilities:
 
-- Docker and Docker Compose
-- Kubernetes cluster (k3d recommended for local development)
-- QEMU system emulators (qemu-system-riscv32, qemu-system-arm, qemu-system-xtensa)
-- Rust toolchain
+- **Device Controller**: Manages device lifecycle, enrollment, and status
+- **Application Controller**: Handles WASM application deployment and updates
+- **Gateway Controller**: Manages gateway instances and load balancing
+- **Custom Resources**: Device, Application, and Gateway CRDs
+- **RBAC**: Secure access control for all operations
 
-### Installation
+### **Gateway Layer (Edge)**
+High-performance edge gateways provide device connectivity and management:
 
-1. Clone the repository:
+- **TLS Server**: Secure communication endpoint for devices
+- **HTTP API**: RESTful interface for management operations
+- **Enrollment Service**: Device registration and authentication
+- **Deployment Service**: WASM application distribution
+- **Heartbeat Manager**: Device health monitoring
+- **Local Cache**: Performance optimization and offline capability
+
+### **Device Layer (QEMU Emulated)**
+Emulated IoT devices running WebAssembly applications:
+
+- **QEMU Emulation**: MCU, MPU, and RISC-V device simulation
+- **Common Runtime**: Unified runtime environment for all architectures
+- **TLS Client**: Secure communication with gateways
+- **Enrollment Client**: Device registration and key management
+- **WASM Runtime**: WebAssembly application execution
+- **Keypair Generator**: Cryptographic key generation and management
+
+### **Infrastructure**
+Supporting services for platform operation:
+
+- **Certificate Authority**: TLS certificate generation and validation
+- **Secret Store**: Secure storage for sensitive data
+- **Monitoring & Logging**: System observability and debugging
+- **Metrics Collection**: Performance and usage analytics
+
+### **Management**
+User interfaces and management tools:
+
+- **Dashboard Service**: Web-based management interface
+- **React Frontend**: Modern, responsive user interface
+- **REST API**: Programmatic access to platform features
+- **CLI Tools**: Command-line utilities for automation
+
+## 🧪 Testing
+
+### **Unit Tests**
 ```bash
-git clone https://github.com/lucadagati/retrospect.git
-cd retrospect
+cargo test                    # Run all Rust unit tests
+cd dashboard-react && npm test # Run React component tests
 ```
 
-2. Deploy the complete platform:
+### **Integration Tests**
 ```bash
-# Unified management script (recommended)
-./scripts/manage-system.sh clean-deploy
-
-# Or step-by-step
-./scripts/manage-system.sh clean
-./scripts/manage-system.sh deploy
+./scripts/test.sh            # Run end-to-end integration tests
 ```
 
-3. Test the system:
+### **Manual Testing**
 ```bash
-# Complete system test
-./scripts/test-deployment.sh
+# Test device enrollment
+wasmbed devices create test-device
 
-# Local development test
-./scripts/test-complete-system.sh
+# Test application deployment
+wasmbed applications deploy hello-world.wasm
 
-# ROS 2 integration test
-./scripts/test-ros2-integration.sh
+# Monitor system health
+wasmbed monitor
 ```
 
-4. Monitor the platform:
+## 📈 Monitoring & Observability
+
+### **Metrics**
+- **System Metrics**: CPU, memory, disk usage
+- **Device Metrics**: Connection count, heartbeat status
+- **Application Metrics**: Deployment success rate, execution time
+- **Gateway Metrics**: Request latency, error rates
+
+### **Logging**
+- **Structured Logs**: JSON-formatted log entries
+- **Log Levels**: DEBUG, INFO, WARN, ERROR
+- **Log Aggregation**: Centralized log collection
+- **Log Analysis**: Real-time log filtering and search
+
+### **Health Checks**
+- **Service Health**: Automated health monitoring
+- **Device Health**: Connection and heartbeat monitoring
+- **Application Health**: Runtime status and performance
+- **Infrastructure Health**: CA, storage, and network status
+
+## 🔧 Configuration
+
+### **Environment Variables**
 ```bash
-# Check deployment status
-kubectl get pods -n wasmbed
-kubectl get pods -n ros2-system
+# Gateway Configuration
+WASMBED_GATEWAY_TLS_PORT=30450
+WASMBED_GATEWAY_HTTP_PORT=30451
 
-# View logs
-kubectl logs -n wasmbed deployment/wasmbed-gateway
-kubectl logs -n ros2-system deployment/wasmbed-microros-bridge
+# Infrastructure Configuration
+WASMBED_INFRASTRUCTURE_PORT=30460
+
+# Dashboard Configuration
+WASMBED_DASHBOARD_PORT=30470
+
+# Kubernetes Configuration
+KUBECONFIG=~/.k3d/kubeconfig-wasmbed-test.yaml
 ```
 
-5. Clean up when done:
+### **Configuration Files**
+- **`WASMBED_CONFIG.md`**: Platform-wide configuration
+- **`scripts/env.sh`**: Environment setup and aliases
+- **`k8s/`**: Kubernetes manifests and RBAC policies
+
+## 🏗️ Development
+
+### **Project Structure**
+```
+wasmbed-platform/
+├── crates/                    # Rust components
+│   ├── wasmbed-types/        # Shared type definitions
+│   ├── wasmbed-k8s-resource/ # Kubernetes CRDs
+│   ├── wasmbed-protocol/     # Communication protocols
+│   ├── wasmbed-gateway/      # Edge gateway service
+│   ├── wasmbed-infrastructure/ # CA, monitoring, logging
+│   ├── wasmbed-dashboard/    # Dashboard service
+│   ├── wasmbed-device-controller/ # Device management
+│   ├── wasmbed-application-controller/ # Application management
+│   ├── wasmbed-gateway-controller/ # Gateway management
+│   ├── wasmbed-device-runtime/ # Device runtime (no_std)
+│   ├── wasmbed-wasm-runtime/ # WebAssembly runtime
+│   └── wasmbed-qemu-manager/ # QEMU device management
+├── dashboard-react/          # React web interface
+├── k8s/                      # Kubernetes manifests
+├── scripts/                  # Management scripts
+├── docs/                     # Documentation
+└── examples/                 # Example applications
+```
+
+### **Building Components**
 ```bash
-./scripts/manage-system.sh clean
+# Build specific component
+cargo build -p wasmbed-gateway
+
+# Build with optimizations
+cargo build --release
+
+# Build for specific target
+cargo build --target thumbv7em-none-eabihf
 ```
 
-## Documentation
+### **Adding New Features**
+1. **Create feature branch**: `git checkout -b feature/new-feature`
+2. **Implement changes**: Follow Rust and React best practices
+3. **Add tests**: Unit and integration tests
+4. **Update documentation**: README, API docs, examples
+5. **Submit PR**: Include description and test results
 
-### Architecture Documentation
-- [System Overview](docs/architecture/system-overview.md) - Complete system architecture
-- [Communication Protocols](docs/architecture/communication-protocols.md) - TLS, CBOR, and DDS protocols
-- [Security Architecture](docs/architecture/security-architecture.md) - Security design and implementation
+## 📚 API Documentation
 
-### Implementation Documentation
-- [Core Components](docs/implementation/core-components.md) - Detailed component implementation
-- [Complete Implementation](docs/implementation/complete-implementation.md) - **NEW: Complete WASM runtime implementation guide**
-- [Workflows](docs/workflows/) - Complete workflow documentation
-- [API Reference](docs/api/) - API specifications and CRD documentation
+### **Gateway REST API**
 
-### Deployment Documentation
-- [Deployment Guide](docs/deployment/deployment-guide.md) - Step-by-step deployment instructions
-- [Troubleshooting](docs/deployment/troubleshooting.md) - Common issues and solutions
-- [Configuration](docs/deployment/configuration.md) - Platform configuration options
+#### **Device Management**
+```http
+GET    /api/v1/devices              # List all devices
+POST   /api/v1/devices              # Create new device
+GET    /api/v1/devices/{id}         # Get device details
+PUT    /api/v1/devices/{id}         # Update device
+DELETE /api/v1/devices/{id}         # Delete device
+```
 
-### Integration Documentation
-- [PX4 Integration](docs/integration/px4-integration.md) - PX4 autopilot integration
-- [microROS Integration](docs/integration/microros-integration.md) - microROS bridge implementation
-- [FastDDS Integration](docs/integration/fastdds-integration.md) - FastDDS middleware integration
-- [ROS 2 Integration](docs/integration/ros2-integration.md) - **NEW: Complete ROS 2 integration guide**
+#### **Application Management**
+```http
+GET    /api/v1/applications         # List all applications
+POST   /api/v1/applications         # Deploy application
+GET    /api/v1/applications/{id}    # Get application details
+PUT    /api/v1/applications/{id}    # Update application
+DELETE /api/v1/applications/{id}    # Remove application
+```
 
-### Testing Documentation
-- [Testing Guidelines](docs/development/testing.md) - Testing procedures and guidelines
-- [Complete Test Report](docs/testing/test-report-complete.md) - **NEW: Comprehensive test results and validation**
+#### **Gateway Management**
+```http
+GET    /api/v1/gateways             # List all gateways
+POST   /api/v1/gateways             # Create gateway
+GET    /api/v1/gateways/{id}        # Get gateway details
+PUT    /api/v1/gateways/{id}        # Update gateway
+DELETE /api/v1/gateways/{id}        # Delete gateway
+```
 
-### Development Documentation
-- [Development Setup](docs/development/setup.md) - Development environment setup
-- [Contributing Guidelines](docs/development/contributing.md) - Contribution guidelines
-- [Testing](docs/development/testing.md) - Testing procedures and guidelines
+#### **Monitoring**
+```http
+GET    /api/v1/metrics              # Get system metrics
+GET    /api/v1/logs                 # Get system logs
+GET    /api/v1/health               # Health check
+GET    /api/v1/status               # System status
+```
 
-### Problems and Solutions
-- [Known Issues](docs/problems/known-issues.md) - Current known issues and workarounds
-- [Missing Implementations](docs/problems/missing-implementations.md) - Critical missing features
-- [Technical Debt](docs/problems/technical-debt.md) - Areas requiring refactoring
+## 🔒 Security
 
-## 🎉 **NEW: Version 0.1.0 Release**
+### **Cryptographic Security**
+- **Ed25519**: Modern elliptic curve digital signatures
+- **TLS 1.3**: Latest TLS protocol for secure communication
+- **Certificate Pinning**: Prevents man-in-the-middle attacks
+- **Key Rotation**: Automated key lifecycle management
 
-### ✅ **Complete WASM Runtime Implementation**
-- **Multi-Architecture Support**: MPU, MCU, RISC-V devices
-- **Host Functions**: PX4, microROS, Sensors, Security, GPIO, I2C/SPI
-- **Resource Management**: Memory, CPU, instance management with sandboxing
-- **Security**: Complete isolation and validation system
+### **Network Security**
+- **Firewall Rules**: Restricted network access
+- **VPN Support**: Secure remote access
+- **Rate Limiting**: Protection against DoS attacks
+- **Input Validation**: Comprehensive input sanitization
 
-### ✅ **ROS 2 Integration Complete**
-- **microROS Bridge**: HTTP API with /health, /status, /topics endpoints
-- **DDS Middleware**: FastDDS integration for real-time communication
-- **Kubernetes CRDs**: ROS2Topic and ROS2Service custom resources
-- **Real-time Communication**: Complete PX4 drone control workflow
+### **Access Control**
+- **RBAC**: Role-based access control
+- **JWT Tokens**: Secure authentication
+- **API Keys**: Programmatic access control
+- **Audit Logging**: Complete access audit trail
 
-### ✅ **Production Ready**
-- **100% Test Coverage**: 14/14 unit tests, 10/10 integration tests, 6/6 E2E tests
-- **Kubernetes Native**: Complete deployment with RBAC, TLS, auto-scaling
-- **Docker Optimization**: Multi-stage builds with security hardening
-- **Automation**: Unified management scripts for clean, deploy, test
+## 🚀 Deployment
 
-### 🚀 **Quick Start v0.1.0**
+### **Production Deployment**
+
+#### **Kubernetes Cluster**
 ```bash
-# Clone and deploy complete system
-git clone https://github.com/lucadagati/retrospect.git
-cd retrospect
-./scripts/manage-system.sh clean-deploy
-
-# Verify deployment
-./scripts/test-deployment.sh
-
-# Test ROS 2 integration
-./scripts/test-ros2-integration.sh
+# Deploy to production Kubernetes
+kubectl apply -f k8s/crds/
+kubectl apply -f k8s/rbac/
+kubectl apply -f k8s/deployments/
 ```
 
-## Current Status
-
-### Workflow Implementation Status
-
-#### ✅ Fully Implemented Workflows
-- **Device Enrollment Workflow**: Complete implementation with TLS mutual authentication, public key management, and Kubernetes CRD integration
-- **Device Connection Workflow**: Complete implementation with heartbeat monitoring, connection state management, and error handling
-- **Application Deployment Workflow**: Complete implementation with Kubernetes controller, gateway communication, and device deployment
-
-#### ✅ Recently Implemented Workflows
-- **PX4 Communication Workflow**: Complete implementation with microROS bridge, FastDDS middleware, and MAVLink protocol support
-  - microROS bridge for real-time ROS 2 communication
-  - FastDDS middleware for high-performance DDS communication
-  - PX4 communication bridge with MAVLink protocol integration
-  - Real-time topic management and message routing
-
-#### ✅ **NEW: Complete WASM Runtime Implementation (v0.1.0)**
-- **WASM Runtime Core**: Complete implementation with multi-architecture support (MPU, MCU, RISC-V)
-- **Host Functions**: Full implementation of PX4, microROS, Sensors, Security, GPIO, I2C/SPI functions
-- **Resource Management**: Complete memory, CPU, and instance management with sandboxing
-- **Kubernetes Integration**: Native deployment with RBAC, TLS, auto-scaling, and monitoring
-- **HTTP API**: Complete REST API for gateway and microROS bridge control
-- **Testing Suite**: 100% test coverage (14/14 unit tests, 10/10 integration tests, 6/6 E2E tests)
-
-#### 🔄 Partially Implemented Workflows
-- **Real-time Application Deployment**: Basic deployment implemented, missing real-time scheduling and performance optimization
-- **Device Capability Discovery**: Basic device info collection implemented, missing automatic capability detection
-- **WASM Application Validation**: Basic validation implemented, missing comprehensive security and performance validation
-- **Connection Quality Monitoring**: Basic heartbeat monitoring implemented, missing comprehensive quality metrics
-
-### Implemented Features
-
-#### Core Platform (21 Rust Crates)
-- **wasmbed-gateway**: TLS + HTTP API server with heartbeat monitoring
-- **wasmbed-k8s-controller**: Kubernetes reconciliation and application lifecycle management
-- **wasmbed-qemu-serial-bridge**: Real QEMU communication bridge
-- **wasmbed-firmware-hifive1-qemu**: RISC-V firmware with WebAssembly runtime
-- **wasmbed-firmware-esp32**: ESP32 firmware with WiFi management
-- **wasmbed-mcu-simulator**: MCU testing and simulation
-- **wasmbed-protocol**: CBOR communication protocol
-- **wasmbed-tls-utils**: Custom TLS implementation with RustCrypto
-- **wasmbed-k8s-resource**: Kubernetes CRDs and resource management
-- **wasmbed-types**: Common types and data structures
-- **wasmbed-microros-bridge**: microROS bridge for PX4 communication
-- **wasmbed-fastdds-middleware**: FastDDS middleware for real-time data distribution
-- **wasmbed-px4-communication**: PX4 communication bridge with MAVLink support
-
-#### **NEW: Complete WASM Runtime Platform (v0.1.0)**
-- **wasmbed-wasm-runtime**: Complete WASM runtime with multi-architecture support
-  - Multi-architecture support (MPU, MCU, RISC-V)
-  - Complete host functions implementation
-  - Resource management and sandboxing
-  - Security validation and performance monitoring
-- **wasmbed-microros-bridge**: Enhanced microROS bridge with HTTP API
-  - REST API endpoints (/health, /status, /topics)
-  - DDS middleware integration
-  - Real-time communication with ROS 2
-- **Kubernetes Resources**: Complete ROS 2 integration
-  - ROS2Topic and ROS2Service CRDs
-  - microROS agent and bridge deployments
-  - RBAC and security policies
-  - ConfigMaps and Secrets management
-
-#### Kubernetes Integration
-- Custom Resource Definitions for Applications and Devices
-- Controller with comprehensive reconciliation logic
-- RBAC policies and service accounts
-- StatefulSet and Service configurations
-- ConfigMap and Secret management
-
-#### Security Implementation
-- TLS 1.3 with mutual authentication
-- Certificate generation and management
-- Custom TLS implementation using RustCrypto
-- Device enrollment with public key authentication
-- Secure communication channels
-
-#### QEMU Emulation
-- RISC-V emulation with HiFive1 firmware
-- ARM emulation with STM32 firmware
-- ESP32 emulation with XTensa firmware
-- Real serial communication via TCP
-- WebAssembly runtime integration
-
-#### PX4 Communication Integration
-- microROS bridge implementation for ROS 2 communication
-- FastDDS middleware for high-performance DDS communication
-- MAVLink protocol support for PX4 autopilot communication
-- Real-time topic management and message routing
-- PX4 system status monitoring and command execution
-- Drone control workflow implementation
-
-#### Device Management
-- Device enrollment workflow
-- Connection establishment and maintenance
-- Heartbeat monitoring and status tracking
-- Application deployment and execution
-- Error handling and recovery
-
-## Workflow Comparison: Original vs Implementation
-
-### Device Enrollment Workflow
-**Original UML Workflow**: ✅ **FULLY IMPLEMENTED**
-- Pairing mode activation ✅
-- Device initialization with keypair generation ✅
-- Enrollment phase with public key exchange ✅
-- Registration phase with Kubernetes CRD creation ✅
-- Device UUID assignment and storage ✅
-
-**Implementation Status**: Complete with TLS mutual authentication, public key management, and Kubernetes integration.
-
-### Device Connection Workflow
-**Original UML Workflow**: ✅ **FULLY IMPLEMENTED**
-- TLS connection initiation with client authentication ✅
-- Device authentication via public key verification ✅
-- Connection establishment and status updates ✅
-- Heartbeat monitoring and timeout detection ✅
-- Graceful disconnection handling ✅
-
-**Implementation Status**: Complete with robust error handling, state management, and monitoring.
-
-### Application Deployment Workflow
-**Original UML Workflow**: ✅ **FULLY IMPLEMENTED**
-- Application manifest validation ✅
-- Controller reconciliation logic ✅
-- Gateway deployment coordination ✅
-- Device provisioning and bytecode deployment ✅
-- Status updates and error handling ✅
-
-**Implementation Status**: Complete with Kubernetes controller, gateway communication, and device deployment.
-
-### PX4 Communication Workflow
-**Original UML Workflow**: ✅ **RECENTLY IMPLEMENTED**
-- microROS bridge for PX4 communication ✅
-- FastDDS middleware for real-time data distribution ✅
-- PX4 topic management and message routing ✅
-- MAVLink protocol integration ✅
-- Real-time drone control capabilities ✅
-
-**Implementation Status**: Complete with microROS bridge, FastDDS middleware, and PX4 communication bridge.
-
-### Key Differences from Original Workflows
-
-#### ✅ **Enhanced Security**
-- TLS 1.3 with mutual authentication (beyond original requirements)
-- Custom certificate management system
-- Enhanced public key verification
-
-#### ✅ **Improved Reliability**
-- Comprehensive error handling and recovery
-- Robust heartbeat monitoring with configurable timeouts
-- State transition validation and management
-
-#### ✅ **Extended Functionality**
-- PX4 communication bridge with MAVLink support
-- Real-time data distribution via FastDDS
-- microROS integration for ROS 2 compatibility
-
-#### 🔄 **Missing Optimizations**
-- Real-time scheduling for industrial applications
-- Advanced device capability discovery
-- Comprehensive WASM application validation
-- Connection quality monitoring and optimization
-
-## Known Issues
-
-### Critical Issues
-1. **Real-time Application Deployment**: Missing real-time deployment capabilities
-2. **Device Capability Discovery**: Not implemented
-3. **WASM Application Validation**: Missing validation
-4. **Connection Quality Monitoring**: Not implemented
-
-### High Priority Issues
-1. **Application Lifecycle Management**: Incomplete
-2. **Performance Optimization**: Needs improvement
-3. **Security Monitoring**: Incomplete
-
-### Medium Priority Issues
-1. **Certificate Revocation Lists**: Not implemented
-2. **Advanced Threat Detection**: Missing
-3. **Compliance and Auditing**: Security compliance and audit trails
-
-## Missing Implementations
-
-### Critical Missing Features
-
-#### Real-time Application Deployment System
-```rust
-// Required implementation
-pub struct RealtimeDeploymentSystem {
-    scheduler: RealtimeScheduler,
-    resource_manager: ResourceManager,
-    performance_monitor: PerformanceMonitor,
-    deployment_engine: DeploymentEngine,
-}
+#### **Docker Compose**
+```bash
+# Deploy with Docker Compose
+docker-compose -f docker-compose.prod.yml up -d
 ```
 
-#### Device Capability Discovery
-```rust
-// Required implementation
-pub struct DeviceCapabilityDiscovery {
-    capability_scanner: CapabilityScanner,
-    device_profiler: DeviceProfiler,
-    capability_registry: CapabilityRegistry,
-}
+#### **Helm Charts**
+```bash
+# Deploy with Helm
+helm install wasmbed ./helm/wasmbed-platform
 ```
 
-#### WASM Application Validation
-```rust
-// Required implementation
-pub struct WasmApplicationValidator {
-    bytecode_validator: BytecodeValidator,
-    security_validator: SecurityValidator,
-    performance_validator: PerformanceValidator,
-}
-```
+### **Scaling**
+- **Horizontal Scaling**: Add more gateway instances
+- **Vertical Scaling**: Increase resource limits
+- **Load Balancing**: Distribute device connections
+- **Auto-scaling**: Kubernetes HPA integration
 
-#### Connection Quality Monitoring
-```rust
-// Required implementation
-pub struct ConnectionQualityMonitor {
-    latency_monitor: LatencyMonitor,
-    bandwidth_monitor: BandwidthMonitor,
-    reliability_monitor: ReliabilityMonitor,
-}
-```
+## 📊 Performance
 
-### High Priority Missing Features
-1. **Application Performance Monitoring**: Comprehensive performance metrics
-2. **Dynamic Scaling**: Automatic scaling based on load
-3. **Advanced Security Features**: Certificate revocation, threat detection
+### **Benchmarks**
+- **Device Enrollment**: < 100ms per device
+- **Application Deployment**: < 500ms per application
+- **Heartbeat Latency**: < 10ms average
+- **Gateway Throughput**: 10,000+ concurrent connections
 
-### Medium Priority Missing Features
-1. **Monitoring and Observability**: Comprehensive monitoring system
-2. **Performance Optimization**: Runtime and communication optimization
-3. **Compliance and Auditing**: Security compliance and audit trails
+### **Resource Usage**
+- **Memory**: ~50MB per gateway instance
+- **CPU**: ~5% per 1000 devices
+- **Storage**: ~100MB for platform components
+- **Network**: ~1KB/s per device (heartbeat)
 
-## Contributing
+## 🤝 Contributing
 
-Please refer to [Contributing Guidelines](docs/development/contributing.md) for detailed contribution instructions.
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-### Development Setup
-1. Follow [Development Setup](docs/development/setup.md) for environment configuration
-2. Review [Testing Guidelines](docs/development/testing.md) for testing procedures
-3. Check [Known Issues](docs/problems/known-issues.md) for current limitations
+### **Development Setup**
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
 
-### Code Style
-- Follow Rust standard formatting with `cargo fmt`
-- Use `cargo clippy` for linting
-- Write comprehensive tests for all new features
-- Document all public APIs
+### **Code Style**
+- **Rust**: Follow `rustfmt` and `clippy` guidelines
+- **React**: Follow ESLint and Prettier configuration
+- **Documentation**: Update README and API docs
+- **Tests**: Maintain >90% test coverage
 
-## License
+## 📄 License
 
-This project is licensed under the GNU Affero General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE) file for details.
 
-## Support
+## 🙏 Acknowledgments
 
-For technical support and questions:
-- Check [Troubleshooting Guide](docs/deployment/troubleshooting.md) for common issues
-- Review [Known Issues](docs/problems/known-issues.md) for current limitations
-- Create an issue in the project repository for bug reports
-- Refer to [Missing Implementations](docs/problems/missing-implementations.md) for planned features
+- **WebAssembly Community**: For the amazing WASM technology
+- **Kubernetes Community**: For the powerful orchestration platform
+- **Rust Community**: For the safe and fast systems programming language
+- **React Community**: For the modern web development framework
+
+## 📞 Support
+
+- **Documentation**: [docs.wasmbed.io](https://docs.wasmbed.io)
+- **Issues**: [GitHub Issues](https://github.com/wasmbed/wasmbed-platform/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/wasmbed/wasmbed-platform/discussions)
+- **Email**: support@wasmbed.io
+
+## 🗺️ Roadmap
+
+### **v1.1.0** (Q2 2024)
+- [ ] Multi-cluster support
+- [ ] Advanced monitoring dashboards
+- [ ] Plugin system for custom protocols
+- [ ] WebAssembly component model support
+
+### **v1.2.0** (Q3 2024)
+- [ ] Edge AI/ML integration
+- [ ] Advanced security features
+- [ ] Performance optimizations
+- [ ] Mobile device support
+
+### **v2.0.0** (Q4 2024)
+- [ ] Cloud-native deployment
+- [ ] Advanced analytics
+- [ ] Enterprise features
+- [ ] Global edge network
+
+---
+
+**Built with ❤️ by the Wasmbed Team**

@@ -79,7 +79,7 @@ pub struct DeviceCapabilities {
 }
 
 /// Deployed application information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeployedApplication {
     pub app_id: String,
     pub device_id: String,

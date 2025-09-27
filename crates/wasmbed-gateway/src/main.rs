@@ -8,7 +8,8 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use kube::{Api, Client, ResourceExt};
+use kube::{Client, ResourceExt};
+use kube::api::Api;
 use tokio_util::sync::CancellationToken;
 use tracing::{Level, error, info, warn, debug};
 use tracing_subscriber::FmtSubscriber;

@@ -1,0 +1,12 @@
+apiVersion: wasmbed.io/v1
+kind: Device
+metadata:
+  name: test-device-1
+  namespace: wasmbed
+spec:
+  device_type: "MCU"
+  resources:
+    cpu: "100m"
+    memory: "128Mi"
+    storage: "1Gi"
+  applications: []

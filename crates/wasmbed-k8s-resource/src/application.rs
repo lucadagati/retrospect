@@ -22,9 +22,11 @@ pub struct ApplicationSpec {
     pub description: Option<String>,
     
     /// WASM bytecode (base64 encoded)
+    #[serde(rename = "wasmBytes")]
     pub wasm_bytes: String,
     
     /// Target devices (device names or selectors)
+    #[serde(rename = "targetDevices")]
     pub target_devices: TargetDevices,
     
     /// Application configuration
@@ -40,7 +42,7 @@ pub struct ApplicationSpec {
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 pub struct TargetDevices {
     /// Device names (exact match)
-    #[serde(default)]
+    #[serde(default, rename = "deviceNames")]
     pub device_names: Option<Vec<String>>,
     
     /// Device selectors (label-based)
@@ -48,7 +50,7 @@ pub struct TargetDevices {
     pub selectors: Option<DeviceSelectors>,
     
     /// All devices in namespace
-    #[serde(default)]
+    #[serde(default, rename = "allDevices")]
     pub all_devices: Option<bool>,
 }
 

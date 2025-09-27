@@ -1,319 +1,249 @@
 #!/bin/bash
-# Wasmbed System Monitoring
-# Handles monitoring, logging, and system management
 
-set -euo pipefail
+# SPDX-License-Identifier: AGPL-3.0
+# Copyright © 2025 Wasmbed contributors
 
-# Source logging library
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/logging.sh"
+set -e
 
-# Configuration
-CLUSTER_NAME="wasmbed"
-NAMESPACE="wasmbed"
-LOG_LEVEL=${LOG_LEVEL:-3}
+# Wasmbed Platform - Monitoring Script
+# This script provides monitoring and observability features
 
-# Initialize logging
-init_logging "$@"
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-log_header "Wasmbed System Monitoring"
-
-# Function to show system status
-show_status() {
-    log_step "System Status Overview"
-    
-    echo -e "${CYAN}Cluster Information:${NC}"
-    kubectl cluster-info
-    
-    echo -e "\n${CYAN}Namespace Resources:${NC}"
-    kubectl get all -n "$NAMESPACE"
-    
-    echo -e "\n${CYAN}CRDs:${NC}"
-    kubectl get crd | grep wasmbed || echo "No wasmbed CRDs found"
-    
-    echo -e "\n${CYAN}Pods Status:${NC}"
-    kubectl get pods -n "$NAMESPACE" -o wide
-    
-    echo -e "\n${CYAN}Services:${NC}"
-    kubectl get services -n "$NAMESPACE"
-    
-    echo -e "\n${CYAN}Node Resources:${NC}"
-    kubectl top nodes 2>/dev/null || echo "Metrics server not available"
-    
-    echo -e "\n${CYAN}Pod Resources:${NC}"
-    kubectl top pods -n "$NAMESPACE" 2>/dev/null || echo "Metrics server not available"
-}
-
-# Function to show logs
-show_logs() {
-    local component="${1:-all}"
-    local lines="${2:-50}"
-    
-    log_step "Showing logs for $component"
-    
-    case "$component" in
-        "gateway"|"gw")
-            kubectl logs -l app=wasmbed-gateway -n "$NAMESPACE" --tail="$lines" -f
+print_status() {
+    local status=$1
+    local message=$2
+    case $status in
+        "SUCCESS")
+            echo -e "${GREEN}✓ $message${NC}"
             ;;
-        "controller"|"ctrl")
-            kubectl logs -l app=wasmbed-controller -n "$NAMESPACE" --tail="$lines" -f
+        "ERROR")
+            echo -e "${RED}✗ $message${NC}"
             ;;
-        "all")
-            echo -e "${CYAN}Gateway Logs:${NC}"
-            kubectl logs -l app=wasmbed-gateway -n "$NAMESPACE" --tail="$lines"
-            echo -e "\n${CYAN}Controller Logs:${NC}"
-            kubectl logs -l app=wasmbed-controller -n "$NAMESPACE" --tail="$lines"
+        "WARNING")
+            echo -e "${YELLOW}⚠ $message${NC}"
             ;;
-        *)
-            log_error "Unknown component: $component"
-            echo "Available components: gateway, controller, all"
-            return 1
+        "INFO")
+            echo -e "${BLUE}ℹ $message${NC}"
             ;;
     esac
 }
 
-# Function to perform health check
-health_check() {
-    log_step "Performing health check"
+show_help() {
+    echo "Wasmbed Monitoring Script"
+    echo ""
+    echo "Usage: $0 [COMMAND] [OPTIONS]"
+    echo ""
+    echo "Commands:"
+    echo "  overview               Show system overview"
+    echo "  devices                Show device metrics"
+    echo "  applications           Show application metrics"
+    echo "  gateways               Show gateway metrics"
+    echo "  infrastructure         Show infrastructure metrics"
+    echo "  logs                   Show system logs"
+    echo "  health                 Check system health"
+    echo "  watch                  Watch resources in real-time"
+    echo ""
+    echo "Examples:"
+    echo "  $0 overview"
+    echo "  $0 devices"
+    echo "  $0 health"
+    echo "  $0 watch"
+}
+
+show_overview() {
+    print_status "INFO" "Wasmbed Platform Overview"
+    echo ""
     
-    local health_status=0
+    # Cluster status
+    print_status "INFO" "Cluster Status:"
+    kubectl cluster-info --request-timeout=5s 2>/dev/null || print_status "ERROR" "Cluster not accessible"
+    echo ""
     
-    # Check cluster connectivity
-    if kubectl cluster-info >/dev/null 2>&1; then
-        log_success "Cluster connectivity: OK"
+    # Resource counts
+    print_status "INFO" "Resource Counts:"
+    DEVICE_COUNT=$(kubectl get devices -n wasmbed --no-headers 2>/dev/null | wc -l || echo "0")
+    APP_COUNT=$(kubectl get applications -n wasmbed --no-headers 2>/dev/null | wc -l || echo "0")
+    GATEWAY_COUNT=$(kubectl get gateways -n wasmbed --no-headers 2>/dev/null | wc -l || echo "0")
+    
+    echo "  Devices: $DEVICE_COUNT"
+    echo "  Applications: $APP_COUNT"
+    echo "  Gateways: $GATEWAY_COUNT"
+    echo ""
+    
+    # Service status
+    print_status "INFO" "Service Status:"
+    if curl -s "http://localhost:30460/api/v1/status" >/dev/null 2>&1; then
+        print_status "SUCCESS" "Infrastructure: Running"
     else
-        log_error "Cluster connectivity: FAILED"
-        health_status=1
+        print_status "ERROR" "Infrastructure: Not responding"
     fi
     
-    # Check namespace
-    if kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
-        log_success "Namespace: OK"
+    if curl -s "http://localhost:30451/api/v1/devices" >/dev/null 2>&1; then
+        print_status "SUCCESS" "Gateway: Running"
     else
-        log_error "Namespace: FAILED"
-        health_status=1
+        print_status "ERROR" "Gateway: Not responding"
     fi
     
-    # Check pods
-    local gateway_pods=$(kubectl get pods -n "$NAMESPACE" -l app=wasmbed-gateway --no-headers | wc -l)
-    local controller_pods=$(kubectl get pods -n "$NAMESPACE" -l app=wasmbed-controller --no-headers | wc -l)
-    
-    if [ "$gateway_pods" -gt 0 ]; then
-        log_success "Gateway pods: OK ($gateway_pods running)"
+    if curl -s "http://localhost:30470/api/status" >/dev/null 2>&1; then
+        print_status "SUCCESS" "Dashboard: Running"
     else
-        log_error "Gateway pods: FAILED"
-        health_status=1
+        print_status "ERROR" "Dashboard: Not responding"
+    fi
+}
+
+show_device_metrics() {
+    print_status "INFO" "Device Metrics"
+    echo ""
+    
+    kubectl get devices -n wasmbed -o custom-columns="NAME:.metadata.name,PHASE:.status.phase,GATEWAY:.status.gateway,CONNECTED:.status.connectedSince,HEARTBEAT:.status.lastHeartbeat" 2>/dev/null || print_status "ERROR" "No devices found"
+}
+
+show_application_metrics() {
+    print_status "INFO" "Application Metrics"
+    echo ""
+    
+    kubectl get applications -n wasmbed -o custom-columns="NAME:.metadata.name,PHASE:.status.phase,TOTAL:.status.statistics.totalDevices,RUNNING:.status.statistics.runningDevices,FAILED:.status.statistics.failedDevices" 2>/dev/null || print_status "ERROR" "No applications found"
+}
+
+show_gateway_metrics() {
+    print_status "INFO" "Gateway Metrics"
+    echo ""
+    
+    kubectl get gateways -n wasmbed -o custom-columns="NAME:.metadata.name,PHASE:.status.phase,CONNECTED:.status.connectedDevices,ENROLLED:.status.enrolledDevices,HEARTBEAT:.status.lastHeartbeat" 2>/dev/null || print_status "ERROR" "No gateways found"
+}
+
+show_infrastructure_metrics() {
+    print_status "INFO" "Infrastructure Metrics"
+    echo ""
+    
+    # Infrastructure API status
+    if curl -s "http://localhost:30460/api/v1/status" >/dev/null 2>&1; then
+        print_status "SUCCESS" "Infrastructure API: Healthy"
+    else
+        print_status "ERROR" "Infrastructure API: Not responding"
     fi
     
-    if [ "$controller_pods" -gt 0 ]; then
-        log_success "Controller pods: OK ($controller_pods running)"
+    # Monitoring service
+    if curl -s "http://localhost:9090/metrics" >/dev/null 2>&1; then
+        print_status "SUCCESS" "Monitoring Service: Running"
     else
-        log_error "Controller pods: FAILED"
-        health_status=1
+        print_status "WARNING" "Monitoring Service: Not responding"
     fi
     
-    # Check services
-    if kubectl get service wasmbed-gateway-service -n "$NAMESPACE" >/dev/null 2>&1; then
-        log_success "Gateway service: OK"
+    # Logging service
+    if curl -s "http://localhost:8080/logs" >/dev/null 2>&1; then
+        print_status "SUCCESS" "Logging Service: Running"
     else
-        log_error "Gateway service: FAILED"
-        health_status=1
+        print_status "WARNING" "Logging Service: Not responding"
     fi
+}
+
+show_logs() {
+    print_status "INFO" "System Logs"
+    echo ""
     
-    # Check API endpoints
-    if curl -s -f "http://localhost:8080/health" >/dev/null 2>&1; then
-        log_success "HTTP API: OK"
-    else
-        log_warn "HTTP API: Not accessible (may need port forwarding)"
-    fi
+    # Get recent events
+    print_status "INFO" "Recent Events:"
+    kubectl get events -n wasmbed --sort-by='.lastTimestamp' | tail -20
+}
+
+check_health() {
+    print_status "INFO" "System Health Check"
+    echo ""
     
-    if timeout 3 openssl s_client -connect localhost:4423 -servername wasmbed-gateway < /dev/null >/dev/null 2>&1; then
-        log_success "TLS API: OK"
+    local health_score=0
+    local total_checks=0
+    
+    # Check cluster
+    total_checks=$((total_checks + 1))
+    if kubectl cluster-info --request-timeout=5s >/dev/null 2>&1; then
+        print_status "SUCCESS" "Kubernetes cluster: Healthy"
+        health_score=$((health_score + 1))
     else
-        log_warn "TLS API: Not accessible (may need port forwarding)"
+        print_status "ERROR" "Kubernetes cluster: Unhealthy"
     fi
     
     # Check CRDs
-    local crd_count=$(kubectl get crd | grep wasmbed | wc -l)
-    if [ "$crd_count" -ge 2 ]; then
-        log_success "CRDs: OK ($crd_count found)"
+    total_checks=$((total_checks + 1))
+    if kubectl get crd devices.wasmbed.github.io >/dev/null 2>&1 && \
+       kubectl get crd applications.wasmbed.github.io >/dev/null 2>&1 && \
+       kubectl get crd gateways.wasmbed.io >/dev/null 2>&1; then
+        print_status "SUCCESS" "Custom Resource Definitions: Healthy"
+        health_score=$((health_score + 1))
     else
-        log_error "CRDs: FAILED ($crd_count found, expected 2+)"
-        health_status=1
+        print_status "ERROR" "Custom Resource Definitions: Missing"
     fi
     
-    if [ $health_status -eq 0 ]; then
-        log_success "Overall health: HEALTHY"
+    # Check services
+    total_checks=$((total_checks + 1))
+    if curl -s "http://localhost:30460/api/v1/status" >/dev/null 2>&1 && \
+       curl -s "http://localhost:30451/api/v1/devices" >/dev/null 2>&1 && \
+       curl -s "http://localhost:30470/api/status" >/dev/null 2>&1; then
+        print_status "SUCCESS" "Core Services: Healthy"
+        health_score=$((health_score + 1))
     else
-        log_error "Overall health: UNHEALTHY"
+        print_status "ERROR" "Core Services: Some not responding"
     fi
     
-    return $health_status
-}
-
-# Function to monitor resources
-monitor_resources() {
-    log_step "Monitoring resource usage"
+    echo ""
+    print_status "INFO" "Health Score: $health_score/$total_checks"
     
-    while true; do
-        clear
-        log_header "Resource Monitoring - $(date)"
-        
-        echo -e "${CYAN}Node Resources:${NC}"
-        kubectl top nodes 2>/dev/null || echo "Metrics server not available"
-        
-        echo -e "\n${CYAN}Pod Resources:${NC}"
-        kubectl top pods -n "$NAMESPACE" 2>/dev/null || echo "Metrics server not available"
-        
-        echo -e "\n${CYAN}Pod Status:${NC}"
-        kubectl get pods -n "$NAMESPACE" -o wide
-        
-        echo -e "\n${CYAN}Press Ctrl+C to stop monitoring${NC}"
-        sleep 5
-    done
-}
-
-# Function to restart components
-restart_component() {
-    local component="$1"
-    
-    log_step "Restarting $component"
-    
-    case "$component" in
-        "gateway"|"gw")
-            execute_cmd "kubectl rollout restart statefulset/wasmbed-gateway -n $NAMESPACE" "Restarting gateway"
-            execute_cmd "kubectl rollout status statefulset/wasmbed-gateway -n $NAMESPACE" "Waiting for gateway restart"
-            ;;
-        "controller"|"ctrl")
-            execute_cmd "kubectl rollout restart deployment/wasmbed-controller -n $NAMESPACE" "Restarting controller"
-            execute_cmd "kubectl rollout status deployment/wasmbed-controller -n $NAMESPACE" "Waiting for controller restart"
-            ;;
-        "all")
-            execute_cmd "kubectl rollout restart deployment/wasmbed-controller -n $NAMESPACE" "Restarting controller"
-            execute_cmd "kubectl rollout restart statefulset/wasmbed-gateway -n $NAMESPACE" "Restarting gateway"
-            execute_cmd "kubectl rollout status deployment/wasmbed-controller -n $NAMESPACE" "Waiting for controller restart"
-            execute_cmd "kubectl rollout status statefulset/wasmbed-gateway -n $NAMESPACE" "Waiting for gateway restart"
-            ;;
-        *)
-            log_error "Unknown component: $component"
-            echo "Available components: gateway, controller, all"
-            return 1
-            ;;
-    esac
-    
-    log_success "$component restarted successfully"
-}
-
-# Function to scale components
-scale_component() {
-    local component="$1"
-    local replicas="$2"
-    
-    log_step "Scaling $component to $replicas replicas"
-    
-    case "$component" in
-        "gateway"|"gw")
-            execute_cmd "kubectl scale statefulset/wasmbed-gateway --replicas=$replicas -n $NAMESPACE" "Scaling gateway"
-            ;;
-        "controller"|"ctrl")
-            execute_cmd "kubectl scale deployment/wasmbed-controller --replicas=$replicas -n $NAMESPACE" "Scaling controller"
-            ;;
-        *)
-            log_error "Unknown component: $component"
-            echo "Available components: gateway, controller"
-            return 1
-            ;;
-    esac
-    
-    log_success "$component scaled to $replicas replicas"
-}
-
-# Function to backup platform
-backup_platform() {
-    local backup_dir="backups/$(date +%Y%m%d-%H%M%S)"
-    
-    log_step "Creating platform backup"
-    
-    execute_cmd "mkdir -p $backup_dir" "Creating backup directory"
-    
-    # Backup Kubernetes resources
-    execute_cmd "kubectl get all -n $NAMESPACE -o yaml > $backup_dir/k8s-resources.yaml" "Backing up Kubernetes resources"
-    execute_cmd "kubectl get crd -o yaml > $backup_dir/crds.yaml" "Backing up CRDs"
-    execute_cmd "kubectl get secrets -n $NAMESPACE -o yaml > $backup_dir/secrets.yaml" "Backing up secrets"
-    
-    # Backup configuration files
-    execute_cmd "cp -r resources/ $backup_dir/" "Backing up configuration files"
-    
-    log_success "Platform backup created: $backup_dir"
-}
-
-# Function to show QEMU status
-show_qemu_status() {
-    log_step "QEMU Device Status"
-    
-    if pgrep -f qemu-system >/dev/null; then
-        log_info "QEMU processes running:"
-        ps aux | grep qemu-system | grep -v grep
+    if [ $health_score -eq $total_checks ]; then
+        print_status "SUCCESS" "System is fully healthy!"
+    elif [ $health_score -ge $((total_checks * 3 / 4)) ]; then
+        print_status "WARNING" "System is mostly healthy with minor issues"
     else
-        log_info "No QEMU processes running"
+        print_status "ERROR" "System has significant health issues"
     fi
 }
 
-# Main monitoring function
-main() {
-    log_header "Wasmbed System Monitoring"
+watch_resources() {
+    print_status "INFO" "Watching resources in real-time (Press Ctrl+C to stop)"
+    echo ""
     
-    show_status
-    health_check
-    show_qemu_status
+    # Watch all resources
+    kubectl get devices,applications,gateways -n wasmbed -w
 }
 
-# Handle script arguments
-case "${1:-status}" in
-    "status"|"")
-        show_status
+# Main script logic
+case "$1" in
+    "overview")
+        show_overview
+        ;;
+    "devices")
+        show_device_metrics
+        ;;
+    "applications")
+        show_application_metrics
+        ;;
+    "gateways")
+        show_gateway_metrics
+        ;;
+    "infrastructure")
+        show_infrastructure_metrics
         ;;
     "logs")
-        show_logs "${2:-all}" "${3:-50}"
+        show_logs
         ;;
     "health")
-        health_check
+        check_health
         ;;
-    "monitor")
-        monitor_resources
-        ;;
-    "restart")
-        restart_component "${2:-all}"
-        ;;
-    "scale")
-        scale_component "${2:-controller}" "${3:-1}"
-        ;;
-    "backup")
-        backup_platform
-        ;;
-    "qemu")
-        show_qemu_status
+    "watch")
+        watch_resources
         ;;
     "help"|"-h"|"--help")
-        echo "Usage: $0 [command] [options]"
-        echo ""
-        echo "Commands:"
-        echo "  status           - Show system status (default)"
-        echo "  logs [comp] [n]  - Show logs (gateway|controller|all, lines)"
-        echo "  health           - Perform health check"
-        echo "  monitor          - Monitor resources in real-time"
-        echo "  restart [comp]   - Restart component (gateway|controller|all)"
-        echo "  scale [comp] [n] - Scale component to n replicas"
-        echo "  backup           - Create platform backup"
-        echo "  qemu             - Show QEMU device status"
-        echo "  help             - Show this help"
-        echo ""
-        echo "Environment variables:"
-        echo "  LOG_LEVEL - Set logging level (1=error, 2=warn, 3=info, 4=debug)"
+        show_help
         ;;
     *)
-        log_error "Unknown command: $1"
-        echo "Use '$0 help' for usage information"
+        print_status "ERROR" "Unknown command: $1"
+        echo ""
+        show_help
         exit 1
         ;;
 esac

@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wasmbed-device-controller
+  namespace: wasmbed
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wasmbed-application-controller
+  namespace: wasmbed
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wasmbed-gateway-controller
+  namespace: wasmbed
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: wasmbed-device-controller
+rules:
+- apiGroups: ["wasmbed.io"]
+  resources: ["devices"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["wasmbed.io"]
+  resources: ["devices/status"]
+  verbs: ["get", "update", "patch"]
+- apiGroups: ["wasmbed.io"]
+  resources: ["gateways"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: wasmbed-application-controller
+rules:
+- apiGroups: ["wasmbed.io"]
+  resources: ["applications"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["wasmbed.io"]
+  resources: ["applications/status"]
+  verbs: ["get", "update", "patch"]
+- apiGroups: ["wasmbed.io"]
+  resources: ["devices"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["wasmbed.io"]
+  resources: ["gateways"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: wasmbed-gateway-controller
+rules:
+- apiGroups: ["wasmbed.io"]
+  resources: ["gateways"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["wasmbed.io"]
+  resources: ["gateways/status"]
+  verbs: ["get", "update", "patch"]
+- apiGroups: ["wasmbed.io"]
+  resources: ["devices"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: wasmbed-device-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: wasmbed-device-controller
+subjects:
+- kind: ServiceAccount
+  name: wasmbed-device-controller
+  namespace: wasmbed
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: wasmbed-application-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: wasmbed-application-controller
+subjects:
+- kind: ServiceAccount
+  name: wasmbed-application-controller
+  namespace: wasmbed
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: wasmbed-gateway-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: wasmbed-gateway-controller
+subjects:
+- kind: ServiceAccount
+  name: wasmbed-gateway-controller
+  namespace: wasmbed

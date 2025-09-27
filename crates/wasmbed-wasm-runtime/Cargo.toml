@@ -45,7 +45,6 @@ hex = "0.4"
 rand = "0.8"
 
 # DDS integration
-rustdds = "0.11"
 
 # WASM parsing
 wasmparser = "0.118"
@@ -70,5 +69,4 @@ mcu = ["no-std"]
 riscv = ["no-std"]
 
 # Optional integrations
-microros = []
 secure = []

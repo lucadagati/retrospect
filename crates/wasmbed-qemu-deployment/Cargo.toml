@@ -1,0 +1,23 @@
+[package]
+name = "wasmbed-qemu-deployment"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+description = "QEMU deployment service for Wasmbed platform"
+
+[dependencies]
+kube = { version = "1.1", features = ["runtime", "derive"] }
+k8s-openapi = { version = "0.25", features = ["v1_33"] }
+wasmbed-k8s-resource = { path = "../wasmbed-k8s-resource" }
+wasmbed-qemu-manager = { path = "../wasmbed-qemu-manager" }
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+anyhow = "1.0"
+clap = { version = "4.4", features = ["derive"] }
+
+[dev-dependencies]
+tokio-test = "0.4"

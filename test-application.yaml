@@ -1,0 +1,11 @@
+apiVersion: wasmbed.io/v1
+kind: Application
+metadata:
+  name: test-app-1
+  namespace: wasmbed
+spec:
+  name: "Hello World App"
+  version: "1.0.0"
+  wasmBytecode: "dummy-wasm-bytecode"
+  targetDevices: ["test-device-1"]
+  config: {}

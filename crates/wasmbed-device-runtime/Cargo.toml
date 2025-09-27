@@ -1,0 +1,47 @@
+[package]
+name = "wasmbed-device-runtime"
+version = "0.1.0"
+edition = "2021"
+authors = ["Wasmbed contributors"]
+license = "AGPL-3.0"
+description = "Device Runtime no_std implementation for Wasmbed platform"
+
+[dependencies]
+# Core no_std dependencies
+embedded-hal = "1.0"
+nb = "1.0"
+heapless = "0.8"
+
+# Async runtime (minimal)
+futures = { version = "0.3", default-features = false, features = ["async-await"] }
+
+# Serialization (no_std compatible)
+serde = { version = "1.0", features = ["derive"], default-features = false }
+
+# Error handling
+anyhow = { version = "1.0", default-features = false }
+
+# Logging (no_std)
+log = "0.4"
+
+# UUID generation (no_std)
+uuid = { version = "1.0", features = ["v4", "serde"], default-features = false }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"], default-features = false }
+
+# Base64 encoding
+base64 = { version = "0.21", default-features = false }
+
+# Crypto (no_std)
+sha2 = { version = "0.10", default-features = false }
+
+# Async traits
+async-trait = { version = "0.1", default-features = false }
+
+[features]
+default = ["std"]
+std = ["anyhow/std", "serde/std", "chrono/std", "base64/std", "sha2/std"]
+
+[dev-dependencies]
+tokio-test = "0.4"
