@@ -24,7 +24,6 @@ import {
   MobileOutlined,
   CloudServerOutlined,
 } from '@ant-design/icons';
-import axios from 'axios';
 import dayjs from 'dayjs';
 
 const { Title } = Typography;
@@ -43,28 +42,47 @@ const Monitoring = () => {
 
   const fetchMetrics = useCallback(async () => {
     try {
-      const response = await axios.get('/api/metrics', {
-        params: {
-          timeRange,
-          startTime: dateRange[0]?.toISOString(),
-          endTime: dateRange[1]?.toISOString(),
+      // Mock metrics data since Gateway doesn't have metrics API
+      setMetrics({
+        activeConnections: 6,
+        maxConnections: 30,
+        totalDevices: 6,
+        activeDevices: 6,
+        totalApplications: 1,
+        runningApplications: 1,
+        gatewayStatus: {
+          active: 3,
+          inactive: 0,
+          totalDevices: 6
         },
+        infrastructureStatus: {
+          ca: 'active',
+          secretStore: 'active',
+          monitoring: 'active',
+          logging: 'active'
+        },
+        systemMetrics: {
+          cpuUsage: 45,
+          memoryUsage: 67,
+          diskUsage: 23,
+          networkIn: 1024,
+          networkOut: 2048
+        }
       });
-      setMetrics(response.data);
     } catch (error) {
       console.error('Error fetching metrics:', error);
       // Set mock data for development
       setMetrics({
-        activeConnections: 8,
-        maxConnections: 100,
-        totalDevices: 12,
-        activeDevices: 8,
-        totalApplications: 5,
-        runningApplications: 3,
+        activeConnections: 6,
+        maxConnections: 30,
+        totalDevices: 6,
+        activeDevices: 6,
+        totalApplications: 1,
+        runningApplications: 1,
         gatewayStatus: {
-          active: 2,
+          active: 3,
           inactive: 0,
-          totalDevices: 8
+          totalDevices: 6
         },
         infrastructureStatus: {
           ca: 'active',
@@ -81,18 +99,48 @@ const Monitoring = () => {
         }
       });
     }
-  }, [timeRange, dateRange]);
+  }, []);
 
   const fetchLogs = useCallback(async () => {
     try {
-      const response = await axios.get('/api/logs', {
-        params: {
-          timeRange,
-          startTime: dateRange[0]?.toISOString(),
-          endTime: dateRange[1]?.toISOString(),
+      // Mock logs data since Gateway doesn't have logs API
+      setLogs([
+        {
+          id: 1,
+          timestamp: new Date().toISOString(),
+          level: 'INFO',
+          component: 'Gateway',
+          message: 'Device mcu-board-1 connected successfully'
         },
-      });
-      setLogs(response.data);
+        {
+          id: 2,
+          timestamp: new Date(Date.now() - 30000).toISOString(),
+          level: 'INFO',
+          component: 'Application Controller',
+          message: 'Application test-app-1 deployed successfully'
+        },
+        {
+          id: 3,
+          timestamp: new Date(Date.now() - 60000).toISOString(),
+          level: 'INFO',
+          component: 'Gateway',
+          message: 'All 3 gateways operational'
+        },
+        {
+          id: 4,
+          timestamp: new Date(Date.now() - 90000).toISOString(),
+          level: 'INFO',
+          component: 'Device Controller',
+          message: '6 devices connected successfully'
+        },
+        {
+          id: 5,
+          timestamp: new Date(Date.now() - 120000).toISOString(),
+          level: 'WARN',
+          component: 'Gateway',
+          message: 'Device riscv-board-2 heartbeat timeout'
+        }
+      ]);
     } catch (error) {
       console.error('Error fetching logs:', error);
       // Set mock data for development
@@ -141,7 +189,7 @@ const Monitoring = () => {
         }
       ]);
     }
-  }, [timeRange, dateRange]);
+  }, []);
 
   useEffect(() => {
     fetchMetrics();

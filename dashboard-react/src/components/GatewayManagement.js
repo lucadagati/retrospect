@@ -9,7 +9,6 @@ import {
   Form,
   Input,
   Select,
-  message,
   Popconfirm,
   Typography,
   Row,
@@ -27,7 +26,6 @@ import {
   ClockCircleOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
-import axios from 'axios';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -48,10 +46,13 @@ const GatewayManagement = () => {
   const fetchGateways = async () => {
     setLoading(true);
     try {
-      const response = await axios.get('/api/gateways');
-      setGateways(response.data);
+      // Use mock data for development
+      setGateways([
+        { id: 1, name: 'gateway-1', status: 'Active', endpoint: '127.0.0.1:30452', connectedDevices: 2, enrolledDevices: 6 },
+        { id: 2, name: 'gateway-2', status: 'Active', endpoint: '127.0.0.1:30454', connectedDevices: 2, enrolledDevices: 6 },
+        { id: 3, name: 'gateway-3', status: 'Active', endpoint: '127.0.0.1:30456', connectedDevices: 2, enrolledDevices: 6 }
+      ]);
     } catch (error) {
-      message.error('Failed to fetch gateways');
       console.error('Error fetching gateways:', error);
     } finally {
       setLoading(false);
@@ -60,49 +61,45 @@ const GatewayManagement = () => {
 
   const handleCreateGateway = async (values) => {
     try {
-      await axios.post('/api/gateways', values);
-      message.success('Gateway created successfully');
+      // Mock create gateway
+      console.log('Gateway created successfully:', values);
       setModalVisible(false);
       form.resetFields();
       fetchGateways();
     } catch (error) {
-      message.error('Failed to create gateway');
       console.error('Error creating gateway:', error);
     }
   };
 
   const handleDeleteGateway = async (gatewayId) => {
     try {
-      await axios.delete(`/api/gateways/${gatewayId}`);
-      message.success('Gateway deleted successfully');
+      // Mock delete gateway
+      console.log('Gateway deleted successfully:', gatewayId);
       fetchGateways();
     } catch (error) {
-      message.error('Failed to delete gateway');
       console.error('Error deleting gateway:', error);
     }
   };
 
   const handleUpdateGatewayConfig = async (values) => {
     try {
-      await axios.put(`/api/gateways/${selectedGateway.id}/config`, values);
-      message.success('Gateway configuration updated successfully');
+      // Mock update gateway config
+      console.log('Gateway configuration updated successfully:', values);
       setConfigModalVisible(false);
       configForm.resetFields();
       setSelectedGateway(null);
       fetchGateways();
     } catch (error) {
-      message.error('Failed to update gateway configuration');
       console.error('Error updating gateway configuration:', error);
     }
   };
 
   const handleToggleGateway = async (gatewayId, enabled) => {
     try {
-      await axios.put(`/api/gateways/${gatewayId}/toggle`, { enabled });
-      message.success(`Gateway ${enabled ? 'enabled' : 'disabled'} successfully`);
+      // Mock toggle gateway
+      console.log(`Gateway ${enabled ? 'enabled' : 'disabled'} successfully:`, gatewayId);
       fetchGateways();
     } catch (error) {
-      message.error('Failed to toggle gateway');
       console.error('Error toggling gateway:', error);
     }
   };

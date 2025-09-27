@@ -174,23 +174,29 @@ impl DashboardApi {
 
     /// Get devices API
     pub async fn api_devices(State(state): State<Arc<DashboardState>>) -> Result<Json<Vec<DeviceInfo>>, StatusCode> {
-        let devices = state.device_manager.get_all_devices().await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        Ok(Json(devices))
+        match tokio::time::timeout(Duration::from_secs(5), state.device_manager.get_all_devices()).await {
+            Ok(Ok(devices)) => Ok(Json(devices)),
+            Ok(Err(_)) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+            Err(_) => Err(StatusCode::REQUEST_TIMEOUT),
+        }
     }
 
     /// Get applications API
     pub async fn api_applications(State(state): State<Arc<DashboardState>>) -> Result<Json<Vec<ApplicationInfo>>, StatusCode> {
-        let applications = state.application_manager.get_all_applications().await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        Ok(Json(applications))
+        match tokio::time::timeout(Duration::from_secs(5), state.application_manager.get_all_applications()).await {
+            Ok(Ok(applications)) => Ok(Json(applications)),
+            Ok(Err(_)) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+            Err(_) => Err(StatusCode::REQUEST_TIMEOUT),
+        }
     }
 
     /// Get gateways API
     pub async fn api_gateways(State(state): State<Arc<DashboardState>>) -> Result<Json<Vec<GatewayInfo>>, StatusCode> {
-        let gateways = state.gateway_manager.get_all_gateways().await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        Ok(Json(gateways))
+        match tokio::time::timeout(Duration::from_secs(5), state.gateway_manager.get_all_gateways()).await {
+            Ok(Ok(gateways)) => Ok(Json(gateways)),
+            Ok(Err(_)) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+            Err(_) => Err(StatusCode::REQUEST_TIMEOUT),
+        }
     }
 
     /// Deploy application
@@ -394,46 +400,70 @@ impl Dashboard {
 
     async fn update_system_status(&self) {
         loop {
-            // Update system status
+            // Update system status with timeout protection
             let mut status = self.state.system_status.write().await;
             
-            // Update device stats
-            if let Ok(devices) = self.state.device_manager.get_all_devices().await {
-                status.devices.total = devices.len() as u32;
-                status.devices.connected = devices.iter()
-                    .filter(|d| d.status == "connected")
-                    .count() as u32;
-                status.devices.enrolled = devices.iter()
-                    .filter(|d| d.status == "enrolled")
-                    .count() as u32;
-                status.devices.unreachable = devices.iter()
-                    .filter(|d| d.status == "unreachable")
-                    .count() as u32;
+            // Update device stats with timeout
+            match tokio::time::timeout(Duration::from_secs(5), self.state.device_manager.get_all_devices()).await {
+                Ok(Ok(devices)) => {
+                    status.devices.total = devices.len() as u32;
+                    status.devices.connected = devices.iter()
+                        .filter(|d| d.status == "connected")
+                        .count() as u32;
+                    status.devices.enrolled = devices.iter()
+                        .filter(|d| d.status == "enrolled")
+                        .count() as u32;
+                    status.devices.unreachable = devices.iter()
+                        .filter(|d| d.status == "unreachable")
+                        .count() as u32;
+                },
+                Ok(Err(e)) => {
+                    warn!("Failed to fetch devices: {}", e);
+                },
+                Err(_) => {
+                    warn!("Timeout fetching devices");
+                }
             }
 
-            // Update application stats
-            if let Ok(applications) = self.state.application_manager.get_all_applications().await {
-                status.applications.total = applications.len() as u32;
-                status.applications.running = applications.iter()
-                    .filter(|a| a.status == "running")
-                    .count() as u32;
-                status.applications.pending = applications.iter()
-                    .filter(|a| a.status == "pending")
-                    .count() as u32;
-                status.applications.failed = applications.iter()
-                    .filter(|a| a.status == "failed")
-                    .count() as u32;
+            // Update application stats with timeout
+            match tokio::time::timeout(Duration::from_secs(5), self.state.application_manager.get_all_applications()).await {
+                Ok(Ok(applications)) => {
+                    status.applications.total = applications.len() as u32;
+                    status.applications.running = applications.iter()
+                        .filter(|a| a.status == "running")
+                        .count() as u32;
+                    status.applications.pending = applications.iter()
+                        .filter(|a| a.status == "pending")
+                        .count() as u32;
+                    status.applications.failed = applications.iter()
+                        .filter(|a| a.status == "failed")
+                        .count() as u32;
+                },
+                Ok(Err(e)) => {
+                    warn!("Failed to fetch applications: {}", e);
+                },
+                Err(_) => {
+                    warn!("Timeout fetching applications");
+                }
             }
 
-            // Update gateway stats
-            if let Ok(gateways) = self.state.gateway_manager.get_all_gateways().await {
-                status.gateways.total = gateways.len() as u32;
-                status.gateways.active = gateways.iter()
-                    .filter(|g| g.status == "active")
-                    .count() as u32;
-                status.gateways.inactive = gateways.iter()
-                    .filter(|g| g.status == "inactive")
-                    .count() as u32;
+            // Update gateway stats with timeout
+            match tokio::time::timeout(Duration::from_secs(5), self.state.gateway_manager.get_all_gateways()).await {
+                Ok(Ok(gateways)) => {
+                    status.gateways.total = gateways.len() as u32;
+                    status.gateways.active = gateways.iter()
+                        .filter(|g| g.status == "active")
+                        .count() as u32;
+                    status.gateways.inactive = gateways.iter()
+                        .filter(|g| g.status == "inactive")
+                        .count() as u32;
+                },
+                Ok(Err(e)) => {
+                    warn!("Failed to fetch gateways: {}", e);
+                },
+                Err(_) => {
+                    warn!("Timeout fetching gateways");
+                }
             }
 
             status.last_update = SystemTime::now();

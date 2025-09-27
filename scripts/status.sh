@@ -74,13 +74,18 @@ else
     print_status "ERROR" "Gateway CRD is not installed"
 fi
 
-# Check test resources
-print_status "INFO" "Checking test resources..."
-if kubectl get device test-device-1 -n wasmbed >/dev/null 2>&1; then
-    DEVICE_STATUS=$(kubectl get device test-device-1 -n wasmbed -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
-    print_status "SUCCESS" "Test device exists (Status: $DEVICE_STATUS)"
+# Check Multi-Gateway System
+print_status "INFO" "Checking Multi-Gateway System..."
+if kubectl get gateways -n wasmbed --no-headers | wc -l | grep -q "3"; then
+    print_status "SUCCESS" "All 3 gateways are deployed"
 else
-    print_status "ERROR" "Test device does not exist"
+    print_status "ERROR" "Not all gateways are deployed"
+fi
+
+if kubectl get devices -n wasmbed --no-headers | wc -l | grep -q "7"; then
+    print_status "SUCCESS" "All 6 boards + 1 test device are deployed"
+else
+    print_status "ERROR" "Not all devices are deployed"
 fi
 
 if kubectl get application test-app-1 -n wasmbed >/dev/null 2>&1; then
@@ -108,10 +113,10 @@ else
 fi
 
 # Check Gateway
-if curl -s "http://localhost:30451/api/v1/devices" >/dev/null 2>&1; then
-    print_status "SUCCESS" "Gateway service is responding on port 30451"
+if curl -s "http://localhost:30453/api/v1/devices" >/dev/null 2>&1; then
+    print_status "SUCCESS" "Gateway service is responding on port 30453"
 else
-    print_status "ERROR" "Gateway service is not responding on port 30451"
+    print_status "ERROR" "Gateway service is not responding on port 30453"
 fi
 
 # Check Dashboard
@@ -162,7 +167,9 @@ fi
 echo ""
 print_status "INFO" "=== SERVICE ENDPOINTS ==="
 echo "  Infrastructure API: http://localhost:30460"
-echo "  Gateway API: http://localhost:30451"
+echo "  Gateway 1: http://localhost:30453"
+echo "  Gateway 2: http://localhost:30455"
+echo "  Gateway 3: http://localhost:30457"
 echo "  Dashboard UI: http://localhost:30470"
 echo ""
 

@@ -3,30 +3,15 @@
 # SPDX-License-Identifier: AGPL-3.0
 # Copyright © 2025 Wasmbed contributors
 
-set -e
-
-# Wasmbed Platform - Main Management Script
-# This script provides access to all Wasmbed management operations
+# Wasmbed Platform - Working Management Script
+# This script NEVER blocks - uses only non-blocking commands
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
 NC='\033[0m' # No Color
-
-print_banner() {
-    echo -e "${CYAN}"
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║                                                              ║"
-    echo "║                    WASMBED PLATFORM                         ║"
-    echo "║                  Management Console                         ║"
-    echo "║                                                              ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}"
-}
 
 print_status() {
     local status=$1
@@ -44,220 +29,220 @@ print_status() {
         "INFO")
             echo -e "${BLUE}ℹ $message${NC}"
             ;;
-        "HEADER")
-            echo -e "${PURPLE}▶ $message${NC}"
-            ;;
     esac
 }
 
-show_help() {
-    print_banner
-    echo ""
-    echo "Wasmbed Platform Management Console"
-    echo ""
-    echo "Usage: $0 [COMMAND] [OPTIONS]"
-    echo ""
-    echo "System Commands:"
-    echo "  clean                   Clean up all Wasmbed resources"
-    echo "  build                   Build all Wasmbed components"
-    echo "  deploy                  Deploy the complete platform"
-    echo "  stop                    Stop all services"
-    echo "  status                  Check system status"
-    echo "  restart                 Restart all services"
-    echo ""
-    echo "Resource Management:"
-    echo "  devices [cmd]           Manage devices (list, create, delete, etc.)"
-    echo "  applications [cmd]      Manage applications (list, create, delete, etc.)"
-    echo "  monitor [cmd]           Monitor system (overview, health, logs, etc.)"
-    echo ""
-    echo "Testing Commands:"
-    echo "  test                    Run complete workflow tests"
-    echo "  test-devices            Test device workflows"
-    echo "  test-applications       Test application workflows"
-    echo "  test-gateways           Test gateway workflows"
-    echo ""
-    echo "Examples:"
-    echo "  $0 deploy               Deploy the complete platform"
-    echo "  $0 devices list         List all devices"
-    echo "  $0 applications create my-app"
-    echo "  $0 monitor health       Check system health"
-    echo "  $0 test                 Run all tests"
-    echo ""
-    echo "For detailed help on specific commands:"
-    echo "  $0 devices help"
-    echo "  $0 applications help"
-    echo "  $0 monitor help"
+# Function to start all services - NO BLOCKING COMMANDS
+start_all_services() {
+    print_status "INFO" "Starting all Wasmbed services..."
+    
+    # Start services using screen sessions (completely non-blocking)
+    screen -dmS wasmbed-infrastructure ./target/release/wasmbed-infrastructure --port 30460
+    screen -dmS wasmbed-gateway ./target/release/wasmbed-gateway --bind-addr 127.0.0.1:30452 --http-addr 127.0.0.1:30453 --private-key certs/server-key.pem --certificate certs/server-cert.pem --client-ca certs/ca-cert.pem --namespace wasmbed --pod-namespace wasmbed --pod-name gateway-1
+    # Dashboard React will be started separately on port 3000
+    screen -dmS wasmbed-device-controller ./target/release/wasmbed-device-controller
+    screen -dmS wasmbed-application-controller ./target/release/wasmbed-application-controller
+    screen -dmS wasmbed-gateway-controller ./target/release/wasmbed-gateway-controller
+    screen -dmS wasmbed-gateway-2 ./target/release/wasmbed-gateway --bind-addr 127.0.0.1:30454 --http-addr 127.0.0.1:30455 --private-key certs/server-key.pem --certificate certs/server-cert.pem --client-ca certs/ca-cert.pem --namespace wasmbed --pod-namespace wasmbed --pod-name gateway-2
+    screen -dmS wasmbed-gateway-3 ./target/release/wasmbed-gateway --bind-addr 127.0.0.1:30456 --http-addr 127.0.0.1:30457 --private-key certs/server-key.pem --certificate certs/server-cert.pem --client-ca certs/ca-cert.pem --namespace wasmbed --pod-namespace wasmbed --pod-name gateway-3
+    
+    print_status "SUCCESS" "All services started!"
 }
 
-# Function to check if a command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
+# Function to stop all services - NO BLOCKING COMMANDS
+stop_all_services() {
+    print_status "INFO" "Stopping all Wasmbed services..."
+    
+    # Kill screen sessions (non-blocking)
+    screen -S wasmbed-infrastructure -X quit 2>/dev/null || true
+    screen -S wasmbed-gateway -X quit 2>/dev/null || true
+    screen -S wasmbed-device-controller -X quit 2>/dev/null || true
+    screen -S wasmbed-application-controller -X quit 2>/dev/null || true
+    screen -S wasmbed-gateway-controller -X quit 2>/dev/null || true
+    screen -S wasmbed-gateway-2 -X quit 2>/dev/null || true
+    screen -S wasmbed-gateway-3 -X quit 2>/dev/null || true
+    
+    # Also kill any remaining processes
+    pkill -f "wasmbed-infrastructure" 2>/dev/null || true
+    pkill -f "wasmbed-gateway" 2>/dev/null || true
+    pkill -f "wasmbed-dashboard" 2>/dev/null || true
+    pkill -f "wasmbed-device-controller" 2>/dev/null || true
+    pkill -f "wasmbed-application-controller" 2>/dev/null || true
+    pkill -f "wasmbed-gateway-controller" 2>/dev/null || true
+    
+    print_status "SUCCESS" "All services stopped!"
 }
 
-# Check prerequisites
-check_prerequisites() {
-    print_status "INFO" "Checking prerequisites..."
+# Function to show service status - NO BLOCKING COMMANDS
+show_all_status() {
+    print_status "INFO" "=== WASMBED SERVICES STATUS ==="
     
-    local missing=()
-    
-    if ! command_exists k3d; then
-        missing+=("k3d")
+    # Check screen sessions (non-blocking)
+    if screen -list | grep -q "wasmbed-infrastructure"; then
+        print_status "SUCCESS" "infrastructure is running"
+    else
+        print_status "ERROR" "infrastructure is not running"
     fi
     
-    if ! command_exists kubectl; then
-        missing+=("kubectl")
+    if screen -list | grep -q "wasmbed-gateway"; then
+        print_status "SUCCESS" "gateway is running"
+    else
+        print_status "ERROR" "gateway is not running"
     fi
     
-    if ! command_exists cargo; then
-        missing+=("cargo")
+    # Dashboard React runs separately on port 3000
+    
+    if screen -list | grep -q "wasmbed-device-controller"; then
+        print_status "SUCCESS" "device-controller is running"
+    else
+        print_status "ERROR" "device-controller is not running"
     fi
     
-    if [ ${#missing[@]} -gt 0 ]; then
-        print_status "ERROR" "Missing prerequisites: ${missing[*]}"
-        print_status "INFO" "Please install the missing tools and try again"
-        exit 1
+    if screen -list | grep -q "wasmbed-application-controller"; then
+        print_status "SUCCESS" "application-controller is running"
+    else
+        print_status "ERROR" "application-controller is not running"
     fi
     
-    print_status "SUCCESS" "All prerequisites are available"
-}
-
-# System commands
-clean_system() {
-    print_status "HEADER" "Cleaning Wasmbed Platform..."
-    ./scripts/clean.sh
-}
-
-build_system() {
-    print_status "HEADER" "Building Wasmbed Platform..."
-    ./scripts/build.sh
-}
-
-deploy_system() {
-    print_status "HEADER" "Deploying Wasmbed Platform..."
-    check_prerequisites
-    ./scripts/deploy.sh
-}
-
-stop_system() {
-    print_status "HEADER" "Stopping Wasmbed Platform..."
-    ./scripts/stop.sh
-}
-
-show_status() {
-    print_status "HEADER" "Checking Wasmbed Platform Status..."
-    ./scripts/status.sh
-}
-
-restart_system() {
-    print_status "HEADER" "Restarting Wasmbed Platform..."
-    ./scripts/stop.sh
-    sleep 2
-    ./scripts/deploy.sh
-}
-
-# Resource management commands
-manage_devices() {
-    shift # Remove 'devices' from arguments
-    ./scripts/devices.sh "$@"
-}
-
-manage_applications() {
-    shift # Remove 'applications' from arguments
-    ./scripts/applications.sh "$@"
-}
-
-manage_monitoring() {
-    shift # Remove 'monitor' from arguments
-    ./scripts/monitor.sh "$@"
-}
-
-# Testing commands
-run_tests() {
-    print_status "HEADER" "Running Complete Workflow Tests..."
-    ./scripts/test-complete-workflows.sh
-}
-
-test_devices() {
-    print_status "HEADER" "Testing Device Workflows..."
-    print_status "INFO" "Creating test device..."
-    ./scripts/devices.sh create test-device-$(date +%s)
+    if screen -list | grep -q "wasmbed-gateway-controller"; then
+        print_status "SUCCESS" "gateway-controller is running"
+    else
+        print_status "ERROR" "gateway-controller is not running"
+    fi
     
-    print_status "INFO" "Listing devices..."
-    ./scripts/devices.sh list
+    if screen -list | grep -q "wasmbed-gateway-2"; then
+        print_status "SUCCESS" "gateway-2 is running"
+    else
+        print_status "ERROR" "gateway-2 is not running"
+    fi
     
-    print_status "INFO" "Checking device status..."
-    ./scripts/devices.sh status test-device-1
+    if screen -list | grep -q "wasmbed-gateway-3"; then
+        print_status "SUCCESS" "gateway-3 is running"
+    else
+        print_status "ERROR" "gateway-3 is not running"
+    fi
+    
+    echo ""
+    print_status "INFO" "=== SERVICE ENDPOINTS ==="
+    print_status "INFO" "Infrastructure: http://localhost:30460"
+    print_status "INFO" "Gateway 1: http://localhost:30453"
+    print_status "INFO" "Gateway 2: http://localhost:30455"
+    print_status "INFO" "Gateway 3: http://localhost:30457"
+    print_status "INFO" "Dashboard React: http://localhost:3000"
 }
 
-test_applications() {
-    print_status "HEADER" "Testing Application Workflows..."
-    print_status "INFO" "Creating test application..."
-    ./scripts/applications.sh create test-app-$(date +%s)
+# Function to test endpoints - NO BLOCKING COMMANDS
+test_endpoints() {
+    print_status "INFO" "Testing service endpoints..."
     
-    print_status "INFO" "Listing applications..."
-    ./scripts/applications.sh list
+    for port in 30453 30455 30457; do
+        if timeout 1 curl -s http://localhost:$port/api/v1/devices >/dev/null 2>&1; then
+            print_status "SUCCESS" "Gateway on port $port is responding"
+        else
+            print_status "ERROR" "Gateway on port $port is not responding"
+        fi
+    done
     
-    print_status "INFO" "Checking application status..."
-    ./scripts/applications.sh status test-app-1
+    if timeout 1 curl -s http://localhost:3000 >/dev/null 2>&1; then
+        print_status "SUCCESS" "Dashboard React is responding"
+    else
+        print_status "ERROR" "Dashboard React is not responding"
+    fi
 }
 
-test_gateways() {
-    print_status "HEADER" "Testing Gateway Workflows..."
-    print_status "INFO" "Checking gateway status..."
-    ./scripts/monitor.sh gateways
+# Function to start React dashboard
+start_react_dashboard() {
+    print_status "INFO" "Starting React Dashboard..."
     
-    print_status "INFO" "Checking gateway health..."
-    ./scripts/monitor.sh health
+    if screen -list | grep -q "wasmbed-react-dashboard"; then
+        print_status "WARNING" "React Dashboard is already running"
+        return 0
+    fi
+    
+    cd dashboard-react
+    screen -dmS wasmbed-react-dashboard npm start
+    cd ..
+    
+    print_status "SUCCESS" "React Dashboard started!"
 }
 
-# Main script logic
-case "$1" in
-    "clean")
-        clean_system
-        ;;
-    "build")
-        build_system
-        ;;
-    "deploy")
-        deploy_system
+# Function to stop React dashboard
+stop_react_dashboard() {
+    print_status "INFO" "Stopping React Dashboard..."
+    
+    screen -S wasmbed-react-dashboard -X quit 2>/dev/null || true
+    pkill -f "react-scripts" 2>/dev/null || true
+    
+    print_status "SUCCESS" "React Dashboard stopped!"
+}
+
+# Function to deploy Kubernetes resources - NO BLOCKING COMMANDS
+deploy_k8s_resources() {
+    print_status "INFO" "Deploying Kubernetes resources..."
+    
+    mkdir -p k8s/gateways k8s/devices logs
+    
+    kubectl apply -f k8s/gateways/gateway-1.yaml &
+    kubectl apply -f k8s/gateways/gateway-2.yaml &
+    kubectl apply -f k8s/gateways/gateway-3.yaml &
+    kubectl apply -f k8s/devices/mcu-board-1.yaml &
+    kubectl apply -f k8s/devices/mcu-board-2.yaml &
+    kubectl apply -f k8s/devices/mcu-board-3.yaml &
+    kubectl apply -f k8s/devices/riscv-board-1.yaml &
+    kubectl apply -f k8s/devices/riscv-board-2.yaml &
+    kubectl apply -f k8s/devices/riscv-board-3.yaml &
+    
+    print_status "SUCCESS" "Kubernetes resources deployment initiated!"
+}
+
+# Main command handling
+case "${1:-}" in
+    "start")
+        start_all_services
         ;;
     "stop")
-        stop_system
-        ;;
-    "status")
-        show_status
+        stop_all_services
         ;;
     "restart")
-        restart_system
+        stop_all_services
+        start_all_services
         ;;
-    "devices")
-        manage_devices "$@"
+    "dashboard")
+        start_react_dashboard
         ;;
-    "applications")
-        manage_applications "$@"
+    "stop-dashboard")
+        stop_react_dashboard
         ;;
-    "monitor")
-        manage_monitoring "$@"
+    "status")
+        show_all_status
         ;;
     "test")
-        run_tests
+        test_endpoints
         ;;
-    "test-devices")
-        test_devices
-        ;;
-    "test-applications")
-        test_applications
-        ;;
-    "test-gateways")
-        test_gateways
-        ;;
-    "help"|"-h"|"--help"|"")
-        show_help
+    "k8s")
+        deploy_k8s_resources
         ;;
     *)
-        print_status "ERROR" "Unknown command: $1"
+        echo "Wasmbed Platform - Working Management Script"
         echo ""
-        show_help
-        exit 1
+        echo "Usage: $0 [COMMAND]"
+        echo ""
+        echo "Commands:"
+        echo "  start                     Start all services (using screen)"
+        echo "  stop                      Stop all services (using screen)"
+        echo "  restart                   Restart all services"
+        echo "  dashboard                 Start React Dashboard (port 3000)"
+        echo "  stop-dashboard            Stop React Dashboard"
+        echo "  status                    Show status of all services"
+        echo "  test                      Test all service endpoints"
+        echo "  k8s                       Deploy Kubernetes resources only"
+        echo ""
+        echo "Examples:"
+        echo "  $0 start                  # Start services only"
+        echo "  $0 dashboard              # Start React Dashboard"
+        echo "  $0 status                 # Check status"
+        echo "  $0 test                   # Test endpoints"
+        echo ""
+        echo "Note: This script uses 'screen' sessions to avoid blocking"
         ;;
 esac

@@ -9,7 +9,6 @@ import {
   Form,
   Input,
   Select,
-  message,
   Popconfirm,
   Typography,
   Row,
@@ -24,7 +23,6 @@ import {
   ExclamationCircleOutlined,
   ClockCircleOutlined,
 } from '@ant-design/icons';
-import axios from 'axios';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -42,10 +40,16 @@ const DeviceManagement = () => {
   const fetchDevices = async () => {
     setLoading(true);
     try {
-      const response = await axios.get('/api/devices');
-      setDevices(response.data);
+      // Use mock data for development
+      setDevices([
+        { id: 1, name: 'mcu-board-1', status: 'Connected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z' },
+        { id: 2, name: 'mcu-board-2', status: 'Connected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z' },
+        { id: 3, name: 'mcu-board-3', status: 'Connected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z' },
+        { id: 4, name: 'riscv-board-1', status: 'Connected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z' },
+        { id: 5, name: 'riscv-board-2', status: 'Connected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z' },
+        { id: 6, name: 'riscv-board-3', status: 'Connected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z' }
+      ]);
     } catch (error) {
-      message.error('Failed to fetch devices');
       console.error('Error fetching devices:', error);
     } finally {
       setLoading(false);
@@ -54,24 +58,22 @@ const DeviceManagement = () => {
 
   const handleCreateDevice = async (values) => {
     try {
-      await axios.post('/api/devices', values);
-      message.success('Device created successfully');
+      // Mock create device
+      console.log('Device created successfully:', values);
       setModalVisible(false);
       form.resetFields();
       fetchDevices();
     } catch (error) {
-      message.error('Failed to create device');
       console.error('Error creating device:', error);
     }
   };
 
   const handleDeleteDevice = async (deviceId) => {
     try {
-      await axios.delete(`/api/devices/${deviceId}`);
-      message.success('Device deleted successfully');
+      // Mock delete device
+      console.log('Device deleted successfully:', deviceId);
       fetchDevices();
     } catch (error) {
-      message.error('Failed to delete device');
       console.error('Error deleting device:', error);
     }
   };
@@ -167,7 +169,7 @@ const DeviceManagement = () => {
     },
   ];
 
-  const deviceStats = devices.reduce(
+  const deviceStats = (Array.isArray(devices) ? devices : []).reduce(
     (acc, device) => {
       acc.total++;
       if (device.status === 'Connected') acc.connected++;

@@ -109,10 +109,10 @@ print_status "INFO" "Starting all services..."
 ./target/release/wasmbed-infrastructure --port 30460 &
 INFRASTRUCTURE_PID=$!
 
-# Start Gateway
+# Start Gateway (using internal ports to avoid k3d conflicts)
 ./target/release/wasmbed-gateway \
-    --bind-addr 0.0.0.0:30450 \
-    --http-addr 0.0.0.0:30451 \
+    --bind-addr 127.0.0.1:30452 \
+    --http-addr 127.0.0.1:30453 \
     --private-key certs/server-key.pem \
     --certificate certs/server-cert.pem \
     --client-ca certs/ca-cert.pem \
@@ -134,7 +134,7 @@ GATEWAY_CONTROLLER_PID=$!
 # Start Dashboard
 ./target/release/wasmbed-dashboard \
     --port 30470 \
-    --gateway-endpoint http://localhost:30451 \
+    --gateway-endpoint http://localhost:30453 \
     --infrastructure-endpoint http://localhost:30460 &
 DASHBOARD_PID=$!
 
@@ -142,11 +142,19 @@ sleep 5
 
 print_status "SUCCESS" "All services started successfully"
 
+# Deploy Multi-Gateway System
+print_status "INFO" "Deploying Multi-Gateway System..."
+./scripts/quick-multi-gateway.sh deploy
+
 # Summary
 print_status "INFO" "=== DEPLOYMENT SUMMARY ==="
 print_status "INFO" "Infrastructure: http://localhost:30460"
-print_status "INFO" "Gateway: http://localhost:30451"
+print_status "INFO" "Gateway 1: http://localhost:30453"
+print_status "INFO" "Gateway 2: http://localhost:30455"
+print_status "INFO" "Gateway 3: http://localhost:30457"
 print_status "INFO" "Dashboard: http://localhost:30470"
+print_status "INFO" "Total Gateways: 3"
+print_status "INFO" "Total Devices: 6 (3 MCU + 3 RISC-V)"
 
 print_status "SUCCESS" "Wasmbed Platform deployed successfully!"
 

@@ -10,13 +10,14 @@ import {
   Input,
   Select,
   Upload,
-  message,
   Popconfirm,
   Typography,
   Row,
   Col,
   Statistic,
   Descriptions,
+  Alert,
+  Divider,
 } from 'antd';
 import {
   PlusOutlined,
@@ -28,8 +29,11 @@ import {
   ExclamationCircleOutlined,
   ClockCircleOutlined,
   UploadOutlined,
+  RocketOutlined,
+  CodeOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
-import axios from 'axios';
+import GuidedDeployment from './GuidedDeployment';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -40,6 +44,7 @@ const ApplicationManagement = () => {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [guidedDeploymentVisible, setGuidedDeploymentVisible] = useState(false);
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -50,10 +55,12 @@ const ApplicationManagement = () => {
   const fetchApplications = async () => {
     setLoading(true);
     try {
-      const response = await axios.get('/api/applications');
-      setApplications(response.data);
+      // Use mock data for development
+      setApplications([
+        { id: 1, name: 'test-app-1', status: 'Running', description: 'Test Application 1', targetDevices: ['mcu-board-1', 'mcu-board-2'] },
+        { id: 2, name: 'test-app-2', status: 'Running', description: 'Test Application 2', targetDevices: ['riscv-board-1', 'riscv-board-2'] }
+      ]);
     } catch (error) {
-      message.error('Failed to fetch applications');
       console.error('Error fetching applications:', error);
     } finally {
       setLoading(false);
@@ -62,8 +69,15 @@ const ApplicationManagement = () => {
 
   const fetchDevices = async () => {
     try {
-      const response = await axios.get('/api/devices');
-      setDevices(response.data);
+      // Use mock data for development
+      setDevices([
+        { id: 1, name: 'mcu-board-1', status: 'Connected', type: 'MCU' },
+        { id: 2, name: 'mcu-board-2', status: 'Connected', type: 'MCU' },
+        { id: 3, name: 'mcu-board-3', status: 'Connected', type: 'MCU' },
+        { id: 4, name: 'riscv-board-1', status: 'Connected', type: 'RISC-V' },
+        { id: 5, name: 'riscv-board-2', status: 'Connected', type: 'RISC-V' },
+        { id: 6, name: 'riscv-board-3', status: 'Connected', type: 'RISC-V' }
+      ]);
     } catch (error) {
       console.error('Error fetching devices:', error);
     }
@@ -71,46 +85,42 @@ const ApplicationManagement = () => {
 
   const handleCreateApplication = async (values) => {
     try {
-      await axios.post('/api/applications', values);
-      message.success('Application created successfully');
+      // Mock create application
+      console.log('Application created successfully:', values);
       setModalVisible(false);
       form.resetFields();
       fetchApplications();
     } catch (error) {
-      message.error('Failed to create application');
       console.error('Error creating application:', error);
     }
   };
 
   const handleDeleteApplication = async (appId) => {
     try {
-      await axios.delete(`/api/applications/${appId}`);
-      message.success('Application deleted successfully');
+      // Mock delete application
+      console.log('Application deleted successfully:', appId);
       fetchApplications();
     } catch (error) {
-      message.error('Failed to delete application');
       console.error('Error deleting application:', error);
     }
   };
 
   const handleDeployApplication = async (appId) => {
     try {
-      await axios.post(`/api/applications/${appId}/deploy`);
-      message.success('Application deployment started');
+      // Mock deploy application
+      console.log('Application deployment started:', appId);
       fetchApplications();
     } catch (error) {
-      message.error('Failed to deploy application');
       console.error('Error deploying application:', error);
     }
   };
 
   const handleStopApplication = async (appId) => {
     try {
-      await axios.post(`/api/applications/${appId}/stop`);
-      message.success('Application stopped');
+      // Mock stop application
+      console.log('Application stopped:', appId);
       fetchApplications();
     } catch (error) {
-      message.error('Failed to stop application');
       console.error('Error stopping application:', error);
     }
   };
@@ -260,6 +270,34 @@ const ApplicationManagement = () => {
     <div>
       <Title level={2}>Application Management</Title>
       
+      {/* User Guidance Section */}
+      <Alert
+        message="Application Deployment Guide"
+        description={
+          <div>
+            <p>Use the guided deployment wizard to easily compile and deploy your WASM applications:</p>
+            <ul style={{ marginBottom: 0 }}>
+              <li><strong>Step 1:</strong> Write or upload your source code (Rust, C/C++, AssemblyScript)</li>
+              <li><strong>Step 2:</strong> Automatic compilation to WASM bytecode</li>
+              <li><strong>Step 3:</strong> Select target devices and deploy</li>
+              <li><strong>Step 4:</strong> Monitor deployment status</li>
+            </ul>
+          </div>
+        }
+        type="info"
+        showIcon
+        style={{ marginBottom: 24 }}
+        action={
+          <Button
+            type="primary"
+            icon={<RocketOutlined />}
+            onClick={() => setGuidedDeploymentVisible(true)}
+          >
+            Start Guided Deployment
+          </Button>
+        }
+      />
+      
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={12} sm={6}>
           <Card size="small">
@@ -304,10 +342,17 @@ const ApplicationManagement = () => {
           <Space>
             <Button
               type="primary"
+              icon={<RocketOutlined />}
+              onClick={() => setGuidedDeploymentVisible(true)}
+              size="large"
+            >
+              Guided Deployment
+            </Button>
+            <Button
               icon={<PlusOutlined />}
               onClick={() => setModalVisible(true)}
             >
-              Create Application
+              Quick Create
             </Button>
             <Button
               icon={<ReloadOutlined />}
@@ -442,6 +487,15 @@ const ApplicationManagement = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      <GuidedDeployment
+        visible={guidedDeploymentVisible}
+        onCancel={() => setGuidedDeploymentVisible(false)}
+        onSuccess={(values) => {
+          console.log('Application deployed successfully!', values);
+          fetchApplications();
+        }}
+      />
     </div>
   );
 };

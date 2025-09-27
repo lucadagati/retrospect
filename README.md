@@ -15,7 +15,7 @@ Wasmbed Platform is a production-ready edge computing solution that enables secu
 - **Kubernetes Orchestration**: Full CRD-based management with controllers
 - **Real-time Monitoring**: Comprehensive metrics, logging, and health monitoring
 - **Edge Gateway**: High-performance gateway for device communication
-- **Modern Dashboard**: React-based web interface for platform management
+- **Modern Dashboard**: React-based web interface with guided deployment wizard
 - **QEMU Integration**: Device emulation for development and testing
 
 ## Architecture
@@ -226,7 +226,7 @@ wasmbed shell             # Access platform shell
 
 | Service | Port | Protocol | Description |
 |---------|------|----------|-------------|
-| **Dashboard** | 30470 | HTTP | React web interface |
+| **Dashboard** | 3000 | HTTP | React web interface with guided deployment |
 | **Gateway HTTP** | 30451 | HTTP | REST API for management |
 | **Gateway TLS** | 30450 | TLS | Secure device communication |
 | **Infrastructure** | 30460 | HTTP | CA, monitoring, logging |
@@ -410,7 +410,7 @@ WASMBED_GATEWAY_HTTP_PORT=30451
 WASMBED_INFRASTRUCTURE_PORT=30460
 
 # Dashboard Configuration
-WASMBED_DASHBOARD_PORT=30470
+WASMBED_DASHBOARD_PORT=3000
 
 # Kubernetes Configuration
 KUBECONFIG=~/.k3d/kubeconfig-wasmbed-test.yaml
@@ -554,6 +554,28 @@ helm install wasmbed ./helm/wasmbed-platform
 - **Load Balancing**: Distribute device connections
 - **Auto-scaling**: Kubernetes HPA integration
 
+## 🎯 Dashboard Features
+
+### **React Dashboard (Port 3000)**
+- **Modern UI**: Built with React and Ant Design
+- **Guided Deployment**: Step-by-step wizard for application deployment
+- **Real-time Monitoring**: Live system metrics and device status
+- **User Guidance**: Integrated help and workflow instructions
+- **Mock Data**: Development-ready with sample data
+
+### **Key Dashboard Components**
+- **System Overview**: Real-time system status and statistics
+- **Application Management**: Create, deploy, and manage WASM applications
+- **Device Management**: Monitor and configure edge devices
+- **Gateway Management**: Configure and monitor edge gateways
+- **Monitoring**: System metrics, logs, and health monitoring
+
+### **Guided Deployment Wizard**
+1. **Application Information**: Name, description, target devices
+2. **Source Code**: Upload files or write code directly (Rust, C/C++, AssemblyScript)
+3. **WASM Compilation**: Automatic compilation with progress tracking
+4. **Deployment**: Select devices and deploy applications
+
 ## 📊 Performance
 
 ### **Benchmarks**
@@ -605,19 +627,21 @@ This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE)
 
 ## 🗺️ Roadmap
 
-### **v1.1.0** (Q2 2024)
-- [ ] Multi-cluster support
+### **v1.1.0** (Q1 2025)
+- [x] React Dashboard with guided deployment
+- [x] User guidance and workflow instructions
+- [x] Mock data for development
+- [x] Complete CRUD operations for all resources
+- [ ] Real backend integration
 - [ ] Advanced monitoring dashboards
+
+### **v1.2.0** (Q2 2025)
+- [ ] Multi-cluster support
 - [ ] Plugin system for custom protocols
 - [ ] WebAssembly component model support
-
-### **v1.2.0** (Q3 2024)
 - [ ] Edge AI/ML integration
-- [ ] Advanced security features
-- [ ] Performance optimizations
-- [ ] Mobile device support
 
-### **v2.0.0** (Q4 2024)
+### **v2.0.0** (Q3 2025)
 - [ ] Cloud-native deployment
 - [ ] Advanced analytics
 - [ ] Enterprise features
