@@ -5,27 +5,26 @@ import {
   Form,
   Input,
   Select,
-  Upload,
   Button,
+  Space,
   Card,
   Typography,
-  Space,
-  Alert,
-  Divider,
   Row,
   Col,
+  Divider,
+  Alert,
+  Upload,
+  message,
+  Tooltip,
   Tag,
-  Progress,
 } from 'antd';
 import {
   CodeOutlined,
+  RocketOutlined,
+  CheckCircleOutlined,
   UploadOutlined,
   PlayCircleOutlined,
-  CheckCircleOutlined,
-  InfoCircleOutlined,
-  FileTextOutlined,
-  SettingOutlined,
-  RocketOutlined,
+  QuestionCircleOutlined,
 } from '@ant-design/icons';
 
 const { Title, Paragraph, Text } = Typography;
@@ -35,102 +34,264 @@ const { TextArea } = Input;
 const GuidedDeployment = ({ visible, onCancel, onSuccess }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [form] = Form.useForm();
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [compilationStatus, setCompilationStatus] = useState('idle');
-  const [compilationProgress, setCompilationProgress] = useState(0);
-  const [compiledWasm, setCompiledWasm] = useState(null);
-  const [sourceCode, setSourceCode] = useState('');
+
+  const testApplications = [
+    {
+      id: 'hello-world',
+      name: 'Hello World',
+      description: 'Simple greeting application that prints messages',
+      language: 'Rust',
+      code: `fn main() {
+    println!("Hello from Wasmbed!");
+    println!("Device is running successfully");
+}`,
+      features: ['Basic I/O', 'String handling', 'Console output'],
+      size: '2KB',
+      complexity: 'Beginner'
+    },
+    {
+      id: 'led-blinker',
+      name: 'LED Blinker',
+      description: 'GPIO control example for blinking LEDs',
+      language: 'Rust',
+      code: `use std::thread;
+use std::time::Duration;
+
+fn main() {
+    loop {
+        // Turn LED on
+        gpio_write(13, true);
+        thread::sleep(Duration::from_millis(500));
+        
+        // Turn LED off
+        gpio_write(13, false);
+        thread::sleep(Duration::from_millis(500));
+    }
+}
+
+fn gpio_write(pin: u8, value: bool) {
+    // GPIO write implementation
+}`,
+      features: ['GPIO Control', 'Timing', 'Loop control'],
+      size: '4KB',
+      complexity: 'Intermediate'
+    },
+    {
+      id: 'sensor-reader',
+      name: 'Sensor Reader',
+      description: 'ADC sensor reading and data processing',
+      language: 'Rust',
+      code: `use std::time::Duration;
+use std::thread;
+
+fn main() {
+    loop {
+        let temperature = read_adc(0);
+        let humidity = read_adc(1);
+        
+        println!("Temperature: {}°C", temperature);
+        println!("Humidity: {}%", humidity);
+        
+        thread::sleep(Duration::from_secs(1));
+    }
+}
+
+fn read_adc(channel: u8) -> f32 {
+    // ADC read implementation
+    25.5 // Mock value
+}`,
+      features: ['ADC Reading', 'Data Processing', 'Sensor Integration'],
+      size: '6KB',
+      complexity: 'Intermediate'
+    },
+    {
+      id: 'network-test',
+      name: 'Network Test',
+      description: 'Network connectivity and communication test',
+      language: 'Rust',
+      code: `use std::net::TcpStream;
+use std::io::Write;
+
+fn main() {
+    match TcpStream::connect("gateway:30430") {
+        Ok(mut stream) => {
+            let message = "Hello Gateway!";
+            stream.write_all(message.as_bytes()).unwrap();
+            println!("Connected to gateway successfully");
+        }
+        Err(e) => {
+            println!("Failed to connect: {}", e);
+        }
+    }
+}`,
+      features: ['Network Communication', 'TCP/IP', 'Error Handling'],
+      size: '8KB',
+      complexity: 'Advanced'
+    }
+  ];
 
   const steps = [
     {
-      title: 'Application Info',
-      description: 'Basic application details',
-      icon: <InfoCircleOutlined />,
+      title: 'Select Template',
+      description: 'Choose a test application template',
+      icon: <CodeOutlined />
     },
     {
-      title: 'Source Code',
-      description: 'Write or upload your code',
-      icon: <CodeOutlined />,
+      title: 'Configure',
+      description: 'Set application parameters',
+      icon: <RocketOutlined />
     },
     {
-      title: 'Compilation',
-      description: 'Compile to WASM',
-      icon: <SettingOutlined />,
+      title: 'Compile',
+      description: 'Build WASM bytecode',
+      icon: <CheckCircleOutlined />
     },
     {
-      title: 'Deployment',
-      description: 'Deploy to devices',
-      icon: <RocketOutlined />,
-    },
+      title: 'Deploy',
+      description: 'Deploy to target devices',
+      icon: <PlayCircleOutlined />
+    }
   ];
 
-  const handleNext = () => {
-    if (currentStep < steps.length - 1) {
-      setCurrentStep(currentStep + 1);
-    }
-  };
-
-  const handlePrev = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
-    }
+  const handleTemplateSelect = (templateId) => {
+    const template = testApplications.find(t => t.id === templateId);
+    setSelectedTemplate(template);
+    form.setFieldsValue({
+      name: template.name.toLowerCase().replace(/\s+/g, '-'),
+      description: template.description,
+      language: template.language
+    });
   };
 
   const handleCompile = async () => {
     setCompilationStatus('compiling');
-    setCompilationProgress(0);
-
+    
     // Simulate compilation process
-    const steps = [
-      { progress: 20, message: 'Parsing source code...' },
-      { progress: 40, message: 'Type checking...' },
-      { progress: 60, message: 'Generating WASM bytecode...' },
-      { progress: 80, message: 'Optimizing...' },
-      { progress: 100, message: 'Compilation complete!' },
-    ];
-
-    for (const step of steps) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setCompilationProgress(step.progress);
-      console.log(step.message);
-    }
-
-    setCompilationStatus('completed');
-    setCompiledWasm('mock-wasm-bytecode-base64-encoded');
-    console.log('WASM compilation successful!');
+    setTimeout(() => {
+      setCompilationStatus('success');
+      message.success('WASM compilation completed successfully!');
+    }, 3000);
   };
 
-  const handleDeploy = async () => {
-    const values = await form.validateFields();
-    console.log('Application deployed successfully!');
-    onSuccess(values);
-    onCancel();
+  const handleDeploy = async (values) => {
+    try {
+      // Create application with compiled WASM
+      const application = {
+        name: values.name,
+        description: values.description,
+        language: values.language,
+        template: selectedTemplate.id,
+        wasmBytes: 'compiled-wasm-bytes', // In real implementation, this would be the actual WASM
+        targetDevices: values.targetDevices || ['all_devices']
+      };
+
+      // Simulate deployment
+      message.success(`Application "${application.name}" deployed successfully!`);
+      onSuccess(application);
+      onCancel();
+    } catch (error) {
+      message.error('Deployment failed');
+    }
   };
 
   const renderStepContent = () => {
     switch (currentStep) {
       case 0:
         return (
-          <Card title="Application Information" style={{ marginBottom: 24 }}>
-            <Form form={form} layout="vertical">
-              <Form.Item
-                name="name"
-                label="Application Name"
-                rules={[{ required: true, message: 'Please enter application name' }]}
-              >
-                <Input placeholder="e.g., sensor-monitor" />
-              </Form.Item>
+          <div>
+            <Title level={4}>Select Test Application Template</Title>
+            <Paragraph>
+              Choose from pre-built test applications to get started quickly. Each template includes source code and is ready to compile.
+            </Paragraph>
+            
+            <Row gutter={[16, 16]}>
+              {testApplications.map(template => (
+                <Col xs={24} sm={12} lg={6} key={template.id}>
+                  <Card
+                    hoverable
+                    style={{
+                      border: selectedTemplate?.id === template.id ? '2px solid #1890ff' : '1px solid #d9d9d9',
+                      background: selectedTemplate?.id === template.id ? '#f0f9ff' : '#ffffff'
+                    }}
+                    onClick={() => handleTemplateSelect(template.id)}
+                  >
+                    <div style={{ textAlign: 'center' }}>
+                      <CodeOutlined style={{ fontSize: '24px', color: '#1890ff', marginBottom: '8px' }} />
+                      <Title level={5} style={{ margin: '8px 0' }}>{template.name}</Title>
+                      <Paragraph style={{ fontSize: '12px', margin: '8px 0' }}>
+                        {template.description}
+                      </Paragraph>
+                      <div style={{ marginTop: '12px' }}>
+                        <Tag color="blue">{template.language}</Tag>
+                        <Tag color="green">{template.complexity}</Tag>
+                        <Tag color="orange">{template.size}</Tag>
+                      </div>
+                      <div style={{ marginTop: '8px' }}>
+                        {template.features.map(feature => (
+                          <Tag key={feature} size="small" color="default">{feature}</Tag>
+                        ))}
+                      </div>
+                    </div>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+          </div>
+        );
+
+      case 1:
+        return (
+          <div>
+            <Title level={4}>Configure Application</Title>
+            <Paragraph>
+              Customize your application settings and target devices.
+            </Paragraph>
+            
+            <Form
+              form={form}
+              layout="vertical"
+              initialValues={{
+                name: selectedTemplate?.name.toLowerCase().replace(/\s+/g, '-'),
+                description: selectedTemplate?.description,
+                language: selectedTemplate?.language
+              }}
+            >
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="name"
+                    label={
+                      <Space>
+                        <span>Application Name</span>
+                        <Tooltip title="Unique identifier for your application">
+                          <QuestionCircleOutlined style={{ color: '#1890ff' }} />
+                        </Tooltip>
+                      </Space>
+                    }
+                    rules={[{ required: true, message: 'Please enter application name' }]}
+                  >
+                    <Input placeholder="Enter application name" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="language"
+                    label="Programming Language"
+                  >
+                    <Input disabled />
+                  </Form.Item>
+                </Col>
+              </Row>
               
               <Form.Item
                 name="description"
                 label="Description"
-                rules={[{ required: true, message: 'Please enter description' }]}
               >
-                <TextArea 
-                  rows={3} 
-                  placeholder="Describe what this application does..."
-                />
+                <TextArea rows={3} placeholder="Enter application description" />
               </Form.Item>
-
+              
               <Form.Item
                 name="targetDevices"
                 label="Target Devices"
@@ -138,220 +299,154 @@ const GuidedDeployment = ({ visible, onCancel, onSuccess }) => {
               >
                 <Select
                   mode="multiple"
-                  placeholder="Select devices to deploy to"
-                  style={{ width: '100%' }}
+                  placeholder="Select target devices"
+                  optionFilterProp="children"
                 >
-                  <Option value="mcu-board-1">MCU Board 1 (riscv32)</Option>
-                  <Option value="mcu-board-2">MCU Board 2 (riscv32)</Option>
-                  <Option value="mcu-board-3">MCU Board 3 (riscv32)</Option>
-                  <Option value="riscv-board-1">RISC-V Board 1 (riscv64)</Option>
-                  <Option value="riscv-board-2">RISC-V Board 2 (riscv64)</Option>
-                  <Option value="riscv-board-3">RISC-V Board 3 (riscv64)</Option>
+                  <Option value="all_devices">All Devices</Option>
+                  <Option value="esp32-devices">ESP32 Devices</Option>
+                  <Option value="stm32-devices">STM32 Devices</Option>
+                  <Option value="riscv-devices">RISC-V Devices</Option>
                 </Select>
               </Form.Item>
             </Form>
-          </Card>
-        );
-
-      case 1:
-        return (
-          <Card title="Source Code" style={{ marginBottom: 24 }}>
-            <Space direction="vertical" size="large" style={{ width: '100%' }}>
-              <Alert
-                message="Code Input Options"
-                description="You can either write your code directly or upload a file. Supported languages: Rust, C/C++, AssemblyScript"
-                type="info"
-                showIcon
-              />
-              
-              <div>
-                <Title level={5}>Upload Source File</Title>
-                <Upload.Dragger
-                  name="file"
-                  multiple={false}
-                  accept=".rs,.c,.cpp,.ts,.wat,.wasm"
-                  beforeUpload={() => false}
-                  onChange={(info) => {
-                    if (info.file) {
-                      const reader = new FileReader();
-                      reader.onload = (e) => {
-                        setSourceCode(e.target.result);
-                      };
-                      reader.readAsText(info.file.originFileObj);
-                    }
-                  }}
-                >
-                  <p className="ant-upload-drag-icon">
-                    <UploadOutlined />
-                  </p>
-                  <p className="ant-upload-text">Click or drag file to this area to upload</p>
-                  <p className="ant-upload-hint">
-                    Support for Rust (.rs), C/C++ (.c, .cpp), AssemblyScript (.ts), WAT (.wat), WASM (.wasm)
-                  </p>
-                </Upload.Dragger>
-              </div>
-
-              <Divider>OR</Divider>
-
-              <div>
-                <Title level={5}>Write Code Directly</Title>
-                <TextArea
-                  rows={15}
-                  placeholder={`// Example Rust code for WASM
-#[no_std]
-#[no_main]
-
-use core::panic::PanicInfo;
-
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    loop {}
-}
-
-#[no_mangle]
-pub extern "C" fn add(a: i32, b: i32) -> i32 {
-    a + b
-}
-
-#[no_mangle]
-pub extern "C" fn main() {
-    // Your application logic here
-    let result = add(5, 3);
-    // result = 8
-}`}
-                  value={sourceCode}
-                  onChange={(e) => setSourceCode(e.target.value)}
-                  style={{ fontFamily: 'monospace' }}
-                />
-              </div>
-            </Space>
-          </Card>
+          </div>
         );
 
       case 2:
         return (
-          <Card title="WASM Compilation" style={{ marginBottom: 24 }}>
-            <Space direction="vertical" size="large" style={{ width: '100%' }}>
-              <Alert
-                message="Compilation Process"
-                description="Your source code will be compiled to WebAssembly bytecode for deployment to edge devices."
-                type="info"
-                showIcon
-              />
-
-              {compilationStatus === 'idle' && (
-                <div style={{ textAlign: 'center', padding: '40px' }}>
-                  <Button
-                    type="primary"
-                    size="large"
-                    icon={<PlayCircleOutlined />}
-                    onClick={handleCompile}
-                    disabled={!sourceCode.trim()}
-                  >
-                    Start Compilation
-                  </Button>
-                  {!sourceCode.trim() && (
-                    <div style={{ marginTop: 16, color: '#999' }}>
-                      Please provide source code first
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {compilationStatus === 'compiling' && (
-                <div style={{ textAlign: 'center', padding: '40px' }}>
-                  <Progress
-                    type="circle"
-                    percent={compilationProgress}
-                    status="active"
-                    strokeColor={{
-                      '0%': '#108ee9',
-                      '100%': '#87d068',
-                    }}
-                  />
-                  <div style={{ marginTop: 16 }}>
-                    <Text>Compiling to WASM...</Text>
-                  </div>
-                </div>
-              )}
-
-              {compilationStatus === 'completed' && (
-                <div>
-                  <Alert
-                    message="Compilation Successful!"
-                    description="Your code has been successfully compiled to WASM bytecode."
-                    type="success"
-                    showIcon
-                    style={{ marginBottom: 16 }}
-                  />
-                  
-                  <Card size="small" title="Compiled WASM Info">
-                    <Row gutter={16}>
-                      <Col span={12}>
-                        <Text strong>Size:</Text> <Tag color="green">2.4 KB</Tag>
-                      </Col>
-                      <Col span={12}>
-                        <Text strong>Format:</Text> <Tag color="blue">WASM Binary</Tag>
-                      </Col>
-                    </Row>
-                    <div style={{ marginTop: 8 }}>
-                      <Text strong>Hash:</Text> <Text code>sha256:abc123...</Text>
-                    </div>
-                  </Card>
-                </div>
-              )}
-            </Space>
-          </Card>
-        );
-
-      case 3:
-        return (
-          <Card title="Deployment Configuration" style={{ marginBottom: 24 }}>
-            <Space direction="vertical" size="large" style={{ width: '100%' }}>
-              <Alert
-                message="Ready to Deploy"
-                description="Review your deployment configuration and deploy to selected devices."
-                type="success"
-                showIcon
-              />
-
-              <Card size="small" title="Deployment Summary">
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Text strong>Application:</Text> <Text>{form.getFieldValue('name')}</Text>
-                  </Col>
-                  <Col span={12}>
-                    <Text strong>WASM Size:</Text> <Tag color="green">2.4 KB</Tag>
-                  </Col>
-                </Row>
-                <div style={{ marginTop: 8 }}>
-                  <Text strong>Target Devices:</Text>
-                  <div style={{ marginTop: 4 }}>
-                    {form.getFieldValue('targetDevices')?.map(device => (
-                      <Tag key={device} color="blue">{device}</Tag>
-                    ))}
-                  </div>
-                </div>
+          <div>
+            <Title level={4}>Compile to WASM</Title>
+            <Paragraph>
+              Compile your source code to WebAssembly bytecode for deployment.
+            </Paragraph>
+            
+            {selectedTemplate && (
+              <Card title="Source Code" size="small" style={{ marginBottom: '16px' }}>
+                <pre style={{ 
+                  background: '#f5f5f5', 
+                  padding: '12px', 
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  overflow: 'auto',
+                  maxHeight: '200px'
+                }}>
+                  {selectedTemplate.code}
+                </pre>
               </Card>
-
-              <div style={{ textAlign: 'center', padding: '20px' }}>
+            )}
+            
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              {compilationStatus === 'idle' && (
                 <Button
                   type="primary"
                   size="large"
                   icon={<RocketOutlined />}
-                  onClick={handleDeploy}
-                  disabled={compilationStatus !== 'completed'}
+                  onClick={handleCompile}
                 >
-                  Deploy Application
+                  Start Compilation
                 </Button>
-              </div>
-            </Space>
-          </Card>
+              )}
+              
+              {compilationStatus === 'compiling' && (
+                <div>
+                  <div style={{ fontSize: '16px', marginBottom: '16px' }}>
+                    Compiling to WASM...
+                  </div>
+                  <div style={{ color: '#1890ff' }}>
+                    <RocketOutlined spin style={{ fontSize: '24px' }} />
+                  </div>
+                </div>
+              )}
+              
+              {compilationStatus === 'success' && (
+                <div>
+                  <CheckCircleOutlined style={{ fontSize: '48px', color: '#52c41a', marginBottom: '16px' }} />
+                  <div style={{ fontSize: '16px', color: '#52c41a' }}>
+                    Compilation Successful!
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
+                    WASM bytecode ready for deployment
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+      case 3:
+        return (
+          <div>
+            <Title level={4}>Deploy Application</Title>
+            <Paragraph>
+              Deploy your compiled WASM application to the selected target devices.
+            </Paragraph>
+            
+            <Alert
+              message="Ready to Deploy"
+              description={`Application "${form.getFieldValue('name')}" is ready to be deployed to the selected devices.`}
+              type="success"
+              showIcon
+              style={{ marginBottom: '24px' }}
+            />
+            
+            <Card title="Deployment Summary" size="small">
+              <Row gutter={16}>
+                <Col span={8}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#1890ff' }}>
+                      {selectedTemplate?.name}
+                    </div>
+                    <Text type="secondary">Application</Text>
+                  </div>
+                </Col>
+                <Col span={8}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#52c41a' }}>
+                      {selectedTemplate?.size}
+                    </div>
+                    <Text type="secondary">WASM Size</Text>
+                  </div>
+                </Col>
+                <Col span={8}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#722ed1' }}>
+                      {form.getFieldValue('targetDevices')?.length || 0}
+                    </div>
+                    <Text type="secondary">Target Devices</Text>
+                  </div>
+                </Col>
+              </Row>
+            </Card>
+          </div>
         );
 
       default:
         return null;
     }
+  };
+
+  const handleNext = () => {
+    if (currentStep === 0 && !selectedTemplate) {
+      message.warning('Please select a template first');
+      return;
+    }
+    if (currentStep === 2 && compilationStatus !== 'success') {
+      message.warning('Please complete compilation first');
+      return;
+    }
+    setCurrentStep(currentStep + 1);
+  };
+
+  const handlePrev = () => {
+    setCurrentStep(currentStep - 1);
+  };
+
+  const handleFinish = () => {
+    form.validateFields().then(values => {
+      handleDeploy(values);
+    }).catch(error => {
+      console.error('Validation failed:', error);
+    });
   };
 
   return (
@@ -365,25 +460,43 @@ pub extern "C" fn main() {
       open={visible}
       onCancel={onCancel}
       width={800}
-      footer={[
-        <Button key="cancel" onClick={onCancel}>
-          Cancel
-        </Button>,
-        <Button key="prev" disabled={currentStep === 0} onClick={handlePrev}>
-          Previous
-        </Button>,
-        <Button
-          key="next"
-          type="primary"
-          disabled={currentStep === steps.length - 1}
-          onClick={handleNext}
-        >
-          Next
-        </Button>,
-      ]}
+      footer={null}
     >
-      <Steps current={currentStep} items={steps} style={{ marginBottom: 24 }} />
-      {renderStepContent()}
+      <Steps current={currentStep} items={steps} style={{ marginBottom: '24px' }} />
+      
+      <div style={{ minHeight: '400px' }}>
+        {renderStepContent()}
+      </div>
+      
+      <Divider />
+      
+      <div style={{ textAlign: 'right' }}>
+        <Space>
+          {currentStep > 0 && (
+            <Button onClick={handlePrev}>
+              Previous
+            </Button>
+          )}
+          
+          {currentStep < steps.length - 1 ? (
+            <Button type="primary" onClick={handleNext}>
+              Next
+            </Button>
+          ) : (
+            <Button 
+              type="primary" 
+              onClick={handleFinish}
+              disabled={compilationStatus !== 'success'}
+            >
+              Deploy Application
+            </Button>
+          )}
+          
+          <Button onClick={onCancel}>
+            Cancel
+          </Button>
+        </Space>
+      </div>
     </Modal>
   );
 };

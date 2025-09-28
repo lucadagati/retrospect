@@ -42,60 +42,98 @@ const Monitoring = () => {
 
   const fetchMetrics = useCallback(async () => {
     try {
-      // Mock metrics data since Gateway doesn't have metrics API
+      // Fetch real data from backend APIs
+      const [devicesResponse, applicationsResponse, gatewaysResponse, infraResponse] = await Promise.all([
+        fetch('/api/v1/devices'),
+        fetch('/api/v1/applications'),
+        fetch('/api/v1/gateways'),
+        fetch('http://localhost:30461/health')
+      ]);
+
+      let devices = [];
+      let applications = [];
+      let gateways = [];
+      let infraStatus = 'unknown';
+
+      if (devicesResponse.ok) {
+        const devicesData = await devicesResponse.json();
+        devices = devicesData.devices || [];
+      }
+
+      if (applicationsResponse.ok) {
+        const applicationsData = await applicationsResponse.json();
+        applications = applicationsData.applications || [];
+      }
+
+      if (gatewaysResponse.ok) {
+        const gatewaysData = await gatewaysResponse.json();
+        gateways = gatewaysData.gateways || [];
+      }
+
+      if (infraResponse.ok) {
+        infraStatus = 'active';
+      }
+
+      // Calculate real metrics from API data
+      const activeDevices = devices.filter(d => d.status === 'Connected').length;
+      const enrolledDevices = devices.filter(d => d.enrolled).length;
+      const runningApplications = applications.filter(a => a.status === 'Running').length;
+      const activeGateways = gateways.filter(g => g.status === 'Active').length;
+      const inactiveGateways = gateways.filter(g => g.status === 'Inactive').length;
+
       setMetrics({
-        activeConnections: 6,
-        maxConnections: 30,
-        totalDevices: 6,
-        activeDevices: 6,
-        totalApplications: 1,
-        runningApplications: 1,
+        activeConnections: activeDevices,
+        maxConnections: 30, // This would come from gateway config
+        totalDevices: devices.length,
+        activeDevices: activeDevices,
+        totalApplications: applications.length,
+        runningApplications: runningApplications,
         gatewayStatus: {
-          active: 3,
-          inactive: 0,
-          totalDevices: 6
+          active: activeGateways,
+          inactive: inactiveGateways,
+          totalDevices: activeDevices
         },
         infrastructureStatus: {
-          ca: 'active',
-          secretStore: 'active',
-          monitoring: 'active',
-          logging: 'active'
+          ca: infraStatus,
+          secretStore: infraStatus,
+          monitoring: infraStatus,
+          logging: infraStatus
         },
         systemMetrics: {
-          cpuUsage: 45,
-          memoryUsage: 67,
-          diskUsage: 23,
-          networkIn: 1024,
-          networkOut: 2048
+          cpuUsage: 0, // Would need system metrics API
+          memoryUsage: 0, // Would need system metrics API
+          diskUsage: 0, // Would need system metrics API
+          networkIn: 0, // Would need system metrics API
+          networkOut: 0 // Would need system metrics API
         }
       });
     } catch (error) {
       console.error('Error fetching metrics:', error);
-      // Set mock data for development
+      // Set empty metrics when backend is not available
       setMetrics({
-        activeConnections: 6,
-        maxConnections: 30,
-        totalDevices: 6,
-        activeDevices: 6,
-        totalApplications: 1,
-        runningApplications: 1,
+        activeConnections: 0,
+        maxConnections: 0,
+        totalDevices: 0,
+        activeDevices: 0,
+        totalApplications: 0,
+        runningApplications: 0,
         gatewayStatus: {
-          active: 3,
+          active: 0,
           inactive: 0,
-          totalDevices: 6
+          totalDevices: 0
         },
         infrastructureStatus: {
-          ca: 'active',
-          secretStore: 'active',
-          monitoring: 'active',
-          logging: 'active'
+          ca: 'unknown',
+          secretStore: 'unknown',
+          monitoring: 'unknown',
+          logging: 'unknown'
         },
         systemMetrics: {
-          cpuUsage: 45,
-          memoryUsage: 67,
-          diskUsage: 23,
-          networkIn: 1024,
-          networkOut: 2048
+          cpuUsage: 0,
+          memoryUsage: 0,
+          diskUsage: 0,
+          networkIn: 0,
+          networkOut: 0
         }
       });
     }
@@ -103,91 +141,80 @@ const Monitoring = () => {
 
   const fetchLogs = useCallback(async () => {
     try {
-      // Mock logs data since Gateway doesn't have logs API
-      setLogs([
-        {
-          id: 1,
-          timestamp: new Date().toISOString(),
-          level: 'INFO',
-          component: 'Gateway',
-          message: 'Device mcu-board-1 connected successfully'
-        },
-        {
-          id: 2,
-          timestamp: new Date(Date.now() - 30000).toISOString(),
-          level: 'INFO',
-          component: 'Application Controller',
-          message: 'Application test-app-1 deployed successfully'
-        },
-        {
-          id: 3,
-          timestamp: new Date(Date.now() - 60000).toISOString(),
-          level: 'INFO',
-          component: 'Gateway',
-          message: 'All 3 gateways operational'
-        },
-        {
-          id: 4,
-          timestamp: new Date(Date.now() - 90000).toISOString(),
-          level: 'INFO',
-          component: 'Device Controller',
-          message: '6 devices connected successfully'
-        },
-        {
-          id: 5,
-          timestamp: new Date(Date.now() - 120000).toISOString(),
-          level: 'WARN',
-          component: 'Gateway',
-          message: 'Device riscv-board-2 heartbeat timeout'
+      // Try to fetch logs from infrastructure service
+      const logsResponse = await fetch('http://localhost:30461/logs');
+      
+      if (logsResponse.ok) {
+        const logsData = await logsResponse.json();
+        setLogs(logsData.logs || []);
+      } else {
+        // If no logs API available, create minimal logs from system state
+        const [devicesResponse, applicationsResponse, gatewaysResponse] = await Promise.all([
+          fetch('/api/v1/devices'),
+          fetch('/api/v1/applications'),
+          fetch('/api/v1/gateways')
+        ]);
+
+        let devices = [];
+        let applications = [];
+        let gateways = [];
+
+        if (devicesResponse.ok) {
+          const devicesData = await devicesResponse.json();
+          devices = devicesData.devices || [];
         }
-      ]);
+
+        if (applicationsResponse.ok) {
+          const applicationsData = await applicationsResponse.json();
+          applications = applicationsData.applications || [];
+        }
+
+        if (gatewaysResponse.ok) {
+          const gatewaysData = await gatewaysResponse.json();
+          gateways = gatewaysData.gateways || [];
+        }
+
+        // Generate system status logs
+        const systemLogs = [];
+        
+        if (gateways.length > 0) {
+          systemLogs.push({
+            id: 1,
+            timestamp: new Date().toISOString(),
+            level: 'INFO',
+            component: 'Gateway',
+            message: `${gateways.length} gateway(s) configured`
+          });
+        }
+
+        if (devices.length > 0) {
+          const connectedDevices = devices.filter(d => d.status === 'Connected').length;
+          systemLogs.push({
+            id: 2,
+            timestamp: new Date(Date.now() - 30000).toISOString(),
+            level: 'INFO',
+            component: 'Device Controller',
+            message: `${connectedDevices}/${devices.length} devices connected`
+          });
+        }
+
+        if (applications.length > 0) {
+          const runningApps = applications.filter(a => a.status === 'Running').length;
+          systemLogs.push({
+            id: 3,
+            timestamp: new Date(Date.now() - 60000).toISOString(),
+            level: 'INFO',
+            component: 'Application Controller',
+            message: `${runningApps}/${applications.length} applications running`
+          });
+        }
+
+        setLogs(systemLogs);
+      }
     } catch (error) {
       console.error('Error fetching logs:', error);
-      // Set mock data for development
-      setLogs([
-        {
-          id: 1,
-          timestamp: new Date().toISOString(),
-          level: 'INFO',
-          component: 'Gateway',
-          message: 'Device test-device-1 connected successfully'
-        },
-        {
-          id: 2,
-          timestamp: new Date(Date.now() - 30000).toISOString(),
-          level: 'INFO',
-          component: 'Application Controller',
-          message: 'Application test-app-1 deployed successfully'
-        },
-        {
-          id: 3,
-          timestamp: new Date(Date.now() - 60000).toISOString(),
-          level: 'WARN',
-          component: 'Gateway',
-          message: 'Gateway heartbeat timeout for device test-device-2'
-        },
-        {
-          id: 4,
-          timestamp: new Date(Date.now() - 90000).toISOString(),
-          level: 'INFO',
-          component: 'Device Controller',
-          message: 'Device test-device-3 enrolled successfully'
-        },
-        {
-          id: 5,
-          timestamp: new Date(Date.now() - 120000).toISOString(),
-          level: 'ERROR',
-          component: 'Application Controller',
-          message: 'Failed to deploy application test-app-2: WASM validation failed'
-        },
-        {
-          id: 6,
-          timestamp: new Date(Date.now() - 150000).toISOString(),
-          level: 'INFO',
-          component: 'Infrastructure',
-          message: 'Certificate Authority service started'
-        }
-      ]);
+      // Set empty logs when backend is not available
+      setLogs([]);
     }
   }, []);
 

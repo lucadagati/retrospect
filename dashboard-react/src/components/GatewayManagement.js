@@ -52,7 +52,11 @@ const GatewayManagement = () => {
       const response = await fetch('/api/v1/gateways');
       if (response.ok) {
         const data = await response.json();
-        setGateways(data.gateways || []);
+        let gatewayList = data.gateways || [];
+        
+        // Use real data from backend - no mock data
+        
+        setGateways(gatewayList);
       } else {
         console.error('Failed to fetch gateways:', response.status);
       }

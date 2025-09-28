@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Spin, Alert, Typography, Steps, Button, Space, Divider } from 'antd';
+import { Card, Row, Col, Statistic, Spin, Alert, Typography, Steps, Button, Space, Divider, Modal, Form, InputNumber, Select, message } from 'antd';
 import {
   DesktopOutlined,
   AppstoreOutlined,
@@ -9,6 +9,8 @@ import {
   InfoCircleOutlined,
   PlayCircleOutlined,
   SettingOutlined,
+  PlusOutlined,
+  CloudServerOutlined,
 } from '@ant-design/icons';
 
 const { Title, Paragraph, Text } = Typography;
@@ -17,6 +19,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [systemStatus, setSystemStatus] = useState(null);
+
 
   useEffect(() => {
     fetchSystemStatus();
@@ -36,9 +39,11 @@ const Dashboard = () => {
       const applications = applicationsResponse.ok ? await applicationsResponse.json() : { applications: [] };
       const gateways = gatewaysResponse.ok ? await gatewaysResponse.json() : { gateways: [] };
 
-      const deviceList = devices.devices || [];
-      const applicationList = applications.applications || [];
-      const gatewayList = gateways.gateways || [];
+      let deviceList = devices.devices || [];
+      let applicationList = applications.applications || [];
+      let gatewayList = gateways.gateways || [];
+
+      // Use real data from backend - no mock data
 
       setSystemStatus({
         devices: {
@@ -63,58 +68,58 @@ const Dashboard = () => {
           inactive: gatewayList.filter(g => g.status !== 'Active').length
         },
         infrastructure: {
-          ca: 'active',
-          monitoring: 'active',
-          logging: 'active',
-          secretStore: 'active',
-          ca_status: 'active',
-          secret_store_status: 'active',
-          monitoring_status: 'active',
-          logging_status: 'active'
+          ca: 'unknown',
+          monitoring: 'unknown',
+          logging: 'unknown',
+          secretStore: 'unknown',
+          ca_status: 'unknown',
+          secret_store_status: 'unknown',
+          monitoring_status: 'unknown',
+          logging_status: 'unknown'
         },
-        systemHealth: 'healthy',
-        uptime: '2d 14h 32m',
+        systemHealth: 'unknown',
+        uptime: 'unknown',
         version: '1.0.0'
       });
       setError(null);
     } catch (err) {
       setError('Failed to fetch system status');
       console.error('Error fetching system status:', err);
-      // Set mock data for development
+      // Set empty data when backend is not available
       setSystemStatus({
         devices: {
-          total: 6,
-          active: 6,
+          total: 0,
+          active: 0,
           inactive: 0,
           enrolling: 0,
-          connected: 6,
-          enrolled: 6,
+          connected: 0,
+          enrolled: 0,
           unreachable: 0
         },
         applications: {
-          total: 1,
-          running: 1,
+          total: 0,
+          running: 0,
           stopped: 0,
           failed: 0,
           pending: 0
         },
         gateways: {
-          total: 3,
-          active: 3,
+          total: 0,
+          active: 0,
           inactive: 0
         },
         infrastructure: {
-          ca: 'active',
-          monitoring: 'active',
-          logging: 'active',
-          secretStore: 'active',
-          ca_status: 'active',
-          secret_store_status: 'active',
-          monitoring_status: 'active',
-          logging_status: 'active'
+          ca: 'unknown',
+          monitoring: 'unknown',
+          logging: 'unknown',
+          secretStore: 'unknown',
+          ca_status: 'unknown',
+          secret_store_status: 'unknown',
+          monitoring_status: 'unknown',
+          logging_status: 'unknown'
         },
-        systemHealth: 'healthy',
-        uptime: '2d 14h 32m',
+        systemHealth: 'unknown',
+        uptime: 'unknown',
         version: '1.0.0'
       });
     } finally {
@@ -148,6 +153,34 @@ const Dashboard = () => {
   return (
     <div>
       <Title level={2}>System Overview</Title>
+      
+      {/* Quick Actions - Removed redundant Start Configuration button */}
+      {devices.total === 0 && gateways.total === 0 && (
+        <Card 
+          title={
+            <Space>
+              <CloudServerOutlined style={{ color: '#1890ff' }} />
+              <span>Getting Started</span>
+            </Space>
+          }
+          style={{ marginBottom: 24, background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)' }}
+        >
+          <Row gutter={[16, 16]}>
+            <Col xs={24}>
+              <Title level={4}>🚀 Welcome to Wasmbed Platform</Title>
+              <Paragraph>
+                Your Wasmbed platform is ready! Use the <strong>Initial Configuration</strong> in the sidebar to set up your infrastructure.
+              </Paragraph>
+              <Space direction="vertical" size="small">
+                <Text><strong>Next Steps:</strong></Text>
+                <Text>• Navigate to <strong>Initial Configuration</strong> in the sidebar menu</Text>
+                <Text>• Deploy gateways and devices through the guided wizard</Text>
+                <Text>• Monitor your infrastructure in real-time</Text>
+              </Space>
+            </Col>
+          </Row>
+        </Card>
+      )}
       
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
@@ -471,6 +504,7 @@ const Dashboard = () => {
           </Card>
         </Col>
       </Row>
+
     </div>
   );
 };

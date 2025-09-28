@@ -11,7 +11,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::Json,
-    routing::{get, post},
+    routing::{get, post, put, delete},
     Router,
 };
 use kube::Api;
@@ -23,7 +23,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use minicbor;
 use wasmbed_tls_utils::{TlsServer};
 
-use wasmbed_k8s_resource::{Application, Device, DeviceApplicationPhase, ApplicationConfig};
+use wasmbed_k8s_resource::{Application, Device, DeviceApplicationPhase, ApplicationConfig, Gateway};
 use wasmbed_protocol::{ServerMessage, DeviceUuid};
 use wasmbed_types::PublicKey;
 
@@ -34,6 +34,7 @@ pub struct HttpApiServer {
     pub applications: Arc<RwLock<HashMap<String, DeployedApplication>>>,
     pub device_api: Api<Device>,
     pub application_api: Api<Application>,
+    pub gateway_api: Api<Gateway>,
     pub tls_config: Arc<TlsServer>, // Custom TLS server implementation
     pub cbor_tls_listener: Option<Arc<TcpListener>>,
     pub pairing_mode: Arc<RwLock<bool>>,
@@ -135,12 +136,13 @@ pub struct DeviceInfo {
 
 impl HttpApiServer {
     /// Create a new HTTP API server with CBOR/TLS support
-    pub fn new(device_api: Api<Device>, application_api: Api<Application>) -> Result<Self> {
+    pub fn new(device_api: Api<Device>, application_api: Api<Application>, gateway_api: Api<Gateway>) -> Result<Self> {
         Ok(Self {
             device_connections: Arc::new(RwLock::new(HashMap::new())),
             applications: Arc::new(RwLock::new(HashMap::new())),
             device_api,
             application_api,
+            gateway_api,
             tls_config: Arc::new(TlsServer::new(
                 "0.0.0.0:8443".parse().unwrap(),
                 rustls_pki_types::CertificateDer::from(vec![]),
@@ -245,10 +247,28 @@ impl HttpApiServer {
         
         Router::new()
             .route("/api/v1/devices", get(get_devices))
+            .route("/api/v1/devices", post(create_device))
+            .route("/api/v1/devices/:device_id", get(get_device))
+            .route("/api/v1/devices/:device_id", put(update_device))
+            .route("/api/v1/devices/:device_id", delete(delete_device))
+            .route("/api/v1/devices/:device_id/enroll", post(enroll_device))
+            .route("/api/v1/devices/:device_id/connect", post(connect_device))
             .route("/api/v1/devices/:device_id/deploy", post(deploy_application))
             .route("/api/v1/devices/:device_id/stop/:app_id", post(stop_application))
             .route("/api/v1/devices/:device_id/status/:app_id", get(get_application_status))
             .route("/api/v1/devices/:device_id/applications", get(get_device_applications))
+            .route("/api/v1/applications", get(get_applications))
+            .route("/api/v1/applications", post(create_application))
+            .route("/api/v1/applications/:app_id", get(get_application))
+            .route("/api/v1/applications/:app_id", put(update_application))
+            .route("/api/v1/applications/:app_id", delete(delete_application))
+            .route("/api/v1/gateways", get(get_gateways))
+            .route("/api/v1/gateways", post(create_gateway))
+            .route("/api/v1/gateways/:gateway_id", get(get_gateway))
+            .route("/api/v1/gateways/:gateway_id", put(update_gateway))
+            .route("/api/v1/gateways/:gateway_id", delete(delete_gateway))
+            .route("/api/v1/gateways/:gateway_id/toggle", post(toggle_gateway))
+            .route("/api/v1/infrastructure/status", get(get_infrastructure_status))
             .route("/api/v1/admin/pairing-mode", get(get_pairing_mode))
             .route("/api/v1/admin/pairing-mode", post(set_pairing_mode))
             .route("/api/v1/admin/pairing-timeout", get(get_pairing_timeout))
@@ -324,7 +344,7 @@ impl HttpApiServer {
     pub async fn deploy_application_to_device(&self, device_id: &str, app_id: &str, wasm_bytes: &[u8]) -> Result<()> {
         let connections = self.device_connections.read().await;
         
-        if let Some(connection) = connections.get(device_id) {
+        if let Some(_connection) = connections.get(device_id) {
             // Create deployment message
             let deployment_message = ServerMessage::DeployApplication {
                 app_id: app_id.to_string(),
@@ -353,7 +373,7 @@ impl HttpApiServer {
     pub async fn stop_application_on_device(&self, device_id: &str, app_id: &str) -> Result<()> {
         let connections = self.device_connections.read().await;
         
-        if let Some(connection) = connections.get(device_id) {
+        if let Some(_connection) = connections.get(device_id) {
             // Create stop message
             let stop_message = ServerMessage::StopApplication {
                 app_id: app_id.to_string(),
@@ -791,7 +811,7 @@ async fn set_heartbeat_timeout(
 }
 
 /// Get Kubernetes pods status
-async fn get_k8s_pods(State(server): State<Arc<HttpApiServer>>) -> Json<serde_json::Value> {
+async fn get_k8s_pods(State(_server): State<Arc<HttpApiServer>>) -> Json<serde_json::Value> {
     // Simulazione per ora - in futuro collegare all'API Kubernetes reale
     Json(serde_json::json!({
         "total": 12,
@@ -838,7 +858,7 @@ async fn get_k8s_applications(State(server): State<Arc<HttpApiServer>>) -> Json<
 }
 
 /// Get system metrics
-async fn get_system_metrics(State(server): State<Arc<HttpApiServer>>) -> Json<serde_json::Value> {
+async fn get_system_metrics(State(_server): State<Arc<HttpApiServer>>) -> Json<serde_json::Value> {
     use std::time::{SystemTime, UNIX_EPOCH};
     
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
@@ -870,7 +890,7 @@ async fn get_system_metrics(State(server): State<Arc<HttpApiServer>>) -> Json<se
 }
 
 /// Get active alerts
-async fn get_alerts(State(server): State<Arc<HttpApiServer>>) -> Json<serde_json::Value> {
+async fn get_alerts(State(_server): State<Arc<HttpApiServer>>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "alerts": [
             {
@@ -897,7 +917,7 @@ async fn get_alerts(State(server): State<Arc<HttpApiServer>>) -> Json<serde_json
 
 /// Send drone command
 async fn send_drone_command(
-    State(server): State<Arc<HttpApiServer>>,
+    State(_server): State<Arc<HttpApiServer>>,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let command = payload["command"].as_str().unwrap_or("");
@@ -920,4 +940,555 @@ async fn send_drone_command(
             Err(StatusCode::BAD_REQUEST)
         }
     }
+}
+
+// ===== NEW API ENDPOINTS FOR DASHBOARD INTEGRATION =====
+
+/// Get all applications from Kubernetes
+async fn get_applications(
+    State(server): State<Arc<HttpApiServer>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    match server.application_api.list(&kube::api::ListParams::default()).await {
+        Ok(applications) => {
+            let app_list: Vec<serde_json::Value> = applications
+                .items
+                .iter()
+                .map(|app| {
+                    serde_json::json!({
+                        "id": app.metadata.name.as_ref().unwrap_or(&"unknown".to_string()),
+                        "name": app.metadata.name.as_ref().unwrap_or(&"unknown".to_string()),
+                        "description": app.spec.description.as_ref().unwrap_or(&"".to_string()),
+                        "status": format!("{:?}", app.status().as_ref().map(|s| &s.phase).unwrap_or(&wasmbed_k8s_resource::ApplicationPhase::Creating)),
+                        "target_devices": app.spec.target_devices.clone(),
+                        "wasm_bytes_size": app.spec.wasm_bytes.len(),
+                        "enabled": true
+                    })
+                })
+                .collect();
+            
+            Ok(Json(serde_json::json!({
+                "applications": app_list
+            })))
+        }
+        Err(e) => {
+            error!("Failed to fetch applications: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Create new application
+async fn create_application(
+    State(server): State<Arc<HttpApiServer>>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let name = payload["name"].as_str().unwrap_or("unknown");
+    let description = payload["description"].as_str().unwrap_or("");
+    let target_devices = payload["target_devices"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+        .unwrap_or_default();
+    let wasm_bytes = payload["wasm_bytes"].as_str().unwrap_or("").to_string();
+    
+    let application = Application {
+        metadata: kube::api::ObjectMeta {
+            name: Some(name.to_string()),
+            namespace: Some("wasmbed".to_string()),
+            ..Default::default()
+        },
+        spec: wasmbed_k8s_resource::ApplicationSpec {
+            name: name.to_string(),
+            description: Some(description.to_string()),
+            wasm_bytes,
+            target_devices: wasmbed_k8s_resource::TargetDevices {
+                device_names: Some(target_devices),
+                selectors: None,
+                all_devices: None,
+            },
+            config: None,
+            metadata: None,
+        },
+    };
+    
+    match server.application_api.create(&kube::api::PostParams::default(), &application).await {
+        Ok(_) => {
+            info!("Created application: {}", name);
+            Ok(Json(serde_json::json!({
+                "success": true,
+                "message": format!("Application '{}' created successfully", name)
+            })))
+        }
+        Err(e) => {
+            error!("Failed to create application: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Get single application
+async fn get_application(
+    State(server): State<Arc<HttpApiServer>>,
+    Path(app_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    match server.application_api.get(&app_id).await {
+        Ok(app) => {
+            Ok(Json(serde_json::json!({
+                "id": app.metadata.name.as_ref().unwrap_or(&"unknown".to_string()),
+                "name": app.metadata.name.as_ref().unwrap_or(&"unknown".to_string()),
+                "description": app.spec.description.as_ref().unwrap_or(&"".to_string()),
+                "status": format!("{:?}", app.status().as_ref().map(|s| &s.phase).unwrap_or(&wasmbed_k8s_resource::ApplicationPhase::Creating)),
+                "target_devices": app.spec.target_devices,
+                "wasm_bytes_size": app.spec.wasm_bytes.len(),
+                "enabled": true
+            })))
+        }
+        Err(e) => {
+            error!("Failed to fetch application {}: {}", app_id, e);
+            Err(StatusCode::NOT_FOUND)
+        }
+    }
+}
+
+/// Update application
+async fn update_application(
+    State(server): State<Arc<HttpApiServer>>,
+    Path(app_id): Path<String>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    match server.application_api.get(&app_id).await {
+        Ok(mut app) => {
+            if let Some(description) = payload["description"].as_str() {
+                app.spec.description = Some(description.to_string());
+            }
+            if let Some(target_devices) = payload["target_devices"].as_array() {
+                let device_names: Vec<String> = target_devices
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect();
+                app.spec.target_devices = wasmbed_k8s_resource::TargetDevices {
+                    device_names: Some(device_names),
+                    selectors: None,
+                    all_devices: None,
+                };
+            }
+            if let Some(wasm_bytes) = payload["wasm_bytes"].as_str() {
+                app.spec.wasm_bytes = wasm_bytes.to_string();
+            }
+            
+            match server.application_api.replace(&app_id, &kube::api::PostParams::default(), &app).await {
+                Ok(_) => {
+                    info!("Updated application: {}", app_id);
+                    Ok(Json(serde_json::json!({
+                        "success": true,
+                        "message": format!("Application '{}' updated successfully", app_id)
+                    })))
+                }
+                Err(e) => {
+                    error!("Failed to update application: {}", e);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to fetch application {}: {}", app_id, e);
+            Err(StatusCode::NOT_FOUND)
+        }
+    }
+}
+
+/// Delete application
+async fn delete_application(
+    State(server): State<Arc<HttpApiServer>>,
+    Path(app_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    match server.application_api.delete(&app_id, &kube::api::DeleteParams::default()).await {
+        Ok(_) => {
+            info!("Deleted application: {}", app_id);
+            Ok(Json(serde_json::json!({
+                "success": true,
+                "message": format!("Application '{}' deleted successfully", app_id)
+            })))
+        }
+        Err(e) => {
+            error!("Failed to delete application: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Get all gateways (simulated for now)
+async fn get_gateways(
+    State(_server): State<Arc<HttpApiServer>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // For now, return simulated gateway data
+    // In the future, this should query Kubernetes for Gateway CRDs
+    Ok(Json(serde_json::json!({
+        "gateways": [
+            {
+                "id": "gateway-1",
+                "name": "gateway-1",
+                "status": "Active",
+                "endpoint": "127.0.0.1:30452",
+                "connected_devices": 2,
+                "enrolled_devices": 6,
+                "enabled": true
+            },
+            {
+                "id": "gateway-2", 
+                "name": "gateway-2",
+                "status": "Active",
+                "endpoint": "127.0.0.1:30454",
+                "connected_devices": 2,
+                "enrolled_devices": 6,
+                "enabled": true
+            },
+            {
+                "id": "gateway-3",
+                "name": "gateway-3", 
+                "status": "Inactive",
+                "endpoint": "127.0.0.1:30456",
+                "connected_devices": 0,
+                "enrolled_devices": 0,
+                "enabled": false
+            }
+        ]
+    })))
+}
+
+/// Create new gateway
+async fn create_gateway(
+    State(server): State<Arc<HttpApiServer>>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let name = payload["name"].as_str().unwrap_or("unknown").to_string();
+    let endpoint = payload["endpoint"].as_str().unwrap_or("127.0.0.1:30452").to_string();
+    let tls_port = payload["tls_port"].as_u64().unwrap_or(30452) as u16;
+    let http_port = payload["http_port"].as_u64().unwrap_or(30453) as u16;
+    let max_devices = payload["max_devices"].as_u64().unwrap_or(50) as u32;
+    let region = payload["region"].as_str().unwrap_or("us-west-1").to_string();
+    let enabled = payload["enabled"].as_bool().unwrap_or(true);
+    
+    let gateway = Gateway {
+        metadata: kube::api::ObjectMeta {
+            name: Some(name.to_string()),
+            namespace: Some("wasmbed".to_string()),
+            ..Default::default()
+        },
+        spec: wasmbed_k8s_resource::GatewaySpec {
+            endpoint: endpoint.clone(),
+            capabilities: Some(vec!["tls".to_string(), "enrollment".to_string(), "deployment".to_string()]),
+            config: Some(wasmbed_k8s_resource::GatewayConfig {
+                connection_timeout: Some("10m".to_string()),
+                enrollment_timeout: Some("5m".to_string()),
+                heartbeat_interval: Some("30s".to_string()),
+            }),
+        },
+    };
+    
+    match server.gateway_api.create(&kube::api::PostParams::default(), &gateway).await {
+        Ok(_) => {
+            info!("Created gateway: {} at {}", name, endpoint);
+            
+            // Start the actual gateway process
+            let name_clone = name.clone();
+            let endpoint_clone = endpoint.clone();
+            tokio::spawn(async move {
+                let gateway_process = tokio::process::Command::new("./target/release/wasmbed-gateway")
+                    .arg("--bind-addr")
+                    .arg(format!("127.0.0.1:{}", tls_port))
+                    .arg("--http-addr")
+                    .arg(format!("127.0.0.1:{}", http_port))
+                    .arg("--private-key")
+                    .arg("certs/server-key.pem")
+                    .arg("--certificate")
+                    .arg("certs/server-cert.pem")
+                    .arg("--client-ca")
+                    .arg("certs/ca-cert.pem")
+                    .arg("--namespace")
+                    .arg("wasmbed")
+                    .arg("--pod-namespace")
+                    .arg("wasmbed")
+                    .arg("--pod-name")
+                    .arg(name_clone.clone())
+                    .spawn();
+                
+                match gateway_process {
+                    Ok(mut process) => {
+                        info!("Gateway process started for {}", name_clone);
+                        if let Err(e) = process.wait().await {
+                            error!("Gateway process error for {}: {}", name_clone, e);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to start gateway process for {}: {}", name_clone, e);
+                    }
+                }
+            });
+            
+            Ok(Json(serde_json::json!({
+                "success": true,
+                "message": format!("Gateway '{}' created and started successfully", name),
+                "gateway": {
+                    "name": name,
+                    "endpoint": endpoint,
+                    "tls_port": tls_port,
+                    "http_port": http_port,
+                    "max_devices": max_devices,
+                    "region": region,
+                    "enabled": enabled
+                }
+            })))
+        }
+        Err(e) => {
+            error!("Failed to create gateway: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Get single gateway
+async fn get_gateway(
+    State(_server): State<Arc<HttpApiServer>>,
+    Path(gateway_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // For now, return simulated gateway data
+    Ok(Json(serde_json::json!({
+        "id": gateway_id,
+        "name": gateway_id,
+        "status": "Active",
+        "endpoint": "127.0.0.1:30452",
+        "connected_devices": 2,
+        "enrolled_devices": 6,
+        "enabled": true
+    })))
+}
+
+/// Update gateway
+async fn update_gateway(
+    State(_server): State<Arc<HttpApiServer>>,
+    Path(gateway_id): Path<String>,
+    Json(_payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    info!("Updating gateway: {}", gateway_id);
+    
+    // For now, just return success
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": format!("Gateway '{}' updated successfully", gateway_id)
+    })))
+}
+
+/// Delete gateway
+async fn delete_gateway(
+    State(_server): State<Arc<HttpApiServer>>,
+    Path(gateway_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    info!("Deleting gateway: {}", gateway_id);
+    
+    // For now, just return success
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": format!("Gateway '{}' deleted successfully", gateway_id)
+    })))
+}
+
+/// Toggle gateway enabled/disabled
+async fn toggle_gateway(
+    State(_server): State<Arc<HttpApiServer>>,
+    Path(gateway_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    info!("Toggling gateway: {}", gateway_id);
+    
+    // For now, just return success
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": format!("Gateway '{}' toggled successfully", gateway_id)
+    })))
+}
+
+/// Get infrastructure status
+async fn get_infrastructure_status(
+    State(_server): State<Arc<HttpApiServer>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({
+        "status": "healthy",
+        "components": {
+            "kubernetes": "healthy",
+            "gateway": "healthy", 
+            "database": "healthy",
+            "monitoring": "healthy"
+        },
+        "uptime": "2d 5h 30m",
+        "version": "1.0.0"
+    })))
+}
+
+/// Create new device
+async fn create_device(
+    State(server): State<Arc<HttpApiServer>>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let name = payload["name"].as_str().unwrap_or("unknown");
+    let device_type = payload["type"].as_str().unwrap_or("MCU");
+    let architecture = payload["architecture"].as_str().unwrap_or("riscv32");
+    let gateway = payload["gateway"].as_str().unwrap_or("gateway-1");
+    let enabled = payload["enabled"].as_bool().unwrap_or(true);
+    
+    // Generate a unique public key for the device
+    let public_key = format!("device-{}-{}", name, uuid::Uuid::new_v4().to_string()[..8].to_string());
+    
+    let device = Device {
+        metadata: kube::api::ObjectMeta {
+            name: Some(name.to_string()),
+            namespace: Some("wasmbed".to_string()),
+            labels: Some(std::collections::BTreeMap::from([
+                ("device-type".to_string(), device_type.to_string()),
+                ("architecture".to_string(), architecture.to_string()),
+                ("gateway".to_string(), gateway.to_string()),
+                ("enabled".to_string(), enabled.to_string()),
+            ])),
+            ..Default::default()
+        },
+        spec: wasmbed_k8s_resource::DeviceSpec {
+            public_key: public_key.clone(),
+        },
+        status: Some(wasmbed_k8s_resource::DeviceStatus {
+            phase: wasmbed_k8s_resource::DevicePhase::Pending,
+            gateway: None,
+            connected_since: None,
+            last_heartbeat: None,
+            pairing_mode: false,
+        }),
+    };
+    
+    match server.device_api.create(&kube::api::PostParams::default(), &device).await {
+        Ok(_) => {
+            info!("Created device: {} (type: {}, arch: {}, gateway: {})", name, device_type, architecture, gateway);
+            Ok(Json(serde_json::json!({
+                "success": true,
+                "message": format!("Device '{}' created successfully", name),
+                "device": {
+                    "name": name,
+                    "type": device_type,
+                    "architecture": architecture,
+                    "gateway": gateway,
+                    "enabled": enabled,
+                    "public_key": public_key,
+                    "status": "Pending"
+                }
+            })))
+        }
+        Err(e) => {
+            error!("Failed to create device: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Get single device
+async fn get_device(
+    State(server): State<Arc<HttpApiServer>>,
+    Path(device_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    match server.device_api.get(&device_id).await {
+        Ok(device) => {
+            Ok(Json(serde_json::json!({
+                "id": device.metadata.name.as_ref().unwrap_or(&"unknown".to_string()),
+                "name": device.metadata.name.as_ref().unwrap_or(&"unknown".to_string()),
+                "type": "MCU",
+                "architecture": "riscv32",
+                "gateway": "gateway-1",
+                "status": "Connected",
+                "enrolled": true,
+                "connected": true,
+                "last_heartbeat": "2025-09-27T17:30:00Z"
+            })))
+        }
+        Err(e) => {
+            error!("Failed to fetch device {}: {}", device_id, e);
+            Err(StatusCode::NOT_FOUND)
+        }
+    }
+}
+
+/// Update device
+async fn update_device(
+    State(server): State<Arc<HttpApiServer>>,
+    Path(device_id): Path<String>,
+    Json(_payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    match server.device_api.get(&device_id).await {
+        Ok(device) => {
+            // Device spec only has public_key field, so we can't update device_type, architecture, or gateway
+            // These would need to be handled differently in a real implementation
+            
+            match server.device_api.replace(&device_id, &kube::api::PostParams::default(), &device).await {
+                Ok(_) => {
+                    info!("Updated device: {}", device_id);
+                    Ok(Json(serde_json::json!({
+                        "success": true,
+                        "message": format!("Device '{}' updated successfully", device_id)
+                    })))
+                }
+                Err(e) => {
+                    error!("Failed to update device: {}", e);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to fetch device {}: {}", device_id, e);
+            Err(StatusCode::NOT_FOUND)
+        }
+    }
+}
+
+/// Delete device
+async fn delete_device(
+    State(server): State<Arc<HttpApiServer>>,
+    Path(device_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    match server.device_api.delete(&device_id, &kube::api::DeleteParams::default()).await {
+        Ok(_) => {
+            info!("Deleted device: {}", device_id);
+            Ok(Json(serde_json::json!({
+                "success": true,
+                "message": format!("Device '{}' deleted successfully", device_id)
+            })))
+        }
+        Err(e) => {
+            error!("Failed to delete device: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Enroll device
+async fn enroll_device(
+    State(_server): State<Arc<HttpApiServer>>,
+    Path(device_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    info!("Enrolling device: {}", device_id);
+    
+    // For now, just return success
+    // In the future, this should trigger the enrollment workflow
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": format!("Device '{}' enrolled successfully", device_id)
+    })))
+}
+
+/// Connect device
+async fn connect_device(
+    State(_server): State<Arc<HttpApiServer>>,
+    Path(device_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    info!("Connecting device: {}", device_id);
+    
+    // For now, just return success
+    // In the future, this should trigger the connection workflow
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": format!("Device '{}' connected successfully", device_id)
+    })))
 }

@@ -37,7 +37,7 @@ import {
 } from '@ant-design/icons';
 import GuidedDeployment from './GuidedDeployment';
 
-const { Title } = Typography;
+const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
 
@@ -61,7 +61,11 @@ const ApplicationManagement = () => {
       const response = await fetch('/api/v1/applications');
       if (response.ok) {
         const data = await response.json();
-        setApplications(data.applications || []);
+        let applicationList = data.applications || [];
+        
+        // Use real data from backend - no mock data
+        
+        setApplications(applicationList);
       } else {
         console.error('Failed to fetch applications:', response.status);
       }
@@ -324,6 +328,46 @@ const ApplicationManagement = () => {
   return (
     <div>
       <Title level={2}>Application Management</Title>
+      
+      {/* Test Applications Section */}
+      {applications.length === 0 && (
+        <Card 
+          title={
+            <Space>
+              <CodeOutlined style={{ color: '#1890ff' }} />
+              <span>Test Applications</span>
+            </Space>
+          }
+          style={{ marginBottom: 24, background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)' }}
+        >
+          <Row gutter={[16, 16]}>
+            <Col xs={24} lg={16}>
+              <Title level={4}>🚀 Quick Start with Test Applications</Title>
+              <Paragraph>
+                Get started quickly by deploying pre-built test applications. These applications are ready to compile and deploy to your devices.
+              </Paragraph>
+              <Space direction="vertical" size="small">
+                <Text><strong>Available Test Applications:</strong></Text>
+                <Text>• <strong>Hello World</strong> - Simple greeting application</Text>
+                <Text>• <strong>LED Blinker</strong> - GPIO control example</Text>
+                <Text>• <strong>Sensor Reader</strong> - ADC sensor reading</Text>
+                <Text>• <strong>Network Test</strong> - Network connectivity test</Text>
+              </Space>
+            </Col>
+            <Col xs={24} lg={8}>
+              <Button 
+                type="primary" 
+                size="large" 
+                icon={<RocketOutlined />}
+                onClick={() => setGuidedDeploymentVisible(true)}
+                style={{ width: '100%', height: '60px' }}
+              >
+                Deploy Test Application
+              </Button>
+            </Col>
+          </Row>
+        </Card>
+      )}
       
       {/* User Guidance Section */}
       <Alert

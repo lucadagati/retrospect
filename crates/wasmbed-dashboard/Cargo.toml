@@ -57,7 +57,7 @@ schemars = "0.8"
 wasmbed-k8s-resource = { path = "../wasmbed-k8s-resource" }
 
 # CLI argument parsing
-clap = { version = "4.4", features = ["env"] }
+clap = { version = "4.4", features = ["env", "derive"] }
 
 [dev-dependencies]
 tokio-test = "0.4"

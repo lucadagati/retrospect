@@ -94,13 +94,8 @@ kubectl wait --for condition=established --timeout=60s crd/gateways.wasmbed.io
 
 print_status "SUCCESS" "Kubernetes resources created successfully"
 
-# Apply test resources
-print_status "INFO" "Creating test resources..."
-kubectl apply -f k8s/test-resources/test-device-1.yaml
-kubectl apply -f k8s/test-resources/test-app-1.yaml
-kubectl apply -f k8s/test-resources/test-gateway-1.yaml
-
-print_status "SUCCESS" "Test resources created successfully"
+# Skip test resources - will be created via dashboard
+print_status "INFO" "Skipping test resources - will be created via dashboard configuration"
 
 # Start services
 print_status "INFO" "Starting all services..."
@@ -111,19 +106,8 @@ INFRASTRUCTURE_PID=$!
 echo $INFRASTRUCTURE_PID > .infrastructure.pid
 disown
 
-# Start Gateway (using internal ports to avoid k3d conflicts) (non-blocking)
-nohup ./target/release/wasmbed-gateway \
-    --bind-addr 127.0.0.1:30452 \
-    --http-addr 127.0.0.1:30453 \
-    --private-key certs/server-key.pem \
-    --certificate certs/server-cert.pem \
-    --client-ca certs/ca-cert.pem \
-    --namespace wasmbed \
-    --pod-namespace wasmbed \
-    --pod-name gateway-1 > logs/gateway.log 2>&1 &
-GATEWAY_PID=$!
-echo $GATEWAY_PID > .gateway.pid
-disown
+# Skip Gateway startup - will be deployed via dashboard
+print_status "INFO" "Skipping Gateway startup - will be deployed via dashboard configuration"
 
 # Start Controllers (non-blocking)
 nohup ./target/release/wasmbed-device-controller > logs/device-controller.log 2>&1 &
@@ -154,26 +138,19 @@ sleep 5
 
 print_status "SUCCESS" "All services started successfully"
 
-# Deploy Multi-Gateway System (non-blocking)
-print_status "INFO" "Deploying Multi-Gateway System..."
-nohup ./scripts/wasmbed-deploy-multi-gateway.sh deploy > logs/multi-gateway.log 2>&1 &
-MULTI_GATEWAY_PID=$!
-echo $MULTI_GATEWAY_PID > .multi-gateway.pid
-disown
+# Skip Multi-Gateway deployment - will be deployed via dashboard
+print_status "INFO" "Skipping Multi-Gateway deployment - will be deployed via dashboard configuration"
 
 # Summary
 print_status "INFO" "=== DEPLOYMENT SUMMARY ==="
 print_status "INFO" "Infrastructure: http://localhost:30460"
-print_status "INFO" "Gateway 1: http://localhost:30453"
-print_status "INFO" "Gateway 2: http://localhost:30455"
-print_status "INFO" "Gateway 3: http://localhost:30457"
 print_status "INFO" "Dashboard: http://localhost:30470"
-print_status "INFO" "Total Gateways: 3"
-print_status "INFO" "Total Devices: 6 (3 MCU + 3 RISC-V)"
+print_status "INFO" "Controllers: Running (Device, Application, Gateway)"
+print_status "INFO" "Next Steps: Use dashboard to configure gateways and devices"
 
 print_status "SUCCESS" "Wasmbed Platform deployed successfully!"
 
 # Save PIDs for cleanup
-echo "$INFRASTRUCTURE_PID $GATEWAY_PID $DEVICE_CONTROLLER_PID $APPLICATION_CONTROLLER_PID $GATEWAY_CONTROLLER_PID $DASHBOARD_PID" > .wasmbed-pids
+echo "$INFRASTRUCTURE_PID $DEVICE_CONTROLLER_PID $APPLICATION_CONTROLLER_PID $GATEWAY_CONTROLLER_PID $DASHBOARD_PID" > .wasmbed-pids
 
 print_status "INFO" "Use './scripts/stop.sh' to stop all services"

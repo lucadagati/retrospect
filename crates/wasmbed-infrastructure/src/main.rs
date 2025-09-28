@@ -3,11 +3,12 @@
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderValue, Method, StatusCode},
     response::Json,
     routing::{get, post},
     Router,
 };
+use tower_http::cors::{Any, CorsLayer};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -114,6 +115,23 @@ pub struct SecretInfo {
 pub struct InfrastructureApi;
 
 impl InfrastructureApi {
+    /// Health check endpoint
+    pub async fn health() -> Result<Json<serde_json::Value>, StatusCode> {
+        Ok(Json(serde_json::json!({
+            "status": "healthy",
+            "timestamp": SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+        })))
+    }
+
+    /// Get logs endpoint
+    pub async fn get_logs(State(state): State<Arc<InfrastructureState>>) -> Result<Json<serde_json::Value>, StatusCode> {
+        let logs = state.logging.get_logs(Some(50)).await;
+        Ok(Json(serde_json::json!({
+            "logs": logs,
+            "timestamp": SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+        })))
+    }
+
     /// Get infrastructure status
     pub async fn get_status(State(state): State<Arc<InfrastructureState>>) -> Result<Json<InfrastructureStatus>, StatusCode> {
         let certificates = state.certificates.read().await;
@@ -344,7 +362,14 @@ impl Infrastructure {
     }
 
     async fn run_rest_api(self) -> anyhow::Result<()> {
+        let cors = CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+            .allow_headers(Any);
+
         let app = Router::new()
+            .route("/health", get(InfrastructureApi::health))
+            .route("/logs", get(InfrastructureApi::get_logs))
             .route("/api/v1/status", get(InfrastructureApi::get_status))
             .route("/api/v1/certificates", get(InfrastructureApi::get_certificates))
             .route("/api/v1/certificates/:cert_id", get(InfrastructureApi::get_certificate))
@@ -352,6 +377,7 @@ impl Infrastructure {
             .route("/api/v1/secrets", get(InfrastructureApi::get_secrets))
             .route("/api/v1/secrets/:secret_id", get(InfrastructureApi::get_secret))
             .route("/api/v1/secrets", post(InfrastructureApi::create_secret))
+            .layer(cors)
             .with_state(self.state);
 
         let addr = SocketAddr::from(([0, 0, 0, 0], self.config.api_port));

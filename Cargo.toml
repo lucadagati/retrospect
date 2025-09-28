@@ -21,6 +21,8 @@ members = [
     "crates/wasmbed-dashboard",
     "crates/wasmbed-qemu-manager",
     "crates/wasmbed-qemu-deployment",
+    "crates/wasmbed-config",
+    "crates/wasmbed-config-manager",
 ]
 
 [workspace.package]

@@ -3,7 +3,7 @@
 
 use clap::Parser;
 use axum::{
-    extract::{Path, State, WebSocketUpgrade},
+    extract::{State, WebSocketUpgrade},
     http::StatusCode,
     response::{Html, Json},
     routing::{get, post},
@@ -11,10 +11,10 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
     net::SocketAddr,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
+    process::Stdio,
 };
 use tokio::sync::RwLock;
 use tokio::net::TcpListener;
@@ -118,6 +118,45 @@ pub struct InfrastructureStats {
     pub logging_status: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TerminalExecuteRequest {
+    pub command: String,
+    pub command_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TerminalExecuteResponse {
+    pub success: bool,
+    pub output: String,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PodInfo {
+    pub name: String,
+    pub ready: String,
+    pub status: String,
+    pub restarts: u32,
+    pub age: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ServiceInfo {
+    pub name: String,
+    pub r#type: String,
+    pub cluster_ip: String,
+    pub external_ip: String,
+    pub ports: String,
+    pub age: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PodMetric {
+    pub name: String,
+    pub cpu: String,
+    pub memory: String,
+}
+
 /// Dashboard API handlers
 pub struct DashboardApi;
 
@@ -199,6 +238,46 @@ impl DashboardApi {
         }
     }
 
+    /// Create gateway
+    pub async fn create_gateway(
+        State(state): State<Arc<DashboardState>>,
+        Json(request): Json<serde_json::Value>,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Creating gateway: {:?}", request);
+        
+        // For now, return a mock response
+        Ok(Json(serde_json::json!({
+            "success": true,
+            "message": "Gateway created successfully",
+            "gateway": {
+                "id": "gateway-1",
+                "name": request.get("name").unwrap_or(&serde_json::Value::String("gateway-1".to_string())),
+                "status": "Active",
+                "endpoint": "127.0.0.1:30452"
+            }
+        })))
+    }
+
+    /// Create device
+    pub async fn create_device(
+        State(state): State<Arc<DashboardState>>,
+        Json(request): Json<serde_json::Value>,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Creating device: {:?}", request);
+        
+        // For now, return a mock response
+        Ok(Json(serde_json::json!({
+            "success": true,
+            "message": "Device created successfully",
+            "device": {
+                "id": "device-1",
+                "name": request.get("name").unwrap_or(&serde_json::Value::String("device-1".to_string())),
+                "type": request.get("type").unwrap_or(&serde_json::Value::String("RISC-V MCU".to_string())),
+                "status": "Pending"
+            }
+        })))
+    }
+
     /// Deploy application
     pub async fn deploy_application(
         State(state): State<Arc<DashboardState>>,
@@ -245,9 +324,9 @@ impl DashboardApi {
     /// WebSocket handler for real-time updates
     pub async fn websocket_handler(
         ws: WebSocketUpgrade,
-        State(state): State<Arc<DashboardState>>,
+        State(_state): State<Arc<DashboardState>>,
     ) -> axum::response::Response {
-        ws.on_upgrade(|socket| async move {
+        ws.on_upgrade(|_socket| async move {
             // Handle WebSocket connection for real-time updates
             info!("WebSocket connection established");
             
@@ -256,6 +335,256 @@ impl DashboardApi {
             // 2. Handle client commands
             // 3. Manage connection lifecycle
         })
+    }
+
+    /// Execute terminal command
+    pub async fn execute_terminal_command(
+        State(_state): State<Arc<DashboardState>>,
+        Json(request): Json<TerminalExecuteRequest>,
+    ) -> Result<Json<TerminalExecuteResponse>, StatusCode> {
+        info!("Executing terminal command: {}", request.command);
+
+        // Allowed commands for security
+        let allowed_commands = vec![
+            "kubectl get pods -n wasmbed",
+            "kubectl get devices -n wasmbed",
+            "kubectl get applications -n wasmbed",
+            "kubectl get gateways -n wasmbed",
+            "kubectl get svc -n wasmbed",
+            "kubectl top pods -n wasmbed",
+            "kubectl logs -n wasmbed --tail=50",
+            "kubectl get nodes",
+            "kubectl get namespaces",
+            "kubectl get crd",
+            "kubectl get events -n wasmbed",
+            "kubectl describe pods -n wasmbed",
+            "kubectl get configmaps -n wasmbed",
+            "kubectl get secrets -n wasmbed",
+            "kubectl get pv",
+            "kubectl get pvc -n wasmbed",
+            "kubectl get ingress -n wasmbed",
+            "kubectl get networkpolicies -n wasmbed",
+            "kubectl get serviceaccounts -n wasmbed",
+            "kubectl get roles -n wasmbed",
+            "kubectl get devices -n wasmbed -o wide",
+            "kubectl get applications -n wasmbed -o wide",
+            "kubectl get gateways -n wasmbed -o wide",
+            "kubectl get events -n wasmbed --sort-by=.metadata.creationTimestamp",
+            "kubectl get certificates -n wasmbed",
+            "kubectl get all -n wasmbed",
+            "kubectl get pods -n wasmbed -l app=wasmbed-wasm-runtime",
+            "kubectl logs -n wasmbed -l app=wasmbed-application-controller",
+            "kubectl logs -n wasmbed -l app=wasmbed-gateway",
+            "kubectl describe device -n wasmbed",
+            "curl -s http://localhost:30461/health",
+            "curl -s http://localhost:30461/logs",
+            "curl -s http://localhost:30453/api/v1/status",
+        ];
+
+        if !allowed_commands.contains(&request.command.as_str()) {
+            return Ok(Json(TerminalExecuteResponse {
+                success: false,
+                output: String::new(),
+                error: Some(format!("Command '{}' is not allowed", request.command)),
+            }));
+        }
+
+        // Execute the command
+        let output = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&request.command)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await;
+
+        match output {
+            Ok(result) => {
+                let stdout = String::from_utf8_lossy(&result.stdout);
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                
+                if result.status.success() {
+                    // Combine stdout and stderr for successful commands
+                    // kubectl often sends informational messages to stderr even on success
+                    let combined_output = if stdout.trim().is_empty() && !stderr.trim().is_empty() {
+                        stderr.to_string()
+                    } else if !stdout.trim().is_empty() && !stderr.trim().is_empty() {
+                        format!("{}{}", stdout, stderr)
+                    } else {
+                        stdout.to_string()
+                    };
+                    
+                    Ok(Json(TerminalExecuteResponse {
+                        success: true,
+                        output: combined_output,
+                        error: None,
+                    }))
+                } else {
+                    Ok(Json(TerminalExecuteResponse {
+                        success: false,
+                        output: stdout.to_string(),
+                        error: Some(stderr.to_string()),
+                    }))
+                }
+            }
+            Err(e) => {
+                error!("Failed to execute command: {}", e);
+                Ok(Json(TerminalExecuteResponse {
+                    success: false,
+                    output: String::new(),
+                    error: Some(format!("Failed to execute command: {}", e)),
+                }))
+            }
+        }
+    }
+
+    /// Get pods information
+    pub async fn get_pods(State(_state): State<Arc<DashboardState>>) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Getting pods information");
+
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["get", "pods", "-n", "wasmbed", "-o", "json"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await;
+
+        match output {
+            Ok(result) => {
+                if result.status.success() {
+                    let stdout = String::from_utf8_lossy(&result.stdout);
+                    match serde_json::from_str::<serde_json::Value>(&stdout) {
+                        Ok(json) => Ok(Json(json)),
+                        Err(e) => {
+                            error!("Failed to parse kubectl output: {}", e);
+                            Err(StatusCode::INTERNAL_SERVER_ERROR)
+                        }
+                    }
+                } else {
+                    let stderr = String::from_utf8_lossy(&result.stderr);
+                    error!("kubectl get pods failed: {}", stderr);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+            Err(e) => {
+                error!("Failed to execute kubectl: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    /// Get services information
+    pub async fn get_services(State(_state): State<Arc<DashboardState>>) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Getting services information");
+
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["get", "svc", "-n", "wasmbed", "-o", "json"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await;
+
+        match output {
+            Ok(result) => {
+                if result.status.success() {
+                    let stdout = String::from_utf8_lossy(&result.stdout);
+                    match serde_json::from_str::<serde_json::Value>(&stdout) {
+                        Ok(json) => Ok(Json(json)),
+                        Err(e) => {
+                            error!("Failed to parse kubectl output: {}", e);
+                            Err(StatusCode::INTERNAL_SERVER_ERROR)
+                        }
+                    }
+                } else {
+                    let stderr = String::from_utf8_lossy(&result.stderr);
+                    error!("kubectl get svc failed: {}", stderr);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+            Err(e) => {
+                error!("Failed to execute kubectl: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    /// Get pod metrics
+    pub async fn get_pod_metrics(State(_state): State<Arc<DashboardState>>) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Getting pod metrics");
+
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["top", "pods", "-n", "wasmbed"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await;
+
+        match output {
+            Ok(result) => {
+                if result.status.success() {
+                    let stdout = String::from_utf8_lossy(&result.stdout);
+                    // Parse the output and convert to JSON
+                    let lines: Vec<&str> = stdout.lines().collect();
+                    let mut metrics = Vec::new();
+                    
+                    for line in lines.iter().skip(1) { // Skip header
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        if parts.len() >= 3 {
+                            metrics.push(serde_json::json!({
+                                "name": parts[0],
+                                "cpu": parts[1],
+                                "memory": parts[2]
+                            }));
+                        }
+                    }
+                    
+                    Ok(Json(serde_json::json!({
+                        "metrics": metrics
+                    })))
+                } else {
+                    let stderr = String::from_utf8_lossy(&result.stderr);
+                    error!("kubectl top pods failed: {}", stderr);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+            Err(e) => {
+                error!("Failed to execute kubectl: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    /// Get logs
+    pub async fn get_logs(State(_state): State<Arc<DashboardState>>) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Getting logs");
+
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["logs", "-n", "wasmbed", "--tail=50", "--all-containers=true"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await;
+
+        match output {
+            Ok(result) => {
+                if result.status.success() {
+                    let stdout = String::from_utf8_lossy(&result.stdout);
+                    let logs: Vec<&str> = stdout.lines().collect();
+                    
+                    Ok(Json(serde_json::json!({
+                        "logs": logs
+                    })))
+                } else {
+                    let stderr = String::from_utf8_lossy(&result.stderr);
+                    error!("kubectl logs failed: {}", stderr);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+            Err(e) => {
+                error!("Failed to execute kubectl: {}", e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
     }
 }
 
@@ -490,9 +819,20 @@ impl Dashboard {
             .route("/api/devices", get(DashboardApi::api_devices))
             .route("/api/applications", get(DashboardApi::api_applications))
             .route("/api/gateways", get(DashboardApi::api_gateways))
+            .route("/api/v1/status", get(DashboardApi::api_status))
+            .route("/api/v1/devices", get(DashboardApi::api_devices))
+            .route("/api/v1/applications", get(DashboardApi::api_applications))
+            .route("/api/v1/gateways", get(DashboardApi::api_gateways))
+            .route("/api/v1/gateways", post(DashboardApi::create_gateway))
+            .route("/api/v1/devices", post(DashboardApi::create_device))
             .route("/api/deploy", post(DashboardApi::deploy_application))
             .route("/api/pairing/enable", post(DashboardApi::enable_pairing))
             .route("/api/pairing/disable", post(DashboardApi::disable_pairing))
+            .route("/api/v1/terminal/execute", post(DashboardApi::execute_terminal_command))
+            .route("/api/v1/pods", get(DashboardApi::get_pods))
+            .route("/api/v1/services", get(DashboardApi::get_services))
+            .route("/api/v1/metrics", get(DashboardApi::get_pod_metrics))
+            .route("/api/v1/logs", get(DashboardApi::get_logs))
             .route("/ws", get(DashboardApi::websocket_handler))
             .with_state(self.state);
 

@@ -1,6 +1,6 @@
-# Wasmbed Platform - Scripts Documentation
+# Wasmbed Platform - Scripts
 
-This directory contains all the management scripts for the Wasmbed Platform. These scripts provide a complete command-line interface for managing the platform.
+This directory contains essential scripts for managing the Wasmbed Platform.
 
 ## Quick Start
 
@@ -8,42 +8,52 @@ This directory contains all the management scripts for the Wasmbed Platform. The
 # Make all scripts executable
 chmod +x scripts/*.sh
 
-# Load environment (add to ~/.bashrc or ~/.zshrc)
-source scripts/env.sh
-
-# Deploy the complete platform
-wasmbed deploy
-
-# Check status
-wasmbed status
-
-# Stop all services
-wasmbed stop
+# Main management script
+./scripts/wasmbed.sh deploy
+./scripts/wasmbed.sh status
+./scripts/wasmbed.sh stop
 ```
 
-## Main Scripts
+## Essential Scripts
 
 ### `wasmbed.sh` - Main Management Console
-The primary script that provides access to all platform operations.
+Unified interface for all platform operations.
 
 **Usage:**
 ```bash
-wasmbed [COMMAND] [OPTIONS]
+./scripts/wasmbed.sh [COMMAND]
 ```
 
 **Commands:**
 - `clean` - Clean up all resources
-- `build` - Build all components
+- `build` - Build all components  
 - `deploy` - Deploy complete platform
 - `stop` - Stop all services
 - `status` - Check system status
 - `restart` - Restart all services
-- `devices [cmd]` - Manage devices
-- `applications [cmd]` - Manage applications
-- `monitor [cmd]` - Monitor system
-- `test` - Run workflow tests
+- `logs` - Show system logs
+- `test` - Run platform tests
 
-### `clean.sh` - System Cleanup
+### `wasmbed-deploy.sh` - Platform Deployment
+Deploys the complete Wasmbed platform with minimal initial setup.
+
+**Features:**
+- Creates k3d cluster
+- Applies Kubernetes resources
+- Starts core services (no test resources)
+- Tests service endpoints
+- Provides deployment summary
+
+### `wasmbed-build.sh` - Build System
+Builds all Wasmbed components.
+
+**Features:**
+- Builds Rust components
+- Builds React Dashboard (if Node.js available)
+- Generates certificates
+- Lists built components
+
+### `wasmbed-clean.sh` - System Cleanup
 Cleans up all Wasmbed resources and processes.
 
 **Features:**
@@ -53,26 +63,7 @@ Cleans up all Wasmbed resources and processes.
 - Removes build artifacts
 - Cleans certificates and logs
 
-### `build.sh` - Build System
-Builds all Wasmbed components.
-
-**Features:**
-- Builds Rust components
-- Builds React Dashboard (if Node.js available)
-- Generates certificates
-- Lists built components
-
-### `deploy.sh` - Platform Deployment
-Deploys the complete Wasmbed platform.
-
-**Features:**
-- Creates k3d cluster
-- Applies Kubernetes resources
-- Starts all services
-- Tests service endpoints
-- Provides deployment summary
-
-### `stop.sh` - Stop Services
+### `wasmbed-stop.sh` - Stop Services
 Stops all Wasmbed services gracefully.
 
 **Features:**
@@ -80,7 +71,7 @@ Stops all Wasmbed services gracefully.
 - Stops remaining processes by name
 - Removes k3d cluster
 
-### `status.sh` - Status Check
+### `wasmbed-status.sh` - Status Check
 Comprehensive status check of the platform.
 
 **Features:**
@@ -90,222 +81,66 @@ Comprehensive status check of the platform.
 - Shows running processes
 - Provides service endpoints
 
-## Resource Management Scripts
-
-### `devices.sh` - Device Management
-Manages devices in the platform.
-
-**Commands:**
-- `list` - List all devices
-- `create <name>` - Create new device
-- `delete <name>` - Delete device
-- `status <name>` - Show device status
-- `enroll <name>` - Force enrollment
-- `connect <name>` - Simulate connection
-- `disconnect <name>` - Simulate disconnection
-- `logs <name>` - Show device logs
-
-### `applications.sh` - Application Management
-Manages applications in the platform.
-
-**Commands:**
-- `list` - List all applications
-- `create <name>` - Create new application
-- `delete <name>` - Delete application
-- `status <name>` - Show application status
-- `deploy <name>` - Force deployment
-- `stop <name>` - Stop application
-- `restart <name>` - Restart application
-- `logs <name>` - Show application logs
-
-### `monitor.sh` - Monitoring & Observability
-Provides monitoring and observability features.
-
-**Commands:**
-- `overview` - System overview
-- `devices` - Device metrics
-- `applications` - Application metrics
-- `gateways` - Gateway metrics
-- `infrastructure` - Infrastructure metrics
-- `logs` - System logs
-- `health` - Health check
-- `watch` - Real-time resource watching
-
-## Utility Scripts
-
-### `certs.sh` - Certificate Management
-Manages TLS certificates for the platform.
-
-**Commands:**
-- `generate` - Generate new certificates
-- `renew` - Renew existing certificates
-- `validate` - Validate certificate chain
-- `info` - Show certificate information
-- `clean` - Clean up certificates
-
-### `logs.sh` - Log Management
-Manages logs and debugging.
-
-**Commands:**
-- `show` - Show recent logs
-- `follow` - Follow logs in real-time
-- `errors` - Show only error logs
-- `events` - Show Kubernetes events
-- `controller <name>` - Show controller logs
-- `service <name>` - Show service logs
-- `debug` - Enable debug logging
-- `clean` - Clean up log files
-
-### `test-complete-workflows.sh` - End-to-End Testing
-Comprehensive testing of all workflows.
-
-**Features:**
-- Tests complete deployment
-- Verifies all services
-- Checks resource status
-- Provides detailed test results
-
-## Environment Setup
-
-### `env.sh` - Environment Configuration
-Sets up environment variables and aliases.
-
-**Features:**
-- Sets up aliases for quick access
-- Exports service URLs
-- Provides helpful messages
-
-**Aliases:**
-- `wb-clean` - Quick clean
-- `wb-build` - Quick build
-- `wb-deploy` - Quick deploy
-- `wb-stop` - Quick stop
-- `wb-status` - Quick status
-- `wb-devices` - Quick device management
-- `wb-apps` - Quick application management
-- `wb-monitor` - Quick monitoring
-
 ## Service Endpoints
 
-When the platform is deployed, the following endpoints are available:
+When deployed, the following endpoints are available:
 
-- **Infrastructure API**: http://localhost:30460
-- **Gateway API**: http://localhost:30451
 - **Dashboard UI**: http://localhost:30470
-- **Monitoring**: http://localhost:9090
-- **Logging**: http://localhost:8080
+- **Dashboard API**: http://localhost:30453
+- **Infrastructure API**: http://localhost:30461
+- **Gateway API**: http://localhost:30451
 
 ## Examples
 
 ### Basic Operations
 ```bash
 # Deploy the platform
-wasmbed deploy
+./scripts/wasmbed.sh deploy
 
 # Check status
-wasmbed status
+./scripts/wasmbed.sh status
 
 # Stop everything
-wasmbed stop
+./scripts/wasmbed.sh stop
+
+# Clean and rebuild
+./scripts/wasmbed.sh clean
+./scripts/wasmbed.sh build
+./scripts/wasmbed.sh deploy
 ```
 
-### Device Management
+### Development Workflow
 ```bash
-# List devices
-wasmbed devices list
-
-# Create a device
-wasmbed devices create my-device
-
-# Check device status
-wasmbed devices status my-device
-
-# Force enrollment
-wasmbed devices enroll my-device
-```
-
-### Application Management
-```bash
-# List applications
-wasmbed applications list
-
-# Create an application
-wasmbed applications create my-app
-
-# Deploy application
-wasmbed applications deploy my-app
+# Clean start
+./scripts/wasmbed.sh clean
+./scripts/wasmbed.sh build
+./scripts/wasmbed.sh deploy
 
 # Check status
-wasmbed applications status my-app
-```
+./scripts/wasmbed.sh status
 
-### Monitoring
-```bash
-# System overview
-wasmbed monitor overview
+# View logs
+./scripts/wasmbed.sh logs
 
-# Check health
-wasmbed monitor health
-
-# Watch resources
-wasmbed monitor watch
-
-# Show device metrics
-wasmbed monitor devices
-```
-
-### Testing
-```bash
-# Run complete tests
-wasmbed test
-
-# Test specific components
-wasmbed test-devices
-wasmbed test-applications
-wasmbed test-gateways
+# Test platform
+./scripts/wasmbed.sh test
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Port conflicts**: Use `wasmbed stop` to clean up, then `wasmbed deploy`
-2. **Certificate issues**: Run `./scripts/certs.sh generate`
-3. **Build failures**: Run `wasmbed clean` then `wasmbed build`
-4. **Service not responding**: Check with `wasmbed status`
+1. **Port conflicts**: Use `./scripts/wasmbed.sh stop` to clean up
+2. **Build failures**: Run `./scripts/wasmbed.sh clean` then `./scripts/wasmbed.sh build`
+3. **Service not responding**: Check with `./scripts/wasmbed.sh status`
 
 ### Debug Mode
 
 Enable debug logging:
 ```bash
-./scripts/logs.sh debug
-wasmbed restart
+./scripts/wasmbed-logs.sh debug
+./scripts/wasmbed.sh restart
 ```
-
-### Log Analysis
-
-View logs:
-```bash
-# Show recent logs
-./scripts/logs.sh show
-
-# Follow logs
-./scripts/logs.sh follow
-
-# Show errors only
-./scripts/logs.sh errors
-```
-
-## Contributing
-
-When adding new scripts:
-
-1. Follow the existing naming convention
-2. Include proper help documentation
-3. Use the standard color scheme
-4. Add error handling
-5. Make scripts executable
-6. Update this documentation
 
 ## License
 

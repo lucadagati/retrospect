@@ -15,7 +15,7 @@ use tracing::{Level, error, info, warn, debug};
 use tracing_subscriber::FmtSubscriber;
 use base64;
 
-use wasmbed_k8s_resource::{Device, DeviceStatusUpdate, Application, DevicePhase, ApplicationPhase};
+use wasmbed_k8s_resource::{Device, DeviceStatusUpdate, Application, DevicePhase, ApplicationPhase, Gateway};
 use wasmbed_protocol::{ClientMessage, ServerMessage, DeviceUuid};
 use wasmbed_tls_utils::{TlsUtils, GatewayServer, GatewayServerConfig, ServerIdentity, AuthorizationResult, MessageContextWithKey, OnClientConnectWithKey, OnClientDisconnectWithKey, OnClientMessageWithKey};
 use wasmbed_types::{GatewayReference, PublicKey};
@@ -615,9 +615,10 @@ async fn main() -> Result<()> {
     }
     let api: Api<Device> = Api::namespaced(client.clone(), &args.namespace);
     let application_api: Api<Application> = Api::namespaced(client.clone(), &args.namespace);
+    let gateway_api: Api<Gateway> = Api::namespaced(client.clone(), &args.namespace);
 
     // Create HTTP API server
-    let http_server = HttpApiServer::new(api.clone(), application_api)?;
+    let http_server = HttpApiServer::new(api.clone(), application_api, gateway_api)?;
     
     // Initialize pairing mode configuration
     {

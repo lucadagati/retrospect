@@ -48,7 +48,11 @@ const DeviceManagement = () => {
       const response = await fetch('/api/v1/devices');
       if (response.ok) {
         const data = await response.json();
-        setDevices(data.devices || []);
+        let deviceList = data.devices || [];
+        
+        // Use real data from backend - no mock data
+        
+        setDevices(deviceList);
       } else {
         console.error('Failed to fetch devices:', response.status);
       }

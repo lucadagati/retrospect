@@ -13,7 +13,7 @@ pub struct LoggingService {
     logs: Arc<RwLock<Vec<LogEntry>>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct LogEntry {
     pub timestamp: SystemTime,
     pub level: LogLevel,
@@ -22,7 +22,7 @@ pub struct LogEntry {
     pub metadata: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub enum LogLevel {
     Debug,
     Info,

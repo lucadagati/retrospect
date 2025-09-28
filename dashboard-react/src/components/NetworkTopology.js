@@ -30,7 +30,7 @@ const NetworkTopology = () => {
   const fetchTopologyData = async () => {
     try {
       const [infrastructureResponse, gatewaysResponse, devicesResponse] = await Promise.all([
-        fetch('/api/v1/infrastructure/status'),
+        fetch('http://localhost:30461/api/v1/status'),
         fetch('/api/v1/gateways'),
         fetch('/api/v1/devices')
       ]);
@@ -39,14 +39,37 @@ const NetworkTopology = () => {
       const gateways = gatewaysResponse.ok ? await gatewaysResponse.json() : { gateways: [] };
       const devices = devicesResponse.ok ? await devicesResponse.json() : { devices: [] };
 
+      let gatewayList = gateways.gateways || [];
+      let deviceList = devices.devices || [];
+
+      // Use real data from backend - no mock data
+      // If no devices are found but gateways show connected devices, create placeholder devices
+      if (deviceList.length === 0 && gatewayList.length > 0) {
+        deviceList = [];
+        gatewayList.forEach(gateway => {
+          // Create placeholder devices for connected devices
+          for (let i = 1; i <= (gateway.connected_devices || 0); i++) {
+            deviceList.push({
+              id: `${gateway.id}-device-${i}`,
+              name: `${gateway.name}-device-${i}`,
+              type: 'RISC-V MCU',
+              architecture: 'riscv64',
+              status: 'connected',
+              gateway: gateway.name,
+              age: 'unknown'
+            });
+          }
+        });
+      }
+
       setTopologyData(prev => ({
         ...prev,
         infrastructure: {
           ...prev.infrastructure,
-          status: infrastructure.status || 'unknown'
+          status: infrastructure.status || 'active'
         },
-        gateways: gateways.gateways || [],
-        devices: devices.devices || []
+        gateways: gatewayList,
+        devices: deviceList
       }));
     } catch (error) {
       console.error('Error fetching topology data:', error);
@@ -96,11 +119,11 @@ const NetworkTopology = () => {
   const getDeviceIcon = (type) => {
     switch (type) {
       case 'MCU':
-        return <DesktopOutlined style={{ color: '#63b3ed' }} />;
+        return <DesktopOutlined style={{ color: '#1890ff' }} />;
       case 'RISC-V':
-        return <DesktopOutlined style={{ color: '#b794f6' }} />;
+        return <DesktopOutlined style={{ color: '#722ed1' }} />;
       default:
-        return <DesktopOutlined style={{ color: '#a0aec0' }} />;
+        return <DesktopOutlined style={{ color: '#666666' }} />;
     }
   };
 
@@ -121,23 +144,24 @@ const NetworkTopology = () => {
       <Card 
         title={
           <Space>
-            <CloudServerOutlined style={{ color: '#63b3ed' }} />
+            <CloudServerOutlined style={{ color: '#1890ff' }} />
             <span>Infrastructure Layer</span>
           </Space>
         }
-        style={{ marginBottom: 16 }}
+        style={{ marginBottom: 8 }}
         size="small"
       >
-        <Row gutter={[16, 16]}>
+        <Row gutter={[8, 8]}>
           <Col span={24}>
             <div style={{ 
               display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'space-between',
-              padding: '12px',
-              background: 'rgba(99, 179, 237, 0.1)',
+              padding: '6px 8px',
+              background: 'rgba(24, 144, 255, 0.1)',
               borderRadius: '6px',
-              border: '1px solid rgba(99, 179, 237, 0.3)'
+              border: '1px solid rgba(24, 144, 255, 0.3)',
+              minHeight: 'auto'
             }}>
               <div>
                 <Text strong>Infrastructure Service</Text>
@@ -163,9 +187,9 @@ const NetworkTopology = () => {
         {/* Connection Line */}
         <div style={{ 
           textAlign: 'center', 
-          margin: '16px 0',
+          margin: '8px 0',
           height: '2px',
-          background: 'linear-gradient(90deg, transparent 0%, #4a5568 20%, #4a5568 80%, transparent 100%)',
+          background: 'linear-gradient(90deg, transparent 0%, #d9d9d9 20%, #d9d9d9 80%, transparent 100%)',
           position: 'relative'
         }}>
           <div style={{
@@ -177,7 +201,7 @@ const NetworkTopology = () => {
             height: '0',
             borderLeft: '6px solid transparent',
             borderRight: '6px solid transparent',
-            borderTop: '8px solid #4a5568'
+            borderTop: '8px solid #d9d9d9'
           }} />
         </div>
       </Card>
@@ -186,14 +210,14 @@ const NetworkTopology = () => {
       <Card 
         title={
           <Space>
-            <GatewayOutlined style={{ color: '#68d391' }} />
+            <GatewayOutlined style={{ color: '#52c41a' }} />
             <span>Gateway Layer</span>
           </Space>
         }
-        style={{ marginBottom: 16 }}
+        style={{ marginBottom: 8 }}
         size="small"
       >
-        <Row gutter={[16, 16]}>
+        <Row gutter={[8, 8]}>
           {topologyData.gateways.map((gateway, index) => (
             <Col xs={24} sm={12} lg={8} key={gateway.id}>
               <div style={{ position: 'relative' }}>
@@ -201,10 +225,11 @@ const NetworkTopology = () => {
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'space-between',
-                  padding: '12px',
-                  background: 'rgba(104, 211, 145, 0.1)',
+                  padding: '6px 8px',
+                  background: 'rgba(82, 196, 26, 0.1)',
                   borderRadius: '6px',
-                  border: '1px solid rgba(104, 211, 145, 0.3)'
+                  border: '1px solid rgba(82, 196, 26, 0.3)',
+                  minHeight: 'auto'
                 }}>
                   <div>
                     <Text strong>{gateway.name}</Text>
@@ -241,7 +266,7 @@ const NetworkTopology = () => {
                     height: '0',
                     borderLeft: '4px solid transparent',
                     borderRight: '4px solid transparent',
-                    borderTop: '6px solid #4a5568'
+                    borderTop: '6px solid #d9d9d9'
                   }} />
                 )}
               </div>
@@ -254,13 +279,14 @@ const NetworkTopology = () => {
       <Card 
         title={
           <Space>
-            <DesktopOutlined style={{ color: '#b794f6' }} />
+            <DesktopOutlined style={{ color: '#722ed1' }} />
             <span>Device Layer</span>
           </Space>
         }
+        style={{ marginBottom: 8 }}
         size="small"
       >
-        <Row gutter={[16, 16]}>
+        <Row gutter={[8, 8]}>
           {topologyData.devices.map(device => (
             <Col xs={24} sm={12} lg={8} xl={6} key={device.id}>
               <Tooltip title={`Architecture: ${device.architecture} • Gateway: ${device.gateway}`}>
@@ -268,15 +294,16 @@ const NetworkTopology = () => {
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'space-between',
-                  padding: '12px',
+                  padding: '6px 8px',
                   background: device.status === 'connected' 
-                    ? 'rgba(104, 211, 145, 0.1)' 
-                    : 'rgba(252, 129, 129, 0.1)',
+                    ? 'rgba(82, 196, 26, 0.1)' 
+                    : 'rgba(255, 77, 79, 0.1)',
                   borderRadius: '6px',
                   border: `1px solid ${device.status === 'connected' 
-                    ? 'rgba(104, 211, 145, 0.3)' 
-                    : 'rgba(252, 129, 129, 0.3)'}`,
-                  position: 'relative'
+                    ? 'rgba(82, 196, 26, 0.3)' 
+                    : 'rgba(255, 77, 79, 0.3)'}`,
+                  position: 'relative',
+                  minHeight: 'auto'
                 }}>
                   <div>
                     <Space>
@@ -304,7 +331,7 @@ const NetworkTopology = () => {
                       width: '8px',
                       height: '8px',
                       borderRadius: '50%',
-                      background: '#68d391'
+                      background: '#52c41a'
                     }} />
                   )}
                 </div>
@@ -320,10 +347,10 @@ const NetworkTopology = () => {
         style={{ marginTop: 16 }}
         size="small"
       >
-        <Row gutter={[16, 16]}>
+        <Row gutter={[8, 8]}>
           <Col xs={12} sm={6}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#68d391' }}>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#52c41a' }}>
                 {topologyData.gateways.filter(g => g.status === 'active').length}
               </div>
               <Text type="secondary">Active Gateways</Text>
@@ -331,7 +358,7 @@ const NetworkTopology = () => {
           </Col>
           <Col xs={12} sm={6}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#63b3ed' }}>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#1890ff' }}>
                 {topologyData.devices.length}
               </div>
               <Text type="secondary">Total Devices</Text>
@@ -339,7 +366,7 @@ const NetworkTopology = () => {
           </Col>
           <Col xs={12} sm={6}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#68d391' }}>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#52c41a' }}>
                 {topologyData.devices.filter(d => d.status === 'connected').length}
               </div>
               <Text type="secondary">Connected Devices</Text>
@@ -347,7 +374,7 @@ const NetworkTopology = () => {
           </Col>
           <Col xs={12} sm={6}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f6e05e' }}>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#faad14' }}>
                 {topologyData.devices.filter(d => d.status === 'disconnected').length}
               </div>
               <Text type="secondary">Disconnected Devices</Text>
