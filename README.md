@@ -1,8 +1,8 @@
 # Wasmbed Platform
 
-A Kubernetes-native middleware platform for deploying WebAssembly applications to edge devices.
+A comprehensive Kubernetes-native middleware platform for deploying WebAssembly applications to edge devices with real-time monitoring, secure management, and complete lifecycle orchestration.
 
-## Quick Start
+## 🚀 Quick Start
 
 ```bash
 # Clone and deploy
@@ -14,64 +14,246 @@ cd retrospect
 open http://localhost:30470
 ```
 
-## Features
+## ✨ Key Features
 
-- **Kubernetes-native**: Deploy WASM applications through Kubernetes manifests
-- **Edge-optimized**: Designed for resource-constrained edge devices
-- **Real-time Dashboard**: Web-based management interface
-- **Secure Terminal**: Command execution with predefined commands
-- **Device Management**: Complete device lifecycle management
-- **Application Deployment**: WASM application orchestration
+- **Kubernetes-native**: Deploy WASM applications through standard Kubernetes manifests
+- **Edge-optimized**: Designed for resource-constrained edge devices (RISC-V MCUs)
+- **Real-time Dashboard**: Web-based management interface with live monitoring
+- **Secure Terminal**: Command execution with predefined whitelisted commands
+- **Device Management**: Complete device lifecycle management and monitoring
+- **Application Deployment**: WASM application orchestration and runtime management
+- **Infrastructure Services**: Certificate management, logging, and monitoring
+- **Initial Configuration**: Guided setup wizard for system deployment
 
-## Architecture
+## 🏗️ System Architecture
 
+### High-Level Architecture
+
+```mermaid
+graph TB
+    subgraph "Control Plane"
+        K8S[Kubernetes Orchestrator]
+        DASH[Dashboard UI]
+        API[Dashboard API]
+        INFRA[Infrastructure Service]
+        CTRL[Kubernetes Controllers]
+    end
+    
+    subgraph "Gateway Layer"
+        GW1[Gateway 1<br/>WASM Runtime]
+        GW2[Gateway 2<br/>WASM Runtime]
+        GW3[Gateway N<br/>WASM Runtime]
+    end
+    
+    subgraph "Device Layer"
+        DEV1[Edge Device 1<br/>RISC-V MCU]
+        DEV2[Edge Device 2<br/>RISC-V MCU]
+        DEV3[Edge Device N<br/>RISC-V MCU]
+    end
+    
+    K8S --> CTRL
+    DASH --> API
+    API --> INFRA
+    CTRL --> GW1
+    CTRL --> GW2
+    CTRL --> GW3
+    GW1 --> DEV1
+    GW2 --> DEV2
+    GW3 --> DEV3
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   CONTROL PLANE │    │   GATEWAY LAYER │    │   DEVICE LAYER  │
-│                 │    │                 │    │                 │
-│  Kubernetes     │◄──►│ Gateway MPU     │◄──►│ Edge Devices    │
-│  Orchestrator   │    │ (WASM Runtime)  │    │ (RISC-V MCUs)   │
-│                 │    │                 │    │                 │
-│  - Dashboard    │    │ - Device Mgmt   │    │ - WASM Apps     │
-│  - API Services │    │ - App Runtime   │    │ - Sensors       │
-│  - Controllers  │    │ - Communication │    │ - Communication │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+
+### Detailed Component Architecture
+
+```mermaid
+graph LR
+    subgraph "Frontend Layer"
+        REACT[React Dashboard]
+        TERM[Terminal Interface]
+        CONFIG[Initial Config Wizard]
+    end
+    
+    subgraph "Backend Services"
+        DASH_API[Dashboard API<br/>Port 30453]
+        INFRA_API[Infrastructure API<br/>Port 30461]
+        GW_API[Gateway API<br/>Port 30451]
+    end
+    
+    subgraph "Kubernetes Layer"
+        DEV_CTRL[Device Controller]
+        APP_CTRL[Application Controller]
+        GW_CTRL[Gateway Controller]
+        CRDS[Custom CRDs]
+    end
+    
+    subgraph "Infrastructure"
+        CA[Certificate Authority]
+        LOGS[Logging Service]
+        METRICS[Monitoring Service]
+        SECRETS[Secret Store]
+    end
+    
+    REACT --> DASH_API
+    TERM --> DASH_API
+    CONFIG --> DASH_API
+    DASH_API --> INFRA_API
+    DASH_API --> GW_API
+    DASH_API --> DEV_CTRL
+    DASH_API --> APP_CTRL
+    DASH_API --> GW_CTRL
+    DEV_CTRL --> CRDS
+    APP_CTRL --> CRDS
+    GW_CTRL --> CRDS
+    INFRA_API --> CA
+    INFRA_API --> LOGS
+    INFRA_API --> METRICS
+    INFRA_API --> SECRETS
 ```
 
-## Service Endpoints
+## 🔄 System Workflows
 
-- **Dashboard UI**: http://localhost:30470
-- **Dashboard API**: http://localhost:30453
-- **Infrastructure API**: http://localhost:30461
-- **Gateway API**: http://localhost:30451
+### Device Enrollment Workflow
 
-## Management Scripts
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant D as Dashboard
+    participant API as Dashboard API
+    participant GW as Gateway
+    participant K8S as Kubernetes
+    participant DEV as Edge Device
+    
+    U->>D: Create Device
+    D->>API: POST /api/v1/devices
+    API->>K8S: Create Device CRD
+    K8S->>GW: Device Registration Request
+    GW->>DEV: Pairing Mode Activation
+    DEV->>GW: Device Certificate
+    GW->>K8S: Device Enrolled
+    K8S->>API: Device Status Update
+    API->>D: Real-time Status Update
+    D->>U: Device Ready
+```
+
+### Application Deployment Workflow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant D as Dashboard
+    participant API as Dashboard API
+    participant GW as Gateway
+    participant K8S as Kubernetes
+    participant DEV as Edge Device
+    
+    U->>D: Deploy Application
+    D->>API: POST /api/v1/applications
+    API->>K8S: Create Application CRD
+    K8S->>GW: Application Deployment Request
+    GW->>GW: WASM Runtime Preparation
+    GW->>DEV: Application Binary Transfer
+    DEV->>GW: Deployment Confirmation
+    GW->>K8S: Application Deployed
+    K8S->>API: Status Update
+    API->>D: Real-time Status Update
+    D->>U: Application Running
+```
+
+### System Monitoring Workflow
+
+```mermaid
+sequenceDiagram
+    participant D as Dashboard
+    participant API as Dashboard API
+    participant INFRA as Infrastructure
+    participant GW as Gateway
+    participant DEV as Edge Device
+    
+    loop Every 5 seconds
+        D->>API: GET /api/v1/devices
+        D->>API: GET /api/v1/applications
+        D->>API: GET /api/v1/gateways
+        API->>GW: Health Check
+        GW->>DEV: Heartbeat Request
+        DEV->>GW: Status Response
+        GW->>API: Device Status
+        API->>D: Real-time Updates
+    end
+    
+    D->>API: GET /api/v1/terminal/execute
+    API->>INFRA: System Command
+    INFRA->>API: Command Result
+    API->>D: Terminal Output
+```
+
+## 🌐 Service Endpoints
+
+| Service | Endpoint | Port | Description |
+|---------|----------|------|-------------|
+| **Dashboard UI** | http://localhost:30470 | 30470 | React-based web interface |
+| **Dashboard API** | http://localhost:30453 | 30453 | Backend API for dashboard |
+| **Infrastructure API** | http://localhost:30461 | 30461 | Infrastructure services |
+| **Gateway API** | http://localhost:30451 | 30451 | Gateway management |
+
+## 🛠️ Management Scripts
 
 ```bash
 # Main management script
-./scripts/wasmbed.sh deploy    # Deploy platform
-./scripts/wasmbed.sh status    # Check status
-./scripts/wasmbed.sh stop      # Stop services
-./scripts/wasmbed.sh clean     # Clean up
-./scripts/wasmbed.sh build     # Build components
-./scripts/wasmbed.sh test      # Run tests
+./scripts/wasmbed.sh deploy    # Deploy complete platform
+./scripts/wasmbed.sh status    # Check system status
+./scripts/wasmbed.sh stop      # Stop all services
+./scripts/wasmbed.sh clean     # Clean up resources
+./scripts/wasmbed.sh build     # Build all components
+./scripts/wasmbed.sh test      # Run comprehensive tests
+./scripts/wasmbed.sh restart   # Restart all services
+./scripts/wasmbed.sh logs      # View system logs
+./scripts/wasmbed.sh monitor   # Real-time monitoring
 ```
 
-## Development
+## 🔧 Development
 
 ### Prerequisites
-- Rust 1.70+
-- Kubernetes 1.25+
-- Node.js 18+
-- k3d (for local Kubernetes)
+- **Rust**: 1.70+ (for backend services)
+- **Kubernetes**: 1.25+ (for orchestration)
+- **Node.js**: 18+ (for React dashboard)
+- **k3d**: Latest (for local Kubernetes cluster)
+- **Docker**: Latest (for containerization)
 
-### Build
+### Build Process
+
+```mermaid
+graph TD
+    A[Source Code] --> B[Cargo Build]
+    B --> C[Rust Binaries]
+    A --> D[NPM Build]
+    D --> E[React Bundle]
+    C --> F[Docker Images]
+    E --> F
+    F --> G[Kubernetes Deployment]
+    G --> H[Running Platform]
+```
+
+### Build Commands
 ```bash
 # Build all components
 ./scripts/wasmbed.sh build
 
 # Build specific component
 cargo build --package wasmbed-dashboard
+cargo build --package wasmbed-gateway
+cargo build --package wasmbed-infrastructure
+
+# Build React dashboard
+cd dashboard-react && npm run build
+```
+
+### Testing Framework
+
+```mermaid
+graph LR
+    A[Unit Tests] --> D[Test Results]
+    B[Integration Tests] --> D
+    C[E2E Tests] --> D
+    D --> E[Test Report]
 ```
 
 ### Run Tests
@@ -79,30 +261,188 @@ cargo build --package wasmbed-dashboard
 # Run all tests
 ./scripts/wasmbed.sh test
 
-# Run specific tests
+# Run specific test suites
 cargo test --package wasmbed-dashboard
+cargo test --package wasmbed-gateway
+cargo test --package wasmbed-infrastructure
+
+# Run React tests
+cd dashboard-react && npm test
 ```
 
-## Documentation
+## 📊 System Monitoring
 
-- [Complete Documentation](docs/README.md)
-- [API Reference](docs/api/)
-- [Architecture Guide](docs/architecture/)
-- [Deployment Guide](docs/deployment/)
+### Real-time Metrics
 
-## Contributing
+```mermaid
+graph TB
+    subgraph "System Metrics"
+        CPU[CPU Usage]
+        MEM[Memory Usage]
+        NET[Network I/O]
+        DISK[Disk I/O]
+    end
+    
+    subgraph "Application Metrics"
+        APP_COUNT[Application Count]
+        APP_STATUS[Application Status]
+        APP_PERF[Application Performance]
+    end
+    
+    subgraph "Device Metrics"
+        DEV_COUNT[Device Count]
+        DEV_STATUS[Device Status]
+        DEV_HEALTH[Device Health]
+    end
+    
+    subgraph "Gateway Metrics"
+        GW_COUNT[Gateway Count]
+        GW_STATUS[Gateway Status]
+        GW_CONN[Gateway Connections]
+    end
+    
+    CPU --> DASHBOARD[Dashboard]
+    MEM --> DASHBOARD
+    NET --> DASHBOARD
+    DISK --> DASHBOARD
+    APP_COUNT --> DASHBOARD
+    APP_STATUS --> DASHBOARD
+    APP_PERF --> DASHBOARD
+    DEV_COUNT --> DASHBOARD
+    DEV_STATUS --> DASHBOARD
+    DEV_HEALTH --> DASHBOARD
+    GW_COUNT --> DASHBOARD
+    GW_STATUS --> DASHBOARD
+    GW_CONN --> DASHBOARD
+```
 
+## 🔐 Security Architecture
+
+### Security Layers
+
+```mermaid
+graph TB
+    subgraph "Frontend Security"
+        CORS[CORS Protection]
+        AUTH[Authentication]
+        VALID[Input Validation]
+    end
+    
+    subgraph "API Security"
+        TLS[TLS Encryption]
+        RATE[Rate Limiting]
+        WHITELIST[Command Whitelist]
+    end
+    
+    subgraph "Infrastructure Security"
+        CA[Certificate Authority]
+        SECRETS[Secret Management]
+        AUDIT[Audit Logging]
+    end
+    
+    subgraph "Device Security"
+        PAIRING[Secure Pairing]
+        CERT[Device Certificates]
+        ENCRYPT[Data Encryption]
+    end
+    
+    CORS --> TLS
+    AUTH --> RATE
+    VALID --> WHITELIST
+    TLS --> CA
+    RATE --> SECRETS
+    WHITELIST --> AUDIT
+    CA --> PAIRING
+    SECRETS --> CERT
+    AUDIT --> ENCRYPT
+```
+
+## 📚 Documentation
+
+- **[Complete Documentation](docs/README.md)** - Comprehensive system documentation
+- **[API Reference](docs/api/)** - Complete API documentation
+- **[Architecture Guide](docs/architecture/)** - Detailed architecture documentation
+- **[Deployment Guide](docs/deployment/)** - Step-by-step deployment guide
+- **[Configuration Management](docs/CONFIGURATION_MANAGEMENT.md)** - Configuration system
+- **[MCU Architecture Support](docs/MCU_ARCHITECTURE_SUPPORT.md)** - Device architecture details
+
+## 🤝 Contributing
+
+### Development Workflow
+
+```mermaid
+graph LR
+    A[Fork Repository] --> B[Create Branch]
+    B --> C[Make Changes]
+    C --> D[Run Tests]
+    D --> E[Submit PR]
+    E --> F[Code Review]
+    F --> G[Merge]
+```
+
+### Contribution Guidelines
 1. Fork the repository
-2. Create a feature branch
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
 3. Make your changes
 4. Run tests: `./scripts/wasmbed.sh test`
-5. Submit a pull request
+5. Commit changes: `git commit -m 'Add amazing feature'`
+6. Push to branch: `git push origin feature/amazing-feature`
+7. Submit a pull request
 
-## License
+### Code Style
+- **Rust**: Follow standard Rust formatting with `cargo fmt`
+- **JavaScript**: Use ESLint and Prettier for consistent formatting
+- **Documentation**: Update relevant documentation for all changes
+- **Tests**: Write comprehensive tests for new features
 
-AGPL-3.0 - see [LICENSE](LICENSE) for details.
+## 📄 License
 
-## Status
+This project is licensed under the **AGPL-3.0 License** - see the [LICENSE](LICENSE) file for details.
+
+## 📈 Status
 
 **Current Version**: 0.1.0  
-**Implementation Status**: Core platform complete with dashboard, backend services, and Kubernetes integration. WASM runtime and device support are placeholders ready for implementation.
+**Last Updated**: 2025  
+**Compatibility**: Rust 1.70+, Kubernetes 1.25+, Node.js 18+
+
+### Implementation Status
+
+```mermaid
+graph TB
+    subgraph "✅ Completed"
+        DASH[Dashboard Interface]
+        API[Backend Services]
+        K8S[Kubernetes Integration]
+        TERM[Terminal Interface]
+        CONFIG[Initial Configuration]
+        MONITOR[Real-time Monitoring]
+    end
+    
+    subgraph "⚠️ In Progress"
+        WASM[WASM Runtime]
+        DEVICE[Device Support]
+        DEPLOY[Application Deployment]
+    end
+    
+    subgraph "📋 Planned"
+        QEMU[QEMU Integration]
+        HARDWARE[Hardware Support]
+        ADVANCED[Advanced Features]
+    end
+```
+
+**Core Platform**: ✅ **COMPLETE**
+- Dashboard with real-time data integration
+- All backend microservices functional
+- Kubernetes CRDs and controllers working
+- Secure terminal with command whitelist
+- Complete REST API implementation
+- Initial configuration wizard
+- Real-time monitoring and logging
+
+**Next Development Phase**:
+1. Implement real WASM runtime for edge devices
+2. Add QEMU integration for device emulation
+3. Implement real hardware device support
+4. Add advanced application deployment mechanisms
+5. Enhance security and monitoring capabilities
