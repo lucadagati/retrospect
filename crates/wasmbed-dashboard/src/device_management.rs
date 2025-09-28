@@ -20,31 +20,70 @@ impl DeviceManager {
     }
 
     pub async fn get_all_devices(&self) -> anyhow::Result<Vec<DeviceInfo>> {
-        info!("Fetching all devices from gateway");
+        info!("Fetching all devices from Kubernetes");
         
-        // In a real implementation, this would make HTTP requests to the gateway
-        // For now, we'll return mock data
+        // Query Kubernetes for Device CRDs
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["get", "devices", "-n", "wasmbed", "-o", "json"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.contains("No resources found") {
+                info!("No devices found in wasmbed namespace");
+                return Ok(vec![]);
+            }
+            return Err(anyhow::anyhow!("kubectl failed: {}", stderr));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let k8s_response: serde_json::Value = serde_json::from_str(&stdout)?;
         
-        let devices = vec![
-            DeviceInfo {
-                device_id: "device-1".to_string(),
-                device_type: "MCU".to_string(),
-                architecture: "riscv32".to_string(),
-                status: "connected".to_string(),
-                last_heartbeat: Some(SystemTime::now()),
-                gateway_id: Some("gateway-1".to_string()),
-            },
-            DeviceInfo {
-                device_id: "device-2".to_string(),
-                device_type: "MPU".to_string(),
-                architecture: "arm64".to_string(),
-                status: "enrolled".to_string(),
-                last_heartbeat: Some(SystemTime::now()),
-                gateway_id: Some("gateway-1".to_string()),
-            },
-        ];
+        let mut devices = Vec::new();
         
-        info!("Fetched {} devices", devices.len());
+        if let Some(items) = k8s_response["items"].as_array() {
+            for item in items {
+                if let Some(metadata) = item["metadata"].as_object() {
+                    let device_id = metadata["name"]
+                        .as_str()
+                        .unwrap_or("unknown")
+                        .to_string();
+                    
+                    let status = item["status"]["phase"]
+                        .as_str()
+                        .unwrap_or("unknown")
+                        .to_string();
+                    
+                    let device_type = item["spec"]["deviceType"]
+                        .as_str()
+                        .unwrap_or("MCU")
+                        .to_string();
+                    
+                    let architecture = item["spec"]["architecture"]
+                        .as_str()
+                        .unwrap_or("riscv32")
+                        .to_string();
+                    
+                    let gateway_id = item["spec"]["gatewayId"]
+                        .as_str()
+                        .map(|s| s.to_string());
+                    
+                    devices.push(DeviceInfo {
+                        device_id,
+                        device_type,
+                        architecture,
+                        status,
+                        last_heartbeat: Some(SystemTime::now()),
+                        gateway_id,
+                    });
+                }
+            }
+        }
+        
+        info!("Fetched {} devices from Kubernetes", devices.len());
         Ok(devices)
     }
 

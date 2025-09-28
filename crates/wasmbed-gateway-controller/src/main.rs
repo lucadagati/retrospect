@@ -2,7 +2,7 @@
 // Copyright © 2025 Wasmbed contributors
 
 use kube::{
-    api::{Api, ListParams, Patch, PatchParams},
+    api::{Api, ListParams, Patch, PatchParams, PostParams},
     client::Client,
     runtime::{
         controller::{Action, Controller},
@@ -10,6 +10,9 @@ use kube::{
     },
     ResourceExt,
 };
+use k8s_openapi::api::apps::v1::Deployment;
+use k8s_openapi::api::core::v1::Service;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use futures_util::StreamExt;
 use std::time::Duration;
 use tracing::{error, info, warn};
@@ -33,6 +36,8 @@ pub struct GatewayController {
     client: Client,
     gateways: Api<wasmbed_k8s_resource::Gateway>,
     devices: Api<wasmbed_k8s_resource::Device>,
+    deployments: Api<Deployment>,
+    services: Api<Service>,
 }
 
 impl GatewayController {
@@ -40,6 +45,8 @@ impl GatewayController {
         Self {
             gateways: Api::<wasmbed_k8s_resource::Gateway>::namespaced(client.clone(), "wasmbed"),
             devices: Api::<wasmbed_k8s_resource::Device>::namespaced(client.clone(), "wasmbed"),
+            deployments: Api::<Deployment>::namespaced(client.clone(), "wasmbed"),
+            services: Api::<Service>::namespaced(client.clone(), "wasmbed"),
             client,
         }
     }
@@ -111,6 +118,12 @@ impl GatewayController {
 
     async fn handle_pending(&self, gateway: &wasmbed_k8s_resource::Gateway) -> Result<(), ControllerError> {
         info!("Handling pending gateway: {}", gateway.name_any());
+        
+        // Create Deployment for the gateway
+        self.create_gateway_deployment(gateway).await?;
+        
+        // Create Service for the gateway
+        self.create_gateway_service(gateway).await?;
         
         // Count connected devices
         let devices = self.devices.list(&ListParams::default()).await?;
@@ -208,6 +221,158 @@ impl GatewayController {
             .patch_status(&gateway.name_any(), &params, &patch)
             .await?;
 
+        Ok(())
+    }
+
+    async fn create_gateway_deployment(&self, gateway: &wasmbed_k8s_resource::Gateway) -> Result<(), ControllerError> {
+        let deployment_name = format!("{}-deployment", gateway.name_any());
+        
+        // Check if deployment already exists
+        match self.deployments.get(&deployment_name).await {
+            Ok(_) => {
+                info!("Deployment {} already exists", deployment_name);
+                return Ok(());
+            }
+            Err(kube::Error::Api(kube::core::ErrorResponse { code: 404, .. })) => {
+                // Deployment doesn't exist, create it
+            }
+            Err(e) => return Err(ControllerError::KubeError(e)),
+        }
+
+        let deployment = Deployment {
+            metadata: ObjectMeta {
+                name: Some(deployment_name.clone()),
+                namespace: Some("wasmbed".to_string()),
+                labels: Some({
+                    let mut labels = std::collections::BTreeMap::new();
+                    labels.insert("app".to_string(), "wasmbed-gateway".to_string());
+                    labels.insert("gateway".to_string(), gateway.name_any());
+                    labels
+                }),
+                ..Default::default()
+            },
+            spec: Some(k8s_openapi::api::apps::v1::DeploymentSpec {
+                replicas: Some(1),
+                selector: k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector {
+                    match_labels: Some({
+                        let mut labels = std::collections::BTreeMap::new();
+                        labels.insert("app".to_string(), "wasmbed-gateway".to_string());
+                        labels.insert("gateway".to_string(), gateway.name_any());
+                        labels
+                    }),
+                    ..Default::default()
+                },
+                template: k8s_openapi::api::core::v1::PodTemplateSpec {
+                    metadata: Some(ObjectMeta {
+                        labels: Some({
+                            let mut labels = std::collections::BTreeMap::new();
+                            labels.insert("app".to_string(), "wasmbed-gateway".to_string());
+                            labels.insert("gateway".to_string(), gateway.name_any());
+                            labels
+                        }),
+                        ..Default::default()
+                    }),
+                    spec: Some(k8s_openapi::api::core::v1::PodSpec {
+                        containers: vec![k8s_openapi::api::core::v1::Container {
+                            name: "gateway".to_string(),
+                            image: Some("wasmbed/gateway:latest".to_string()),
+                            ports: Some(vec![
+                                k8s_openapi::api::core::v1::ContainerPort {
+                                    container_port: 8080,
+                                    name: Some("http".to_string()),
+                                    ..Default::default()
+                                },
+                                k8s_openapi::api::core::v1::ContainerPort {
+                                    container_port: 8443,
+                                    name: Some("https".to_string()),
+                                    ..Default::default()
+                                },
+                            ]),
+                            env: Some(vec![
+                                k8s_openapi::api::core::v1::EnvVar {
+                                    name: "GATEWAY_NAME".to_string(),
+                                    value: Some(gateway.name_any()),
+                                    ..Default::default()
+                                },
+                                k8s_openapi::api::core::v1::EnvVar {
+                                    name: "GATEWAY_ENDPOINT".to_string(),
+                                    value: Some(gateway.spec.endpoint.clone()),
+                                    ..Default::default()
+                                },
+                            ]),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    }),
+                },
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let params = PostParams::default();
+        self.deployments.create(&params, &deployment).await?;
+        info!("Created deployment for gateway: {}", gateway.name_any());
+        Ok(())
+    }
+
+    async fn create_gateway_service(&self, gateway: &wasmbed_k8s_resource::Gateway) -> Result<(), ControllerError> {
+        let service_name = format!("{}-service", gateway.name_any());
+        
+        // Check if service already exists
+        match self.services.get(&service_name).await {
+            Ok(_) => {
+                info!("Service {} already exists", service_name);
+                return Ok(());
+            }
+            Err(kube::Error::Api(kube::core::ErrorResponse { code: 404, .. })) => {
+                // Service doesn't exist, create it
+            }
+            Err(e) => return Err(ControllerError::KubeError(e)),
+        }
+
+        let service = Service {
+            metadata: ObjectMeta {
+                name: Some(service_name.clone()),
+                namespace: Some("wasmbed".to_string()),
+                labels: Some({
+                    let mut labels = std::collections::BTreeMap::new();
+                    labels.insert("app".to_string(), "wasmbed-gateway".to_string());
+                    labels.insert("gateway".to_string(), gateway.name_any());
+                    labels
+                }),
+                ..Default::default()
+            },
+            spec: Some(k8s_openapi::api::core::v1::ServiceSpec {
+                selector: Some({
+                    let mut labels = std::collections::BTreeMap::new();
+                    labels.insert("app".to_string(), "wasmbed-gateway".to_string());
+                    labels.insert("gateway".to_string(), gateway.name_any());
+                    labels
+                }),
+                ports: Some(vec![
+                    k8s_openapi::api::core::v1::ServicePort {
+                        name: Some("http".to_string()),
+                        port: 8080,
+                        target_port: Some(k8s_openapi::apimachinery::pkg::util::intstr::IntOrString::Int(8080)),
+                        ..Default::default()
+                    },
+                    k8s_openapi::api::core::v1::ServicePort {
+                        name: Some("https".to_string()),
+                        port: 8443,
+                        target_port: Some(k8s_openapi::apimachinery::pkg::util::intstr::IntOrString::Int(8443)),
+                        ..Default::default()
+                    },
+                ]),
+                type_: Some("ClusterIP".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let params = PostParams::default();
+        self.services.create(&params, &service).await?;
+        info!("Created service for gateway: {}", gateway.name_any());
         Ok(())
     }
 }

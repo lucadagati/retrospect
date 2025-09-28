@@ -21,6 +21,7 @@ import {
   ReloadOutlined,
   InfoCircleOutlined,
 } from '@ant-design/icons';
+import { apiPost } from '../utils/api';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -194,40 +195,27 @@ const Terminal = () => {
     addOutput(`$ ${cmd}`, 'command');
 
     try {
-      // Execute real system commands via secure API
-      const response = await fetch('/api/v1/terminal/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          command: cmd.trim(),
-          commandId: allowedCommand.id || allowedCommand.name
-        })
-      });
+      // Execute real system commands via secure API with timeout
+      const data = await apiPost('/api/v1/terminal/execute', { 
+        command: cmd.trim(),
+        commandId: allowedCommand.id || allowedCommand.name
+      }, 30000);
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          // Show the actual output from the command
-          const output = data.output || data.result || '';
-          if (output.trim()) {
-            addOutput(output, 'output');
-          } else {
-            addOutput('Command executed successfully (no output)', 'info');
-          }
+      if (data.success) {
+        // Show the actual output from the command
+        const output = data.output || data.result || '';
+        if (output.trim()) {
+          addOutput(output, 'output');
         } else {
-          addOutput(`Error: ${data.error || 'Command execution failed'}`, 'error');
+          addOutput('Command executed successfully (no output)', 'info');
         }
       } else {
-        // Handle non-JSON responses (like proxy errors)
-        const text = await response.text();
-        if (text.includes('Proxy error') || text.includes('Unexpected token')) {
-          addOutput(`Connection Error: Unable to reach backend service. Please check if the infrastructure is running.`, 'error');
-        } else {
-          addOutput(`Error: ${response.status} ${response.statusText}`, 'error');
-        }
+        addOutput(`Error: ${data.error || 'Command execution failed'}`, 'error');
       }
     } catch (error) {
-      if (error.message.includes('Unexpected token')) {
+      if (error.message.includes('timeout')) {
+        addOutput(`Timeout Error: Command execution timed out after 30 seconds.`, 'error');
+      } else if (error.message.includes('Unexpected token')) {
         addOutput(`Connection Error: Backend service not responding properly. Please check infrastructure status.`, 'error');
       } else {
         addOutput(`Error: ${error.message}`, 'error');

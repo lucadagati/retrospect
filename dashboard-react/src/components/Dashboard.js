@@ -12,6 +12,7 @@ import {
   PlusOutlined,
   CloudServerOutlined,
 } from '@ant-design/icons';
+import { apiGet, apiAll } from '../utils/api';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -29,99 +30,85 @@ const Dashboard = () => {
 
   const fetchSystemStatus = async () => {
     try {
-      const [devicesResponse, applicationsResponse, gatewaysResponse] = await Promise.all([
-        fetch('/api/v1/devices'),
-        fetch('/api/v1/applications'),
-        fetch('/api/v1/gateways')
-      ]);
-
-      const devices = devicesResponse.ok ? await devicesResponse.json() : { devices: [] };
-      const applications = applicationsResponse.ok ? await applicationsResponse.json() : { applications: [] };
-      const gateways = gatewaysResponse.ok ? await gatewaysResponse.json() : { gateways: [] };
-
-      let deviceList = devices.devices || [];
-      let applicationList = applications.applications || [];
-      let gatewayList = gateways.gateways || [];
-
-      // Use real data from backend - no mock data
-
-      setSystemStatus({
-        devices: {
-          total: deviceList.length,
-          active: deviceList.filter(d => d.status === 'Connected').length,
-          inactive: deviceList.filter(d => d.status !== 'Connected').length,
-          enrolling: deviceList.filter(d => d.status === 'Enrolling').length,
-          connected: deviceList.filter(d => d.status === 'Connected').length,
-          enrolled: deviceList.filter(d => d.enrolled).length,
-          unreachable: deviceList.filter(d => d.status === 'Unreachable').length
-        },
-        applications: {
-          total: applicationList.length,
-          running: applicationList.filter(a => a.status === 'Running').length,
-          stopped: applicationList.filter(a => a.status === 'Stopped').length,
-          failed: applicationList.filter(a => a.status === 'Failed').length,
-          pending: applicationList.filter(a => a.status === 'Pending').length
-        },
-        gateways: {
-          total: gatewayList.length,
-          active: gatewayList.filter(g => g.status === 'Active').length,
-          inactive: gatewayList.filter(g => g.status !== 'Active').length
-        },
-        infrastructure: {
-          ca: 'unknown',
-          monitoring: 'unknown',
-          logging: 'unknown',
-          secretStore: 'unknown',
-          ca_status: 'unknown',
-          secret_store_status: 'unknown',
-          monitoring_status: 'unknown',
-          logging_status: 'unknown'
-        },
-        systemHealth: 'unknown',
-        uptime: 'unknown',
-        version: '1.0.0'
-      });
+      // Fetch system status from backend API with timeout
+      const statusData = await apiGet('/api/v1/status', 5000);
+      setSystemStatus(statusData);
       setError(null);
     } catch (err) {
-      setError('Failed to fetch system status');
-      console.error('Error fetching system status:', err);
-      // Set empty data when backend is not available
-      setSystemStatus({
-        devices: {
-          total: 0,
-          active: 0,
-          inactive: 0,
-          enrolling: 0,
-          connected: 0,
-          enrolled: 0,
-          unreachable: 0
-        },
-        applications: {
-          total: 0,
-          running: 0,
-          stopped: 0,
-          failed: 0,
-          pending: 0
-        },
-        gateways: {
-          total: 0,
-          active: 0,
-          inactive: 0
-        },
-        infrastructure: {
-          ca: 'unknown',
-          monitoring: 'unknown',
-          logging: 'unknown',
-          secretStore: 'unknown',
-          ca_status: 'unknown',
-          secret_store_status: 'unknown',
-          monitoring_status: 'unknown',
-          logging_status: 'unknown'
-        },
-        systemHealth: 'unknown',
-        uptime: 'unknown',
-        version: '1.0.0'
-      });
+      console.warn('Status endpoint failed, trying individual APIs:', err);
+      
+      try {
+        // Fallback to individual API calls if status endpoint fails
+        const [devicesData, applicationsData, gatewaysData] = await apiAll([
+          '/api/v1/devices',
+          '/api/v1/applications',
+          '/api/v1/gateways'
+        ], 5000);
+
+        const devices = devicesData.devices || [];
+        const applications = applicationsData.applications || [];
+        const gateways = gatewaysData.gateways || [];
+
+        setSystemStatus({
+          devices: {
+            total: devices.length,
+            connected: devices.filter(d => d.status === 'connected').length,
+            enrolled: devices.filter(d => d.status === 'enrolled').length,
+            unreachable: devices.filter(d => d.status === 'unreachable').length
+          },
+          applications: {
+            total: applications.length,
+            running: applications.filter(a => a.status === 'running').length,
+            pending: applications.filter(a => a.status === 'pending').length,
+            failed: applications.filter(a => a.status === 'failed').length
+          },
+          gateways: {
+            total: gateways.length,
+            active: gateways.filter(g => g.status === 'active').length,
+            inactive: gateways.filter(g => g.status === 'inactive').length
+          },
+          infrastructure: {
+            ca_status: 'unknown',
+            secret_store_status: 'unknown',
+            monitoring_status: 'unknown',
+            logging_status: 'unknown'
+          },
+          uptime: 0,
+          last_update: new Date()
+        });
+        setError(null);
+      } catch (fallbackErr) {
+        setError('Failed to fetch system status');
+        console.error('Error fetching system status:', fallbackErr);
+        // Set empty data when backend is not available
+        setSystemStatus({
+          devices: {
+            total: 0,
+            connected: 0,
+            enrolled: 0,
+            unreachable: 0
+          },
+          applications: {
+            total: 0,
+            running: 0,
+            pending: 0,
+            failed: 0
+          },
+          gateways: {
+            total: 0,
+            active: 0,
+            inactive: 0
+          },
+          infrastructure: {
+            ca_status: 'unknown',
+            secret_store_status: 'unknown',
+            monitoring_status: 'unknown',
+            logging_status: 'unknown'
+          },
+          uptime: 0,
+          last_update: new Date()
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -240,88 +227,6 @@ const Dashboard = () => {
         </Col>
       </Row>
 
-      {/* User Guidance Section */}
-      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
-        <Col span={24}>
-          <Card 
-            title={
-              <Space>
-                <InfoCircleOutlined style={{ color: '#1890ff' }} />
-                <span>Getting Started Guide</span>
-              </Space>
-            }
-            style={{ background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)' }}
-          >
-            <Row gutter={[24, 16]}>
-              <Col xs={24} lg={12}>
-                <Title level={4}>🚀 Quick Start Workflow</Title>
-                <Steps
-                  direction="vertical"
-                  size="small"
-                  current={-1}
-                  items={[
-                    {
-                      title: '1. Check System Status',
-                      description: 'Verify all gateways and devices are connected',
-                      icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                    },
-                    {
-                      title: '2. Create/Upload Application',
-                      description: 'Use the guided deployment wizard to compile and inject your WASM code',
-                      icon: <PlayCircleOutlined style={{ color: '#1890ff' }} />
-                    },
-                    {
-                      title: '3. Deploy to Devices',
-                      description: 'Select target devices and deploy your application',
-                      icon: <SettingOutlined style={{ color: '#722ed1' }} />
-                    },
-                    {
-                      title: '4. Monitor & Manage',
-                      description: 'Track application performance and manage deployments',
-                      icon: <DesktopOutlined style={{ color: '#fa8c16' }} />
-                    }
-                  ]}
-                />
-              </Col>
-              <Col xs={24} lg={12}>
-                <Title level={4}>📋 Available Operations</Title>
-                <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                  <Card size="small" style={{ background: '#f6ffed', border: '1px solid #b7eb8f' }}>
-                    <Space>
-                      <AppstoreOutlined style={{ color: '#52c41a' }} />
-                      <div>
-                        <Text strong>Application Management</Text>
-                        <br />
-                        <Text type="secondary">Create, deploy, and manage WASM applications with guided compilation</Text>
-                      </div>
-                    </Space>
-                  </Card>
-                  <Card size="small" style={{ background: '#f0f9ff', border: '1px solid #91d5ff' }}>
-                    <Space>
-                      <DesktopOutlined style={{ color: '#1890ff' }} />
-                      <div>
-                        <Text strong>Device Management</Text>
-                        <br />
-                        <Text type="secondary">Monitor device status, connectivity, and health</Text>
-                      </div>
-                    </Space>
-                  </Card>
-                  <Card size="small" style={{ background: '#f9f0ff', border: '1px solid #d3adf7' }}>
-                    <Space>
-                      <GatewayOutlined style={{ color: '#722ed1' }} />
-                      <div>
-                        <Text strong>Gateway Management</Text>
-                        <br />
-                        <Text type="secondary">Configure and monitor edge gateways</Text>
-                      </div>
-                    </Space>
-                  </Card>
-                </Space>
-              </Col>
-            </Row>
-          </Card>
-        </Col>
-      </Row>
 
       <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
         <Col xs={24} lg={12}>
@@ -391,36 +296,50 @@ const Dashboard = () => {
               <Col xs={12} sm={6}>
                 <Statistic
                   title="Certificate Authority"
-                  value={infrastructure.ca_status === 'unknown' ? 'Unknown' : 'Active'}
+                  value={infrastructure.ca_status === 'healthy' ? 'Healthy' : 
+                         infrastructure.ca_status === 'not_configured' ? 'Not Configured' :
+                         infrastructure.ca_status === 'error' ? 'Error' : 'Unknown'}
                   valueStyle={{ 
-                    color: infrastructure.ca_status === 'unknown' ? '#faad14' : '#3f8600' 
+                    color: infrastructure.ca_status === 'healthy' ? '#3f8600' : 
+                           infrastructure.ca_status === 'not_configured' ? '#faad14' :
+                           infrastructure.ca_status === 'error' ? '#cf1322' : '#faad14'
                   }}
                 />
               </Col>
               <Col xs={12} sm={6}>
                 <Statistic
                   title="Secret Store"
-                  value={infrastructure.secret_store_status === 'unknown' ? 'Unknown' : 'Active'}
+                  value={infrastructure.secret_store_status === 'healthy' ? 'Healthy' : 
+                         infrastructure.secret_store_status === 'empty' ? 'Empty' :
+                         infrastructure.secret_store_status === 'error' ? 'Error' : 'Unknown'}
                   valueStyle={{ 
-                    color: infrastructure.secret_store_status === 'unknown' ? '#faad14' : '#3f8600' 
+                    color: infrastructure.secret_store_status === 'healthy' ? '#3f8600' : 
+                           infrastructure.secret_store_status === 'empty' ? '#faad14' :
+                           infrastructure.secret_store_status === 'error' ? '#cf1322' : '#faad14'
                   }}
                 />
               </Col>
               <Col xs={12} sm={6}>
                 <Statistic
                   title="Monitoring"
-                  value={infrastructure.monitoring_status === 'unknown' ? 'Unknown' : 'Active'}
+                  value={infrastructure.monitoring_status === 'healthy' ? 'Healthy' : 
+                         infrastructure.monitoring_status === 'not_running' ? 'Not Running' :
+                         infrastructure.monitoring_status === 'error' ? 'Error' : 'Unknown'}
                   valueStyle={{ 
-                    color: infrastructure.monitoring_status === 'unknown' ? '#faad14' : '#3f8600' 
+                    color: infrastructure.monitoring_status === 'healthy' ? '#3f8600' : 
+                           infrastructure.monitoring_status === 'not_running' ? '#faad14' :
+                           infrastructure.monitoring_status === 'error' ? '#cf1322' : '#faad14'
                   }}
                 />
               </Col>
               <Col xs={12} sm={6}>
                 <Statistic
                   title="Logging"
-                  value={infrastructure.logging_status === 'unknown' ? 'Unknown' : 'Active'}
+                  value={infrastructure.logging_status === 'healthy' ? 'Healthy' : 
+                         infrastructure.logging_status === 'error' ? 'Error' : 'Unknown'}
                   valueStyle={{ 
-                    color: infrastructure.logging_status === 'unknown' ? '#faad14' : '#3f8600' 
+                    color: infrastructure.logging_status === 'healthy' ? '#3f8600' : 
+                           infrastructure.logging_status === 'error' ? '#cf1322' : '#faad14'
                   }}
                 />
               </Col>
@@ -436,18 +355,18 @@ const Dashboard = () => {
               <Col span={12}>
                 <Statistic
                   title="System Health"
-                  value={systemStatus.systemHealth === 'healthy' ? 'Healthy' : 'Unhealthy'}
+                  value={systemStatus.infrastructure?.logging_status === 'healthy' ? 'Healthy' : 'Unhealthy'}
                   valueStyle={{ 
-                    color: systemStatus.systemHealth === 'healthy' ? '#3f8600' : '#cf1322' 
+                    color: systemStatus.infrastructure?.logging_status === 'healthy' ? '#3f8600' : '#cf1322' 
                   }}
-                  prefix={systemStatus.systemHealth === 'healthy' ? 
+                  prefix={systemStatus.infrastructure?.logging_status === 'healthy' ? 
                     <CheckCircleOutlined /> : <ExclamationCircleOutlined />}
                 />
               </Col>
               <Col span={12}>
                 <Statistic
                   title="Uptime"
-                  value={systemStatus.uptime}
+                  value={systemStatus.uptime ? Math.floor(systemStatus.uptime / 3600) + 'h' : '0h'}
                   prefix={<DesktopOutlined />}
                 />
               </Col>
@@ -455,7 +374,7 @@ const Dashboard = () => {
             <div style={{ marginTop: 16 }}>
               <Statistic
                 title="Version"
-                value={systemStatus.version}
+                value="1.0.0"
                 valueStyle={{ fontSize: '16px' }}
               />
             </div>

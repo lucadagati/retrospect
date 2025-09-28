@@ -2,7 +2,7 @@
 // Copyright © 2025 Wasmbed contributors
 
 use kube::{
-    api::{Api, Patch, PatchParams},
+    api::{Api, Patch, PatchParams, PostParams},
     client::Client,
     runtime::{
         controller::{Action, Controller},
@@ -10,6 +10,8 @@ use kube::{
     },
     ResourceExt,
 };
+use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use futures_util::StreamExt;
 use std::time::Duration;
 use tracing::{error, info, warn};
@@ -31,12 +33,14 @@ pub enum ControllerError {
 pub struct DeviceController {
     client: Client,
     devices: Api<Device>,
+    pods: Api<Pod>,
 }
 
 impl DeviceController {
     pub fn new(client: Client) -> Self {
         Self {
             devices: Api::<Device>::namespaced(client.clone(), "wasmbed"),
+            pods: Api::<Pod>::namespaced(client.clone(), "wasmbed"),
             client,
         }
     }
@@ -162,7 +166,11 @@ impl DeviceController {
     }
 
     async fn handle_enrolled(&self, device: &Device) -> Result<(), ControllerError> {
-        info!("Device {} is enrolled, waiting for connection", device.name_any());
+        info!("Device {} is enrolled, creating device pod", device.name_any());
+        
+        // Create Pod for the device
+        self.create_device_pod(device).await?;
+        
         Ok(())
     }
 
@@ -207,6 +215,63 @@ impl DeviceController {
                 Ok(())
             }
         }
+    }
+
+    async fn create_device_pod(&self, device: &Device) -> Result<(), ControllerError> {
+        let pod_name = format!("{}-pod", device.name_any());
+        
+        // Check if pod already exists
+        match self.pods.get(&pod_name).await {
+            Ok(_) => {
+                info!("Pod {} already exists", pod_name);
+                return Ok(());
+            }
+            Err(kube::Error::Api(kube::core::ErrorResponse { code: 404, .. })) => {
+                // Pod doesn't exist, create it
+            }
+            Err(e) => return Err(ControllerError::KubeError(e)),
+        }
+
+        let pod = Pod {
+            metadata: ObjectMeta {
+                name: Some(pod_name.clone()),
+                namespace: Some("wasmbed".to_string()),
+                labels: Some({
+                    let mut labels = std::collections::BTreeMap::new();
+                    labels.insert("app".to_string(), "wasmbed-device".to_string());
+                    labels.insert("device".to_string(), device.name_any());
+                    labels
+                }),
+                ..Default::default()
+            },
+            spec: Some(k8s_openapi::api::core::v1::PodSpec {
+                containers: vec![k8s_openapi::api::core::v1::Container {
+                    name: "device".to_string(),
+                    image: Some("wasmbed/device:latest".to_string()),
+                    env: Some(vec![
+                        k8s_openapi::api::core::v1::EnvVar {
+                            name: "DEVICE_NAME".to_string(),
+                            value: Some(device.name_any()),
+                            ..Default::default()
+                        },
+                        k8s_openapi::api::core::v1::EnvVar {
+                            name: "DEVICE_PUBLIC_KEY".to_string(),
+                            value: Some(device.spec.public_key.clone()),
+                            ..Default::default()
+                        },
+                    ]),
+                    ..Default::default()
+                }],
+                restart_policy: Some("Always".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let params = PostParams::default();
+        self.pods.create(&params, &pod).await?;
+        info!("Created pod for device: {}", device.name_any());
+        Ok(())
     }
 }
 

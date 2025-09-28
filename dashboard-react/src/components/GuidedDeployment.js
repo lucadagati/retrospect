@@ -14,7 +14,7 @@ import {
   Divider,
   Alert,
   Upload,
-  message,
+  App,
   Tooltip,
   Tag,
 } from 'antd';
@@ -36,6 +36,7 @@ const GuidedDeployment = ({ visible, onCancel, onSuccess }) => {
   const [form] = Form.useForm();
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [compilationStatus, setCompilationStatus] = useState('idle');
+  const { message } = App.useApp();
 
   const testApplications = [
     {

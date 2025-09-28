@@ -14,6 +14,7 @@ import {
   Divider,
   Tag,
   Tooltip,
+  InputNumber,
 } from 'antd';
 import {
   SettingOutlined,
@@ -25,6 +26,7 @@ import {
   CloudServerOutlined,
   NodeIndexOutlined,
 } from '@ant-design/icons';
+import { apiGet, apiPost, apiAll, fetchWithTimeout } from '../utils/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Step } = Steps;
@@ -41,6 +43,8 @@ const InitialConfiguration = () => {
   });
   const [loading, setLoading] = useState(false);
   const [configuring, setConfiguring] = useState(false);
+  const [gatewayCount, setGatewayCount] = useState(1);
+  const [deviceCount, setDeviceCount] = useState(3);
 
   useEffect(() => {
     checkSystemStatus();
@@ -49,35 +53,25 @@ const InitialConfiguration = () => {
   const checkSystemStatus = async () => {
     setLoading(true);
     try {
-      // Check infrastructure with shorter timeout
+      // Check infrastructure with timeout
       let infraStatus = false;
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-        
-        const infraResponse = await fetch('http://localhost:30461/health', {
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
+        const infraResponse = await fetchWithTimeout('http://localhost:30461/health', {}, 3000);
         infraStatus = infraResponse.ok;
       } catch (e) {
         console.warn('Infrastructure not available:', e);
         infraStatus = false;
       }
 
-      // Check controllers by testing API endpoints with shorter timeout
+      // Check controllers by testing API endpoints with timeout
       let controllersStatus = false;
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-        
-        const [devicesResponse, applicationsResponse, gatewaysResponse] = await Promise.all([
-          fetch('/api/v1/devices', { signal: controller.signal }),
-          fetch('/api/v1/applications', { signal: controller.signal }),
-          fetch('/api/v1/gateways', { signal: controller.signal })
-        ]);
-        clearTimeout(timeoutId);
-        controllersStatus = devicesResponse.ok && applicationsResponse.ok && gatewaysResponse.ok;
+        const [devicesResponse, applicationsResponse, gatewaysResponse] = await apiAll([
+          { url: '/api/v1/devices', options: {} },
+          { url: '/api/v1/applications', options: {} },
+          { url: '/api/v1/gateways', options: {} }
+        ], 3000);
+        controllersStatus = true; // If we get here, all APIs responded
       } catch (e) {
         console.warn('Controllers not available:', e);
         controllersStatus = false;
@@ -86,28 +80,17 @@ const InitialConfiguration = () => {
       // Check dashboard
       const dashboardStatus = true; // Dashboard is running
 
-      // Check existing gateways and devices with shorter timeout
+      // Check existing gateways and devices with timeout
       let gateways = [];
       let devices = [];
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+        const [gatewaysData, devicesData] = await apiAll([
+          '/api/v1/gateways',
+          '/api/v1/devices'
+        ], 3000);
         
-        const [gatewaysResponse, devicesResponse] = await Promise.all([
-          fetch('/api/v1/gateways', { signal: controller.signal }),
-          fetch('/api/v1/devices', { signal: controller.signal })
-        ]);
-        clearTimeout(timeoutId);
-        
-        if (gatewaysResponse.ok) {
-          const gatewaysData = await gatewaysResponse.json();
-          gateways = gatewaysData.gateways || [];
-        }
-        
-        if (devicesResponse.ok) {
-          const devicesData = await devicesResponse.json();
-          devices = devicesData.devices || [];
-        }
+        gateways = gatewaysData.gateways || [];
+        devices = devicesData.devices || [];
       } catch (e) {
         console.warn('Failed to fetch gateways/devices:', e);
       }
@@ -139,36 +122,56 @@ const InitialConfiguration = () => {
     }
   };
 
+  const startControllers = async () => {
+    setConfiguring(true);
+    try {
+      const result = await apiPost('/api/v1/terminal/execute', {
+        command: 'kubectl get pods -n wasmbed'
+      }, 10000);
+
+      if (result.output.includes('No resources found')) {
+        // Start controllers with timeout
+        await apiPost('/api/v1/terminal/execute', {
+          command: 'cd /home/lucadag/27_9_25_retrospect/retrospect && ./target/release/wasmbed-gateway-controller --kubeconfig ~/.kube/config &'
+        }, 15000);
+        
+        await apiPost('/api/v1/terminal/execute', {
+          command: 'cd /home/lucadag/27_9_25_retrospect/retrospect && ./target/release/wasmbed-device-controller --kubeconfig ~/.kube/config &'
+        }, 15000);
+        
+        await apiPost('/api/v1/terminal/execute', {
+          command: 'cd /home/lucadag/27_9_25_retrospect/retrospect && ./target/release/wasmbed-application-controller --kubeconfig ~/.kube/config &'
+        }, 15000);
+        
+        message.success('Controllers started successfully!');
+      } else {
+        message.info('Controllers are already running');
+      }
+    } catch (error) {
+      console.error('Error starting controllers:', error);
+      message.error('Failed to start controllers');
+    } finally {
+      setConfiguring(false);
+    }
+  };
+
   const handleGatewayDeployment = async () => {
     setConfiguring(true);
     try {
-      // Deploy default gateway configuration
-      const response = await fetch('/api/v1/gateways', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: 'gateway-1',
-          endpoint: '127.0.0.1:30452',
-          tls_port: 30452,
-          http_port: 30453,
-          max_devices: 50,
-          region: 'us-west-1',
-          enabled: true,
-        }),
-      });
+      // Deploy multiple gateways with configurable count
+      const gatewayRequest = {
+        count: gatewayCount, // Number of gateways to create
+        endpoint: '127.0.0.1',
+        basePort: 30452
+      };
 
-      if (response.ok) {
-        message.success('Gateway deployed successfully!');
-        await checkSystemStatus();
-        setCurrentStep(2);
-      } else {
-        message.error('Failed to deploy gateway');
-      }
+      const result = await apiPost('/api/v1/gateways', gatewayRequest, 15000);
+      message.success(result.message);
+      await checkSystemStatus();
+      setCurrentStep(2);
     } catch (error) {
-      console.error('Error deploying gateway:', error);
-      message.error('Error deploying gateway');
+      console.error('Error deploying gateways:', error);
+      message.error('Error deploying gateways');
     } finally {
       setConfiguring(false);
     }
@@ -177,46 +180,15 @@ const InitialConfiguration = () => {
   const handleDeviceDeployment = async () => {
     setConfiguring(true);
     try {
-      // Deploy sample devices
-      const devices = [
-        {
-          name: 'esp32-board-1',
-          type: 'ESP32',
-          architecture: 'xtensa',
-          gateway: 'gateway-1',
-          enabled: true,
-        },
-        {
-          name: 'stm32-board-1',
-          type: 'STM32',
-          architecture: 'arm',
-          gateway: 'gateway-1',
-          enabled: true,
-        },
-        {
-          name: 'riscv-board-1',
-          type: 'RISC-V',
-          architecture: 'riscv64',
-          gateway: 'gateway-1',
-          enabled: true,
-        },
-      ];
+      // Deploy sample devices with configurable count
+      const deviceRequest = {
+        count: deviceCount, // Number of devices to create
+        type: 'RISC-V MCU',
+        gatewayId: 'gateway-1' // Will be updated to use the first available gateway
+      };
 
-      for (const device of devices) {
-        const response = await fetch('/api/v1/devices', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(device),
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to deploy device ${device.name}`);
-        }
-      }
-
-      message.success('Sample devices deployed successfully!');
+      const result = await apiPost('/api/v1/devices', deviceRequest, 15000);
+      message.success(result.message);
       await checkSystemStatus();
       setCurrentStep(3);
     } catch (error) {
@@ -285,13 +257,33 @@ const InitialConfiguration = () => {
             </Col>
           </Row>
           <Divider />
-          <Alert
-            message="System Status"
-            description="All core services are running. You can now proceed to configure gateways and devices."
-            type="success"
-            showIcon
-            style={{ marginTop: 16 }}
-          />
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <Alert
+                message="System Status"
+                description="All core services are running. You can now proceed to configure gateways and devices."
+                type="success"
+                showIcon
+                style={{ marginTop: 16 }}
+              />
+            </Col>
+            <Col span={12}>
+              <Card size="small" title="Controller Management">
+                <Button
+                  type="primary"
+                  icon={<SettingOutlined />}
+                  onClick={startControllers}
+                  loading={configuring}
+                  block
+                >
+                  Start Controllers
+                </Button>
+                <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
+                  Automatically start Kubernetes controllers if not running
+                </div>
+              </Card>
+            </Col>
+          </Row>
         </div>
       ),
     },
@@ -308,11 +300,21 @@ const InitialConfiguration = () => {
                   Deploy your first gateway to handle device connections and application deployment.
                 </Paragraph>
                 <div style={{ marginBottom: 16 }}>
+                  <Text strong>Gateway Count:</Text>
+                  <InputNumber
+                    min={1}
+                    max={10}
+                    value={gatewayCount}
+                    onChange={setGatewayCount}
+                    style={{ width: '100%', marginTop: 8 }}
+                  />
+                </div>
+                <div style={{ marginBottom: 16 }}>
                   <Text strong>Default Configuration:</Text>
                   <ul style={{ marginTop: 8 }}>
-                    <li>Name: gateway-1</li>
-                    <li>Endpoint: 127.0.0.1:30452</li>
-                    <li>Max Devices: 50</li>
+                    <li>Names: gateway-1 to gateway-{gatewayCount}</li>
+                    <li>Endpoints: 127.0.0.1:30452 to 127.0.0.1:{30452 + (gatewayCount - 1) * 2}</li>
+                    <li>Max Devices: 50 per gateway</li>
                     <li>Region: us-west-1</li>
                   </ul>
                 </div>
@@ -363,11 +365,21 @@ const InitialConfiguration = () => {
                   Deploy sample devices to test the platform functionality.
                 </Paragraph>
                 <div style={{ marginBottom: 16 }}>
+                  <Text strong>Device Count:</Text>
+                  <InputNumber
+                    min={1}
+                    max={20}
+                    value={deviceCount}
+                    onChange={setDeviceCount}
+                    style={{ width: '100%', marginTop: 8 }}
+                  />
+                </div>
+                <div style={{ marginBottom: 16 }}>
                   <Text strong>Sample Devices:</Text>
                   <ul style={{ marginTop: 8 }}>
-                    <li>ESP32 Board (Xtensa architecture)</li>
-                    <li>STM32 Board (ARM architecture)</li>
-                    <li>RISC-V Board (RISC-V architecture)</li>
+                    <li>RISC-V MCU (RISC-V architecture)</li>
+                    <li>Auto-generated names: device-1 to device-{deviceCount}</li>
+                    <li>Connected to: gateway-1</li>
                   </ul>
                 </div>
                 <Button

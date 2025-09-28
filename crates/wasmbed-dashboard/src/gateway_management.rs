@@ -19,29 +19,68 @@ impl GatewayManager {
     }
 
     pub async fn get_all_gateways(&self) -> anyhow::Result<Vec<GatewayInfo>> {
-        info!("Fetching all gateways");
+        info!("Fetching all gateways from Kubernetes");
         
-        // In a real implementation, this would make HTTP requests to the gateway
-        // For now, we'll return mock data
+        // Query Kubernetes for Gateway CRDs
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["get", "gateways", "-n", "wasmbed", "-o", "json"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.contains("No resources found") {
+                info!("No gateways found in wasmbed namespace");
+                return Ok(vec![]);
+            }
+            return Err(anyhow::anyhow!("kubectl failed: {}", stderr));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let k8s_response: serde_json::Value = serde_json::from_str(&stdout)?;
         
-        let gateways = vec![
-            GatewayInfo {
-                gateway_id: "gateway-1".to_string(),
-                endpoint: "localhost:8080".to_string(),
-                status: "active".to_string(),
-                connected_devices: 2,
-                enrolled_devices: 3,
-            },
-            GatewayInfo {
-                gateway_id: "gateway-2".to_string(),
-                endpoint: "localhost:8081".to_string(),
-                status: "inactive".to_string(),
-                connected_devices: 0,
-                enrolled_devices: 1,
-            },
-        ];
+        let mut gateways = Vec::new();
         
-        info!("Fetched {} gateways", gateways.len());
+        if let Some(items) = k8s_response["items"].as_array() {
+            for item in items {
+                if let Some(metadata) = item["metadata"].as_object() {
+                    let gateway_id = metadata["name"]
+                        .as_str()
+                        .unwrap_or("unknown")
+                        .to_string();
+                    
+                    let status = item["status"]["phase"]
+                        .as_str()
+                        .unwrap_or("unknown")
+                        .to_string();
+                    
+                    let endpoint = item["spec"]["endpoint"]
+                        .as_str()
+                        .unwrap_or("localhost:8080")
+                        .to_string();
+                    
+                    let connected_devices = item["status"]["connectedDevices"]
+                        .as_u64()
+                        .unwrap_or(0) as u32;
+                    
+                    let enrolled_devices = item["status"]["enrolledDevices"]
+                        .as_u64()
+                        .unwrap_or(0) as u32;
+                    
+                    gateways.push(GatewayInfo {
+                        gateway_id,
+                        endpoint,
+                        status,
+                        connected_devices,
+                        enrolled_devices,
+                    });
+                }
+            }
+        }
+        
+        info!("Fetched {} gateways from Kubernetes", gateways.len());
         Ok(gateways)
     }
 

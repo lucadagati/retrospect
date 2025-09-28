@@ -20,31 +20,80 @@ impl ApplicationManager {
     }
 
     pub async fn get_all_applications(&self) -> anyhow::Result<Vec<ApplicationInfo>> {
-        info!("Fetching all applications from gateway");
+        info!("Fetching all applications from Kubernetes");
         
-        // In a real implementation, this would make HTTP requests to the gateway
-        // For now, we'll return mock data
+        // Query Kubernetes for Application CRDs
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["get", "applications", "-n", "wasmbed", "-o", "json"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.contains("No resources found") {
+                info!("No applications found in wasmbed namespace");
+                return Ok(vec![]);
+            }
+            return Err(anyhow::anyhow!("kubectl failed: {}", stderr));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let k8s_response: serde_json::Value = serde_json::from_str(&stdout)?;
         
-        let applications = vec![
-            ApplicationInfo {
-                app_id: "app-1".to_string(),
-                name: "Hello World App".to_string(),
-                image: "hello-world:latest".to_string(),
-                status: "running".to_string(),
-                deployed_devices: vec!["device-1".to_string()],
-                created_at: SystemTime::now(),
-            },
-            ApplicationInfo {
-                app_id: "app-2".to_string(),
-                name: "Sensor Monitor".to_string(),
-                image: "sensor-monitor:latest".to_string(),
-                status: "pending".to_string(),
-                deployed_devices: vec![],
-                created_at: SystemTime::now(),
-            },
-        ];
+        let mut applications = Vec::new();
         
-        info!("Fetched {} applications", applications.len());
+        if let Some(items) = k8s_response["items"].as_array() {
+            for item in items {
+                if let Some(metadata) = item["metadata"].as_object() {
+                    let app_id = metadata["name"]
+                        .as_str()
+                        .unwrap_or("unknown")
+                        .to_string();
+                    
+                    let status = item["status"]["phase"]
+                        .as_str()
+                        .unwrap_or("unknown")
+                        .to_string();
+                    
+                    let name = item["spec"]["name"]
+                        .as_str()
+                        .unwrap_or(&app_id)
+                        .to_string();
+                    
+                    let image = item["spec"]["image"]
+                        .as_str()
+                        .unwrap_or("unknown:latest")
+                        .to_string();
+                    
+                    let deployed_devices = item["status"]["deployedDevices"]
+                        .as_array()
+                        .map(|arr| arr.iter()
+                            .filter_map(|v| v.as_str())
+                            .map(|s| s.to_string())
+                            .collect())
+                        .unwrap_or_default();
+                    
+                    let created_at = metadata["creationTimestamp"]
+                        .as_str()
+                        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                        .map(|dt| SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(dt.timestamp() as u64))
+                        .unwrap_or(SystemTime::now());
+                    
+                    applications.push(ApplicationInfo {
+                        app_id,
+                        name,
+                        image,
+                        status,
+                        deployed_devices,
+                        created_at,
+                    });
+                }
+            }
+        }
+        
+        info!("Fetched {} applications from Kubernetes", applications.len());
         Ok(applications)
     }
 

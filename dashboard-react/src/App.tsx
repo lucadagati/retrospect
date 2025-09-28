@@ -63,39 +63,31 @@ const App: React.FC = () => {
   const [gateways, setGateways] = useState<Gateway[]>([]);
   const [selectedKey, setSelectedKey] = useState('dashboard');
 
-  // Mock data for development
-  const mockDevices: Device[] = [
-    { id: 1, name: 'mcu-board-1', status: 'Connected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z' },
-    { id: 2, name: 'mcu-board-2', status: 'Connected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z' },
-    { id: 3, name: 'mcu-board-3', status: 'Connected', type: 'MCU', architecture: 'riscv32', lastHeartbeat: '2025-09-27T17:30:00Z' },
-    { id: 4, name: 'riscv-board-1', status: 'Connected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z' },
-    { id: 5, name: 'riscv-board-2', status: 'Connected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z' },
-    { id: 6, name: 'riscv-board-3', status: 'Connected', type: 'RISC-V', architecture: 'riscv64', lastHeartbeat: '2025-09-27T17:30:00Z' },
-  ];
-
-  const mockApplications: Application[] = [
-    { id: 1, name: 'test-app-1', status: 'Running', targetDevices: ['mcu-board-1', 'mcu-board-2'], wasmBytes: '2.5KB' },
-  ];
-
-  const mockGateways: Gateway[] = [
-    { id: 1, name: 'gateway-1', status: 'Active', endpoint: '127.0.0.1:30453', connectedDevices: 3, maxDevices: 10 },
-    { id: 2, name: 'gateway-2', status: 'Active', endpoint: '127.0.0.1:30455', connectedDevices: 2, maxDevices: 10 },
-    { id: 3, name: 'gateway-3', status: 'Active', endpoint: '127.0.0.1:30457', connectedDevices: 1, maxDevices: 10 },
-  ];
+  // No mock data - use real APIs only
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Use mock data for development
-      setDevices(mockDevices);
-      setApplications(mockApplications);
-      setGateways(mockGateways);
+      // Fetch real data from APIs
+      const [devicesResponse, applicationsResponse, gatewaysResponse] = await Promise.all([
+        fetch('/api/v1/devices'),
+        fetch('/api/v1/applications'),
+        fetch('/api/v1/gateways')
+      ]);
+
+      const devicesData = await devicesResponse.json();
+      const applicationsData = await applicationsResponse.json();
+      const gatewaysData = await gatewaysResponse.json();
+
+      setDevices(devicesData.devices || []);
+      setApplications(applicationsData.applications || []);
+      setGateways(gatewaysData.gateways || []);
     } catch (error) {
       console.error('Error fetching data:', error);
-      // Use mock data on error
-      setDevices(mockDevices);
-      setApplications(mockApplications);
-      setGateways(mockGateways);
+      // Set empty arrays on error
+      setDevices([]);
+      setApplications([]);
+      setGateways([]);
     } finally {
       setLoading(false);
     }
@@ -269,15 +261,11 @@ const App: React.FC = () => {
               <div>
                 <Text strong>Infrastructure:</Text> <Tag color="green">Running</Tag>
               </div>
-              <div>
-                <Text strong>Gateway 1:</Text> <Tag color="green">Active</Tag>
-              </div>
-              <div>
-                <Text strong>Gateway 2:</Text> <Tag color="green">Active</Tag>
-              </div>
-              <div>
-                <Text strong>Gateway 3:</Text> <Tag color="green">Active</Tag>
-              </div>
+              {gateways.map((gateway, index) => (
+                <div key={index}>
+                  <Text strong>{gateway.name}:</Text> <Tag color={gateway.status === 'Active' ? 'green' : 'red'}>{gateway.status}</Tag>
+                </div>
+              ))}
             </Space>
           </Card>
         </Col>

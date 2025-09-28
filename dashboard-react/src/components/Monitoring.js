@@ -25,6 +25,7 @@ import {
   CloudServerOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { apiGet, apiAll, fetchWithTimeout } from '../utils/api';
 
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
@@ -42,37 +43,18 @@ const Monitoring = () => {
 
   const fetchMetrics = useCallback(async () => {
     try {
-      // Fetch real data from backend APIs
-      const [devicesResponse, applicationsResponse, gatewaysResponse, infraResponse] = await Promise.all([
-        fetch('/api/v1/devices'),
-        fetch('/api/v1/applications'),
-        fetch('/api/v1/gateways'),
-        fetch('http://localhost:30461/health')
+      // Fetch real data from backend APIs with timeout
+      const [devicesData, applicationsData, gatewaysData, infraResponse] = await Promise.all([
+        apiGet('/api/v1/devices', 10000),
+        apiGet('/api/v1/applications', 10000),
+        apiGet('/api/v1/gateways', 10000),
+        fetchWithTimeout('http://localhost:30461/health', {}, 5000)
       ]);
 
-      let devices = [];
-      let applications = [];
-      let gateways = [];
-      let infraStatus = 'unknown';
-
-      if (devicesResponse.ok) {
-        const devicesData = await devicesResponse.json();
-        devices = devicesData.devices || [];
-      }
-
-      if (applicationsResponse.ok) {
-        const applicationsData = await applicationsResponse.json();
-        applications = applicationsData.applications || [];
-      }
-
-      if (gatewaysResponse.ok) {
-        const gatewaysData = await gatewaysResponse.json();
-        gateways = gatewaysData.gateways || [];
-      }
-
-      if (infraResponse.ok) {
-        infraStatus = 'active';
-      }
+      let devices = devicesData.devices || [];
+      let applications = applicationsData.applications || [];
+      let gateways = gatewaysData.gateways || [];
+      let infraStatus = infraResponse.ok ? 'active' : 'unknown';
 
       // Calculate real metrics from API data
       const activeDevices = devices.filter(d => d.status === 'Connected').length;
@@ -142,37 +124,22 @@ const Monitoring = () => {
   const fetchLogs = useCallback(async () => {
     try {
       // Try to fetch logs from infrastructure service
-      const logsResponse = await fetch('http://localhost:30461/logs');
+      const logsResponse = await fetchWithTimeout('http://localhost:30461/logs', {}, 5000);
       
       if (logsResponse.ok) {
         const logsData = await logsResponse.json();
         setLogs(logsData.logs || []);
       } else {
         // If no logs API available, create minimal logs from system state
-        const [devicesResponse, applicationsResponse, gatewaysResponse] = await Promise.all([
-          fetch('/api/v1/devices'),
-          fetch('/api/v1/applications'),
-          fetch('/api/v1/gateways')
-        ]);
+        const [devicesData, applicationsData, gatewaysData] = await apiAll([
+          '/api/v1/devices',
+          '/api/v1/applications',
+          '/api/v1/gateways'
+        ], 10000);
 
-        let devices = [];
-        let applications = [];
-        let gateways = [];
-
-        if (devicesResponse.ok) {
-          const devicesData = await devicesResponse.json();
-          devices = devicesData.devices || [];
-        }
-
-        if (applicationsResponse.ok) {
-          const applicationsData = await applicationsResponse.json();
-          applications = applicationsData.applications || [];
-        }
-
-        if (gatewaysResponse.ok) {
-          const gatewaysData = await gatewaysResponse.json();
-          gateways = gatewaysData.gateways || [];
-        }
+        let devices = devicesData.devices || [];
+        let applications = applicationsData.applications || [];
+        let gateways = gatewaysData.gateways || [];
 
         // Generate system status logs
         const systemLogs = [];

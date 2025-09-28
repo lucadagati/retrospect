@@ -8,16 +8,20 @@ This directory contains essential scripts for managing the Wasmbed Platform.
 # Make all scripts executable
 chmod +x scripts/*.sh
 
-# Main management script
+# Deploy the complete platform
 ./scripts/wasmbed.sh deploy
+
+# Check status
 ./scripts/wasmbed.sh status
+
+# Stop all services
 ./scripts/wasmbed.sh stop
 ```
 
 ## Essential Scripts
 
 ### `wasmbed.sh` - Main Management Console
-Unified interface for all platform operations.
+**Unified interface for all platform operations.**
 
 **Usage:**
 ```bash
@@ -25,36 +29,48 @@ Unified interface for all platform operations.
 ```
 
 **Commands:**
-- `clean` - Clean up all resources
-- `build` - Build all components  
-- `deploy` - Deploy complete platform
-- `stop` - Stop all services
-- `status` - Check system status
-- `restart` - Restart all services
-- `logs` - Show system logs
-- `test` - Run platform tests
+- `clean` - Clean up all resources (k3d cluster, processes, build artifacts)
+- `build` - Build all Rust components
+- `deploy` - Deploy complete platform (k3d cluster + services)
+- `stop` - Stop all services gracefully
+- `status` - Check system status and health
+- `restart` - Stop and restart all services
+
+**Examples:**
+```bash
+./scripts/wasmbed.sh deploy    # Deploy the complete platform
+./scripts/wasmbed.sh status    # Check if everything is running
+./scripts/wasmbed.sh stop      # Stop all services
+./scripts/wasmbed.sh clean     # Clean everything and start fresh
+```
 
 ### `wasmbed-deploy.sh` - Platform Deployment
-Deploys the complete Wasmbed platform with minimal initial setup.
+**Deploys the complete Wasmbed platform with minimal initial setup.**
 
 **Features:**
-- Creates k3d cluster
-- Applies Kubernetes resources
-- Starts core services (no test resources)
-- Tests service endpoints
+- Creates k3d cluster with proper port mappings
+- Applies Kubernetes resources (CRDs, RBAC)
+- Starts core services (Infrastructure, Controllers, Dashboard)
+- No test resources (gateways/devices deployed via dashboard)
 - Provides deployment summary
 
+**Port Mappings:**
+- Infrastructure API: 30461
+- Dashboard API: 30453
+- Dashboard UI: 30470
+- Gateway API: 30451 (when deployed via dashboard)
+
 ### `wasmbed-build.sh` - Build System
-Builds all Wasmbed components.
+**Builds all Wasmbed components.**
 
 **Features:**
-- Builds Rust components
-- Builds React Dashboard (if Node.js available)
-- Generates certificates
+- Builds Rust components with `cargo build --release`
+- Generates certificates if needed
 - Lists built components
+- Error handling and validation
 
 ### `wasmbed-clean.sh` - System Cleanup
-Cleans up all Wasmbed resources and processes.
+**Cleans up all Wasmbed resources and processes.**
 
 **Features:**
 - Stops all running processes
@@ -64,15 +80,16 @@ Cleans up all Wasmbed resources and processes.
 - Cleans certificates and logs
 
 ### `wasmbed-stop.sh` - Stop Services
-Stops all Wasmbed services gracefully.
+**Stops all Wasmbed services gracefully.**
 
 **Features:**
 - Stops services using saved PIDs
 - Stops remaining processes by name
 - Removes k3d cluster
+- Clean shutdown
 
 ### `wasmbed-status.sh` - Status Check
-Comprehensive status check of the platform.
+**Comprehensive status check of the platform.**
 
 **Features:**
 - Checks k3d cluster status
@@ -85,45 +102,47 @@ Comprehensive status check of the platform.
 
 When deployed, the following endpoints are available:
 
-- **Dashboard UI**: http://localhost:30470
-- **Dashboard API**: http://localhost:30453
+- **Dashboard UI**: http://localhost:30453
+- **Dashboard API**: http://localhost:30453/api/v1/*
 - **Infrastructure API**: http://localhost:30461
-- **Gateway API**: http://localhost:30451
+- **Gateway API**: http://localhost:30451 (when deployed via dashboard)
 
-## Examples
+## Deployment Workflow
 
-### Basic Operations
-```bash
-# Deploy the platform
-./scripts/wasmbed.sh deploy
-
-# Check status
-./scripts/wasmbed.sh status
-
-# Stop everything
-./scripts/wasmbed.sh stop
-
-# Clean and rebuild
-./scripts/wasmbed.sh clean
-./scripts/wasmbed.sh build
-./scripts/wasmbed.sh deploy
-```
-
-### Development Workflow
+### 1. Initial Deployment
 ```bash
 # Clean start
 ./scripts/wasmbed.sh clean
-./scripts/wasmbed.sh build
+
+# Deploy platform
 ./scripts/wasmbed.sh deploy
+
+# Verify deployment
+./scripts/wasmbed.sh status
+```
+
+### 2. Access Dashboard
+```bash
+# Open browser to dashboard
+open http://localhost:30453
+```
+
+### 3. Configure System
+- Use "Initial Configuration" wizard in dashboard
+- Deploy gateways and devices via dashboard
+- Monitor system status
+
+### 4. Development Workflow
+```bash
+# Make changes to code
+# Rebuild
+./scripts/wasmbed.sh build
+
+# Restart services
+./scripts/wasmbed.sh restart
 
 # Check status
 ./scripts/wasmbed.sh status
-
-# View logs
-./scripts/wasmbed.sh logs
-
-# Test platform
-./scripts/wasmbed.sh test
 ```
 
 ## Troubleshooting
@@ -134,13 +153,47 @@ When deployed, the following endpoints are available:
 2. **Build failures**: Run `./scripts/wasmbed.sh clean` then `./scripts/wasmbed.sh build`
 3. **Service not responding**: Check with `./scripts/wasmbed.sh status`
 
-### Debug Mode
+### Debug Steps
 
-Enable debug logging:
-```bash
-./scripts/wasmbed-logs.sh debug
-./scripts/wasmbed.sh restart
-```
+1. **Check status**:
+   ```bash
+   ./scripts/wasmbed.sh status
+   ```
+
+2. **Check logs**:
+   ```bash
+   tail -f logs/infrastructure.log
+   tail -f logs/dashboard.log
+   ```
+
+3. **Clean restart**:
+   ```bash
+   ./scripts/wasmbed.sh clean
+   ./scripts/wasmbed.sh deploy
+   ```
+
+### Service Health Checks
+
+- **Infrastructure**: `curl http://localhost:30461/health`
+- **Dashboard**: `curl http://localhost:30453/api/v1/status`
+- **Kubernetes**: `kubectl get pods -n wasmbed`
+
+## Architecture Overview
+
+The Wasmbed platform consists of:
+
+1. **Control Plane**: Kubernetes cluster with custom controllers
+2. **Infrastructure Service**: Certificate authority, monitoring, logging
+3. **Gateway Services**: Device communication and management
+4. **Dashboard**: Web-based management interface
+5. **Controllers**: Device, Application, and Gateway controllers
+
+## Security
+
+- TLS certificates for secure communication
+- Kubernetes RBAC for access control
+- Isolated network namespaces
+- Secure device enrollment process
 
 ## License
 

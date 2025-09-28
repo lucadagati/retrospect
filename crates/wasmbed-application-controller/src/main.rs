@@ -2,7 +2,7 @@
 // Copyright © 2025 Wasmbed contributors
 
 use kube::{
-    api::{Api, ListParams, Patch, PatchParams},
+    api::{Api, ListParams, Patch, PatchParams, PostParams},
     client::Client,
     runtime::{
         controller::{Action, Controller},
@@ -10,6 +10,8 @@ use kube::{
     },
     ResourceExt,
 };
+use k8s_openapi::api::apps::v1::Deployment;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use futures_util::StreamExt;
 use std::time::Duration;
 use tracing::{error, info, warn};
@@ -34,6 +36,7 @@ pub struct ApplicationController {
     applications: Api<wasmbed_k8s_resource::Application>,
     devices: Api<wasmbed_k8s_resource::Device>,
     gateways: Api<wasmbed_k8s_resource::Gateway>,
+    deployments: Api<Deployment>,
 }
 
 impl ApplicationController {
@@ -42,6 +45,7 @@ impl ApplicationController {
             applications: Api::<wasmbed_k8s_resource::Application>::namespaced(client.clone(), "wasmbed"),
             devices: Api::<wasmbed_k8s_resource::Device>::namespaced(client.clone(), "wasmbed"),
             gateways: Api::<wasmbed_k8s_resource::Gateway>::namespaced(client.clone(), "wasmbed"),
+            deployments: Api::<Deployment>::namespaced(client.clone(), "wasmbed"),
             client,
         }
     }
@@ -157,8 +161,8 @@ impl ApplicationController {
     async fn handle_deploying(&self, application: &wasmbed_k8s_resource::Application) -> Result<(), ControllerError> {
         info!("Handling deploying application: {}", application.name_any());
         
-        // Simulate deployment process
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        // Create Deployment for the application
+        self.create_application_deployment(application).await?;
         
         // Find target devices again
         let target_devices = self.find_target_devices(&application.spec.target_devices).await?;
@@ -310,6 +314,86 @@ impl ApplicationController {
                 Ok(())
             }
         }
+    }
+
+    async fn create_application_deployment(&self, application: &wasmbed_k8s_resource::Application) -> Result<(), ControllerError> {
+        let deployment_name = format!("{}-deployment", application.name_any());
+        
+        // Check if deployment already exists
+        match self.deployments.get(&deployment_name).await {
+            Ok(_) => {
+                info!("Deployment {} already exists", deployment_name);
+                return Ok(());
+            }
+            Err(kube::Error::Api(kube::core::ErrorResponse { code: 404, .. })) => {
+                // Deployment doesn't exist, create it
+            }
+            Err(e) => return Err(ControllerError::KubeError(e)),
+        }
+
+        let deployment = Deployment {
+            metadata: ObjectMeta {
+                name: Some(deployment_name.clone()),
+                namespace: Some("wasmbed".to_string()),
+                labels: Some({
+                    let mut labels = std::collections::BTreeMap::new();
+                    labels.insert("app".to_string(), "wasmbed-application".to_string());
+                    labels.insert("application".to_string(), application.name_any());
+                    labels
+                }),
+                ..Default::default()
+            },
+            spec: Some(k8s_openapi::api::apps::v1::DeploymentSpec {
+                replicas: Some(1),
+                selector: k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector {
+                    match_labels: Some({
+                        let mut labels = std::collections::BTreeMap::new();
+                        labels.insert("app".to_string(), "wasmbed-application".to_string());
+                        labels.insert("application".to_string(), application.name_any());
+                        labels
+                    }),
+                    ..Default::default()
+                },
+                template: k8s_openapi::api::core::v1::PodTemplateSpec {
+                    metadata: Some(ObjectMeta {
+                        labels: Some({
+                            let mut labels = std::collections::BTreeMap::new();
+                            labels.insert("app".to_string(), "wasmbed-application".to_string());
+                            labels.insert("application".to_string(), application.name_any());
+                            labels
+                        }),
+                        ..Default::default()
+                    }),
+                    spec: Some(k8s_openapi::api::core::v1::PodSpec {
+                        containers: vec![k8s_openapi::api::core::v1::Container {
+                            name: "application".to_string(),
+                            image: Some("wasmbed/application:latest".to_string()),
+                            env: Some(vec![
+                                k8s_openapi::api::core::v1::EnvVar {
+                                    name: "APPLICATION_NAME".to_string(),
+                                    value: Some(application.name_any()),
+                                    ..Default::default()
+                                },
+                                k8s_openapi::api::core::v1::EnvVar {
+                                    name: "WASM_BYTES".to_string(),
+                                    value: Some(application.spec.wasm_bytes.clone()),
+                                    ..Default::default()
+                                },
+                            ]),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    }),
+                },
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let params = PostParams::default();
+        self.deployments.create(&params, &deployment).await?;
+        info!("Created deployment for application: {}", application.name_any());
+        Ok(())
     }
 }
 

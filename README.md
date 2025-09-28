@@ -446,3 +446,61 @@ graph TB
 3. Implement real hardware device support
 4. Add advanced application deployment mechanisms
 5. Enhance security and monitoring capabilities
+
+## ⚠️ Current Implementation Status & Limitations
+
+### Mock/Non-Implemented Components
+
+The following components are currently using mock data or are not fully implemented:
+
+#### 🚫 Mock Data Areas
+- **Device Status**: Device connectivity and health status are simulated
+- **Application Metrics**: Performance metrics and runtime statistics are placeholder data
+- **Gateway Health**: Gateway status and connection metrics are mock values
+- **System Metrics**: CPU, memory, and network usage are simulated
+- **Log Data**: Log entries are generated programmatically, not from real system logs
+
+#### 🔧 Partially Implemented
+- **WASM Runtime**: No actual WebAssembly execution engine is implemented
+- **Device Communication**: Device-to-gateway communication is simulated
+- **Application Deployment**: WASM binary deployment to devices is not functional
+- **Real-time Monitoring**: Metrics collection is simulated, not from actual system resources
+- **Certificate Management**: Certificate generation and validation is placeholder
+- **Secret Store**: Secret management is in-memory, not persistent
+
+#### 📋 Not Implemented
+- **Hardware Device Support**: No actual RISC-V MCU integration
+- **QEMU Integration**: Device emulation is not implemented
+- **Real WASM Execution**: No WebAssembly runtime for edge devices
+- **Persistent Storage**: All data is in-memory and lost on restart
+- **Network Topology**: Network visualization shows mock connections
+- **Terminal Commands**: Limited to predefined whitelisted commands
+- **Application Lifecycle**: No actual application start/stop/restart functionality
+
+#### ✅ Fully Implemented
+- **Dashboard Interface**: Complete React-based UI with real API integration
+- **Backend APIs**: All REST endpoints are functional and return real data
+- **Kubernetes Integration**: CRDs and controllers create actual K8s resources
+- **Database Operations**: All CRUD operations work with Kubernetes API
+- **Authentication**: Basic authentication and CORS protection
+- **Configuration Management**: Complete configuration system
+- **Deployment Scripts**: Automated deployment and management scripts
+
+### Development Notes
+
+**Current State**: The platform provides a complete management interface and API layer, but the actual device communication and WASM execution layers are not implemented. This makes it suitable for:
+
+- **Development and Testing**: Complete UI/UX development and API testing
+- **Architecture Validation**: Testing the overall system architecture
+- **Integration Testing**: Validating Kubernetes integration and controller behavior
+- **Demo and Presentation**: Showcasing the platform capabilities
+
+**Production Readiness**: The platform is **NOT** production-ready for actual device management until the mock components are replaced with real implementations.
+
+### Migration Path to Production
+
+1. **Phase 1**: Replace mock device communication with real hardware interfaces
+2. **Phase 2**: Implement actual WASM runtime and execution engine
+3. **Phase 3**: Add persistent storage and real metrics collection
+4. **Phase 4**: Implement real certificate management and security
+5. **Phase 5**: Add QEMU integration for device emulation and testing

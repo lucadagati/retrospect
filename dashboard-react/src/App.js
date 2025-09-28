@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Layout, Menu, theme, ConfigProvider } from 'antd';
+import { Layout, Menu, theme, ConfigProvider, App as AntApp } from 'antd';
 import {
   DashboardOutlined,
   DesktopOutlined,
@@ -316,7 +316,8 @@ function App() {
         },
       }}
     >
-      <Router>
+      <AntApp>
+        <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Layout style={{ minHeight: '100vh' }}>
           <Sider 
             trigger={null} 
@@ -328,17 +329,17 @@ function App() {
             }}
           >
             <div className="logo" style={{ 
-              height: 80, 
+              height: 100, 
               margin: 16, 
-              background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 50%, #7c3aed 100%)',
+              background: '#ffffff',
               borderRadius: 12,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexDirection: 'column',
               padding: '12px',
-              boxShadow: '0 4px 12px 0 rgba(59, 130, 246, 0.3)',
-              border: '1px solid rgba(255, 255, 255, 0.2)'
+              boxShadow: '0 4px 12px 0 rgba(0, 0, 0, 0.1)',
+              border: '1px solid #e2e8f0'
             }}>
               <img 
                 src="/Logo_Serics.png" 
@@ -353,14 +354,13 @@ function App() {
                 <div style={{ 
                   fontSize: '12px', 
                   fontWeight: 'bold', 
-                  color: '#ffffff',
+                  color: '#262626',
                   textAlign: 'center',
-                  lineHeight: 1.2,
-                  textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
+                  lineHeight: 1.2
                 }}>
                   RETROSPECT
                   <br />
-                  <span style={{ fontSize: '9px', color: 'rgba(255, 255, 255, 0.8)' }}>
+                  <span style={{ fontSize: '9px', color: '#8c8c8c' }}>
                     MdsLab - UniMe
                   </span>
                 </div>
@@ -400,34 +400,6 @@ function App() {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <button
-                  onClick={() => setCollapsed(!collapsed)}
-                  style={{
-                    fontSize: '16px',
-                    width: 36,
-                    height: 36,
-                    border: '1px solid #e8e8e8',
-                    background: '#ffffff',
-                    cursor: 'pointer',
-                    color: '#262626',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 2px 4px 0 rgba(0, 0, 0, 0.06)',
-                    transition: 'all 0.3s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.background = '#f5f5f5';
-                    e.target.style.borderColor = '#d9d9d9';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.background = '#ffffff';
-                    e.target.style.borderColor = '#e8e8e8';
-                  }}
-                >
-                  {collapsed ? '☰' : '✕'}
-                </button>
                 <div style={{ 
                   color: '#262626', 
                   fontSize: '20px', 
@@ -441,21 +413,6 @@ function App() {
                   fontStyle: 'italic'
                 }}>
                   secuRE inTegration middlewaRe fOr cpS
-                </div>
-              </div>
-              <div style={{ 
-                color: '#8c8c8c', 
-                fontSize: '12px', 
-                textAlign: 'right'
-              }}>
-                <div style={{ fontWeight: '500' }}>
-                  MdsLab - UniMe
-                </div>
-                <div style={{ 
-                  fontSize: '10px',
-                  fontStyle: 'italic'
-                }}>
-                  Edge Device Management
                 </div>
               </div>
             </Header>
@@ -483,7 +440,8 @@ function App() {
             </Content>
           </Layout>
         </Layout>
-      </Router>
+        </Router>
+      </AntApp>
     </ConfigProvider>
   );
 }

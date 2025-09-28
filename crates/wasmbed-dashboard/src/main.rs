@@ -3,10 +3,10 @@
 
 use clap::Parser;
 use axum::{
-    extract::{State, WebSocketUpgrade},
+    extract::{State, WebSocketUpgrade, Path},
     http::StatusCode,
     response::{Html, Json},
-    routing::{get, post},
+    routing::{get, post, delete, put},
     Router,
 };
 use serde::{Deserialize, Serialize};
@@ -205,6 +205,14 @@ impl DashboardApi {
         Ok(Html(html))
     }
 
+    /// Health check endpoint
+    pub async fn health_check() -> Result<Json<serde_json::Value>, StatusCode> {
+        Ok(Json(serde_json::json!({
+            "status": "healthy",
+            "timestamp": SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+        })))
+    }
+
     /// Get system status API
     pub async fn api_status(State(state): State<Arc<DashboardState>>) -> Result<Json<SystemStatus>, StatusCode> {
         let system_status = state.system_status.read().await;
@@ -212,70 +220,766 @@ impl DashboardApi {
     }
 
     /// Get devices API
-    pub async fn api_devices(State(state): State<Arc<DashboardState>>) -> Result<Json<Vec<DeviceInfo>>, StatusCode> {
+    pub async fn api_devices(State(state): State<Arc<DashboardState>>) -> Result<Json<serde_json::Value>, StatusCode> {
         match tokio::time::timeout(Duration::from_secs(5), state.device_manager.get_all_devices()).await {
-            Ok(Ok(devices)) => Ok(Json(devices)),
+            Ok(Ok(devices)) => Ok(Json(serde_json::json!({
+                "devices": devices
+            }))),
             Ok(Err(_)) => Err(StatusCode::INTERNAL_SERVER_ERROR),
             Err(_) => Err(StatusCode::REQUEST_TIMEOUT),
         }
     }
 
     /// Get applications API
-    pub async fn api_applications(State(state): State<Arc<DashboardState>>) -> Result<Json<Vec<ApplicationInfo>>, StatusCode> {
+    pub async fn api_applications(State(state): State<Arc<DashboardState>>) -> Result<Json<serde_json::Value>, StatusCode> {
         match tokio::time::timeout(Duration::from_secs(5), state.application_manager.get_all_applications()).await {
-            Ok(Ok(applications)) => Ok(Json(applications)),
+            Ok(Ok(applications)) => Ok(Json(serde_json::json!({
+                "applications": applications
+            }))),
             Ok(Err(_)) => Err(StatusCode::INTERNAL_SERVER_ERROR),
             Err(_) => Err(StatusCode::REQUEST_TIMEOUT),
         }
     }
 
     /// Get gateways API
-    pub async fn api_gateways(State(state): State<Arc<DashboardState>>) -> Result<Json<Vec<GatewayInfo>>, StatusCode> {
+    pub async fn api_gateways(State(state): State<Arc<DashboardState>>) -> Result<Json<serde_json::Value>, StatusCode> {
         match tokio::time::timeout(Duration::from_secs(5), state.gateway_manager.get_all_gateways()).await {
-            Ok(Ok(gateways)) => Ok(Json(gateways)),
+            Ok(Ok(gateways)) => Ok(Json(serde_json::json!({
+                "gateways": gateways
+            }))),
             Ok(Err(_)) => Err(StatusCode::INTERNAL_SERVER_ERROR),
             Err(_) => Err(StatusCode::REQUEST_TIMEOUT),
         }
     }
 
-    /// Create gateway
+    /// Delete gateway
+    pub async fn delete_gateway(
+        State(_state): State<Arc<DashboardState>>,
+        Path(id): Path<String>,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Deleting gateway: {}", id);
+
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["delete", "gateway", &id, "-n", "wasmbed"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await;
+
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    Ok(Json(serde_json::json!({
+                        "success": true,
+                        "message": format!("Gateway {} deleted successfully", id)
+                    })))
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    error!("Failed to delete gateway {}: {}", id, stderr);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+            Err(e) => {
+                error!("Failed to execute kubectl delete for gateway {}: {}", id, e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    /// Delete device
+    pub async fn delete_device(
+        State(_state): State<Arc<DashboardState>>,
+        Path(id): Path<String>,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Deleting device: {}", id);
+
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["delete", "device", &id, "-n", "wasmbed"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await;
+
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    Ok(Json(serde_json::json!({
+                        "success": true,
+                        "message": format!("Device {} deleted successfully", id)
+                    })))
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    error!("Failed to delete device {}: {}", id, stderr);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+            Err(e) => {
+                error!("Failed to execute kubectl delete for device {}: {}", id, e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    /// Delete application
+    pub async fn delete_application(
+        State(_state): State<Arc<DashboardState>>,
+        Path(id): Path<String>,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Deleting application: {}", id);
+
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["delete", "application", &id, "-n", "wasmbed"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await;
+
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    Ok(Json(serde_json::json!({
+                        "success": true,
+                        "message": format!("Application {} deleted successfully", id)
+                    })))
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    error!("Failed to delete application {}: {}", id, stderr);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+            Err(e) => {
+                error!("Failed to execute kubectl delete for application {}: {}", id, e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    /// Toggle gateway status
+    pub async fn toggle_gateway(
+        State(_state): State<Arc<DashboardState>>,
+        Path(id): Path<String>,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Toggling gateway: {}", id);
+
+        // Get current gateway status
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["get", "gateway", &id, "-n", "wasmbed", "-o", "json"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await;
+
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    if let Ok(gateway_json) = serde_json::from_str::<serde_json::Value>(&stdout) {
+                        let current_status = gateway_json["status"]["phase"]
+                            .as_str()
+                            .unwrap_or("Pending");
+
+                        let new_status = if current_status == "Running" || current_status == "Active" {
+                            "Stopped"
+                        } else {
+                            "Running"
+                        };
+
+                        // Update gateway status using kubectl patch
+                        let patch_output = tokio::process::Command::new("kubectl")
+                            .args(&[
+                                "patch", "gateway", &id, "-n", "wasmbed",
+                                "--type", "merge",
+                                "--patch", &format!("{{\"status\":{{\"phase\":\"{}\"}}}}", new_status)
+                            ])
+                            .stdout(std::process::Stdio::piped())
+                            .stderr(std::process::Stdio::piped())
+                            .output()
+                            .await;
+
+                        match patch_output {
+                            Ok(patch_output) => {
+                                if patch_output.status.success() {
+                                    Ok(Json(serde_json::json!({
+                                        "success": true,
+                                        "message": format!("Gateway {} status changed to {}", id, new_status),
+                                        "status": new_status
+                                    })))
+                                } else {
+                                    let stderr = String::from_utf8_lossy(&patch_output.stderr);
+                                    error!("Failed to patch gateway {}: {}", id, stderr);
+                                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to execute kubectl patch for gateway {}: {}", id, e);
+                                Err(StatusCode::INTERNAL_SERVER_ERROR)
+                            }
+                        }
+                    } else {
+                        error!("Failed to parse gateway JSON for {}", id);
+                        Err(StatusCode::INTERNAL_SERVER_ERROR)
+                    }
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    error!("Failed to get gateway {}: {}", id, stderr);
+                    Err(StatusCode::NOT_FOUND)
+                }
+            }
+            Err(e) => {
+                error!("Failed to execute kubectl get for gateway {}: {}", id, e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    /// Update gateway configuration
+    pub async fn update_gateway(
+        State(_state): State<Arc<DashboardState>>,
+        Path(id): Path<String>,
+        Json(request): Json<serde_json::Value>,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Updating gateway {}: {:?}", id, request);
+        
+        let endpoint = request.get("endpoint")
+            .and_then(|v| v.as_str())
+            .unwrap_or("127.0.0.1:30452");
+        
+        let capabilities = request.get("capabilities")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
+            .unwrap_or_else(|| vec!["tls", "enrollment", "deployment"]);
+        
+        // Update gateway configuration using kubectl patch
+        let patch = serde_json::json!({
+            "spec": {
+                "endpoint": endpoint,
+                "capabilities": capabilities
+            }
+        });
+        
+        let patch_str = serde_json::to_string(&patch).unwrap_or_else(|_| "{}".to_string());
+        
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["patch", "gateway", &id, "-n", "wasmbed", "--type", "merge", "--patch", &patch_str])
+            .output()
+            .await;
+            
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    info!("Gateway {} configuration updated successfully", id);
+                    Ok(Json(serde_json::json!({
+                        "success": true,
+                        "message": format!("Gateway {} configuration updated successfully", id)
+                    })))
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    error!("Failed to update gateway {}: {}", id, stderr);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+            Err(e) => {
+                error!("Failed to execute kubectl for gateway update {}: {}", id, e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    /// Create gateways
     pub async fn create_gateway(
         State(state): State<Arc<DashboardState>>,
         Json(request): Json<serde_json::Value>,
     ) -> Result<Json<serde_json::Value>, StatusCode> {
-        info!("Creating gateway: {:?}", request);
+        info!("Creating gateways: {:?}", request);
         
-        // For now, return a mock response
+        let count = request.get("count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1) as usize;
+        
+        let base_endpoint = request.get("endpoint")
+            .and_then(|v| v.as_str())
+            .unwrap_or("127.0.0.1");
+        
+        let base_port = request.get("basePort")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(30452) as u16;
+        
+        let mut created_gateways = Vec::new();
+        let mut errors = Vec::new();
+        
+        for i in 1..=count {
+            let name = format!("gateway-{}", i);
+            let port = base_port + (i as u16 - 1) * 2; // Increment by 2 for each gateway
+            let endpoint = format!("{}:{}", base_endpoint, port);
+            
+            // Create Gateway CRD in Kubernetes
+            let gateway_yaml = format!(
+                r#"apiVersion: wasmbed.io/v1
+kind: Gateway
+metadata:
+  name: {}
+  namespace: wasmbed
+spec:
+  endpoint: {}
+  capabilities:
+    - tls
+    - enrollment
+    - deployment
+  config:
+    connectionTimeout: "10m"
+    enrollmentTimeout: "5m"
+    heartbeatInterval: "30s"
+status:
+  phase: Pending
+  connectedDevices: 0
+  enrolledDevices: 0"#,
+                name, endpoint
+            );
+            
+            // Apply the Gateway CRD using kubectl
+            let output = tokio::process::Command::new("kubectl")
+                .args(&["apply", "-f", "-"])
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn();
+                
+            match output {
+                Ok(mut child) => {
+                    if let Some(mut stdin) = child.stdin.take() {
+                        use tokio::io::AsyncWriteExt;
+                        if let Err(e) = stdin.write_all(gateway_yaml.as_bytes()).await {
+                            error!("Failed to write to kubectl stdin for gateway {}: {}", name, e);
+                            errors.push(format!("Failed to create gateway {}: {}", name, e));
+                            continue;
+                        }
+                    }
+                    
+                    match child.wait_with_output().await {
+                        Ok(output) => {
+                            if output.status.success() {
+                                info!("Gateway {} created successfully", name);
+                                created_gateways.push(serde_json::json!({
+                                    "id": name,
+                                    "name": name,
+                                    "status": "Pending",
+                                    "endpoint": endpoint
+                                }));
+                            } else {
+                                let stderr = String::from_utf8_lossy(&output.stderr);
+                                error!("Failed to create gateway {}: {}", name, stderr);
+                                errors.push(format!("Failed to create gateway {}: {}", name, stderr));
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to execute kubectl for gateway {}: {}", name, e);
+                            errors.push(format!("Failed to create gateway {}: {}", name, e));
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to spawn kubectl for gateway {}: {}", name, e);
+                    errors.push(format!("Failed to create gateway {}: {}", name, e));
+                }
+            }
+        }
+        
+        if created_gateways.is_empty() {
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+        
+        let message = if errors.is_empty() {
+            format!("Successfully created {} gateways", created_gateways.len())
+        } else {
+            format!("Created {} gateways, {} errors: {}", 
+                   created_gateways.len(), 
+                   errors.len(), 
+                   errors.join("; "))
+        };
+        
         Ok(Json(serde_json::json!({
             "success": true,
-            "message": "Gateway created successfully",
-            "gateway": {
-                "id": "gateway-1",
-                "name": request.get("name").unwrap_or(&serde_json::Value::String("gateway-1".to_string())),
-                "status": "Active",
-                "endpoint": "127.0.0.1:30452"
-            }
+            "message": message,
+            "gateways": created_gateways,
+            "errors": errors
         })))
     }
 
-    /// Create device
+    /// Create devices
     pub async fn create_device(
         State(state): State<Arc<DashboardState>>,
         Json(request): Json<serde_json::Value>,
     ) -> Result<Json<serde_json::Value>, StatusCode> {
-        info!("Creating device: {:?}", request);
+        info!("Creating devices: {:?}", request);
         
-        // For now, return a mock response
+        let count = request.get("count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1) as usize;
+        
+        let device_type = request.get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("RISC-V MCU");
+        
+        let gateway_id = request.get("gatewayId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("gateway-1");
+        
+        let mut created_devices = Vec::new();
+        let mut errors = Vec::new();
+        
+        for i in 1..=count {
+            let name = format!("device-{}-{}", gateway_id, i);
+            
+            // Create Device CRD in Kubernetes
+            let device_yaml = format!(
+                r#"apiVersion: wasmbed.github.io/v0
+kind: Device
+metadata:
+  name: {}
+  namespace: wasmbed
+spec:
+  publicKey: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...\n-----END PUBLIC KEY-----"
+status:
+  phase: Pending
+  pairingMode: false"#,
+                name
+            );
+            
+            // Apply the Device CRD using kubectl
+            let output = tokio::process::Command::new("kubectl")
+                .args(&["apply", "-f", "-"])
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn();
+                
+            match output {
+                Ok(mut child) => {
+                    if let Some(mut stdin) = child.stdin.take() {
+                        use tokio::io::AsyncWriteExt;
+                        if let Err(e) = stdin.write_all(device_yaml.as_bytes()).await {
+                            error!("Failed to write to kubectl stdin for device {}: {}", name, e);
+                            errors.push(format!("Failed to create device {}: {}", name, e));
+                            continue;
+                        }
+                    }
+                    
+                    match child.wait_with_output().await {
+                        Ok(output) => {
+                            if output.status.success() {
+                                info!("Device {} created successfully", name);
+                                created_devices.push(serde_json::json!({
+                                    "id": name,
+                                    "name": name,
+                                    "type": device_type,
+                                    "status": "Pending"
+                                }));
+                            } else {
+                                let stderr = String::from_utf8_lossy(&output.stderr);
+                                error!("Failed to create device {}: {}", name, stderr);
+                                errors.push(format!("Failed to create device {}: {}", name, stderr));
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to execute kubectl for device {}: {}", name, e);
+                            errors.push(format!("Failed to create device {}: {}", name, e));
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to spawn kubectl for device {}: {}", name, e);
+                    errors.push(format!("Failed to create device {}: {}", name, e));
+                }
+            }
+        }
+        
+        if created_devices.is_empty() {
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+        
+        let message = if errors.is_empty() {
+            format!("Successfully created {} devices", created_devices.len())
+        } else {
+            format!("Created {} devices, {} errors: {}", 
+                   created_devices.len(), 
+                   errors.len(), 
+                   errors.join("; "))
+        };
+        
         Ok(Json(serde_json::json!({
             "success": true,
-            "message": "Device created successfully",
-            "device": {
-                "id": "device-1",
-                "name": request.get("name").unwrap_or(&serde_json::Value::String("device-1".to_string())),
-                "type": request.get("type").unwrap_or(&serde_json::Value::String("RISC-V MCU".to_string())),
-                "status": "Pending"
-            }
+            "message": message,
+            "devices": created_devices,
+            "errors": errors
         })))
+    }
+
+    /// Enroll device to gateway
+    pub async fn enroll_device(
+        State(state): State<Arc<DashboardState>>,
+        Path(device_id): Path<String>,
+        Json(request): Json<serde_json::Value>,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Enrolling device {}: {:?}", device_id, request);
+        
+        let gateway_id = request.get("gatewayId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("gateway-1");
+        
+        // Update device status to "enrolled" using kubectl patch
+        let patch = serde_json::json!({
+            "status": {
+                "phase": "Enrolled",
+                "gatewayId": gateway_id
+            }
+        });
+        
+        let patch_str = serde_json::to_string(&patch).unwrap_or_else(|_| "{}".to_string());
+        
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["patch", "device", &device_id, "-n", "wasmbed", "--type", "merge", "--patch", &patch_str])
+            .output()
+            .await;
+            
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    info!("Device {} enrolled to gateway {} successfully", device_id, gateway_id);
+                    Ok(Json(serde_json::json!({
+                        "success": true,
+                        "message": format!("Device {} enrolled to gateway {} successfully", device_id, gateway_id)
+                    })))
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    error!("Failed to enroll device {}: {}", device_id, stderr);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+            Err(e) => {
+                error!("Failed to execute kubectl for device enrollment {}: {}", device_id, e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    /// Connect device
+    pub async fn connect_device(
+        State(state): State<Arc<DashboardState>>,
+        Path(device_id): Path<String>,
+        Json(request): Json<serde_json::Value>,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Connecting device {}: {:?}", device_id, request);
+        
+        // Update device status to "connected" using kubectl patch
+        let patch = serde_json::json!({
+            "status": {
+                "phase": "Connected"
+            }
+        });
+        
+        let patch_str = serde_json::to_string(&patch).unwrap_or_else(|_| "{}".to_string());
+        
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["patch", "device", &device_id, "-n", "wasmbed", "--type", "merge", "--patch", &patch_str])
+            .output()
+            .await;
+            
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    info!("Device {} connected successfully", device_id);
+                    Ok(Json(serde_json::json!({
+                        "success": true,
+                        "message": format!("Device {} connected successfully", device_id)
+                    })))
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    error!("Failed to connect device {}: {}", device_id, stderr);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+            Err(e) => {
+                error!("Failed to execute kubectl for device connection {}: {}", device_id, e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    /// Create applications
+    pub async fn create_application(
+        State(state): State<Arc<DashboardState>>,
+        Json(request): Json<serde_json::Value>,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Creating application: {:?}", request);
+        
+        let name = request.get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("application-1");
+        
+        let wasm_bytes = request.get("wasmBytes")
+            .and_then(|v| v.as_str())
+            .unwrap_or("dGVzdA==");
+        
+        let target_devices = request.get("targetDevices")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
+            .unwrap_or_else(|| vec!["device-gateway-1-1"]);
+        
+        // Create Application CRD in Kubernetes
+        let application_yaml = format!(
+            r#"apiVersion: wasmbed.github.io/v1alpha1
+kind: Application
+metadata:
+  name: {}
+  namespace: wasmbed
+spec:
+  name: {}
+  wasmBytes: {}
+  targetDevices:
+    deviceNames: [{}]
+status:
+  phase: Pending"#,
+            name,
+            name,
+            wasm_bytes,
+            target_devices.iter().map(|d| format!("\"{}\"", d)).collect::<Vec<_>>().join(", ")
+        );
+        
+        // Apply the Application CRD using kubectl
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["apply", "-f", "-"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn();
+            
+        match output {
+            Ok(mut child) => {
+                if let Some(mut stdin) = child.stdin.take() {
+                    use tokio::io::AsyncWriteExt;
+                    if let Err(e) = stdin.write_all(application_yaml.as_bytes()).await {
+                        error!("Failed to write to kubectl stdin for application {}: {}", name, e);
+                        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+                    }
+                }
+                
+                match child.wait_with_output().await {
+                    Ok(output) => {
+                        if output.status.success() {
+                            info!("Application {} created successfully", name);
+                            Ok(Json(serde_json::json!({
+                                "success": true,
+                                "message": format!("Successfully created application {}", name),
+                                "application": {
+                                    "id": name,
+                                    "name": name,
+                                    "status": "Pending",
+                                    "targetDevices": target_devices
+                                }
+                            })))
+                        } else {
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            error!("Failed to create application {}: {}", name, stderr);
+                            Err(StatusCode::INTERNAL_SERVER_ERROR)
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to execute kubectl for application {}: {}", name, e);
+                        Err(StatusCode::INTERNAL_SERVER_ERROR)
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to spawn kubectl for application {}: {}", name, e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    /// Deploy application by ID
+    pub async fn deploy_application_by_id(
+        State(state): State<Arc<DashboardState>>,
+        Path(app_id): Path<String>,
+        Json(request): Json<serde_json::Value>,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Deploying application {}: {:?}", app_id, request);
+        
+        // Update application status to "Running" using kubectl patch
+        let patch = serde_json::json!({
+            "status": {
+                "phase": "Running"
+            }
+        });
+        
+        let patch_str = serde_json::to_string(&patch).unwrap_or_else(|_| "{}".to_string());
+        
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["patch", "application", &app_id, "-n", "wasmbed", "--type", "merge", "--patch", &patch_str])
+            .output()
+            .await;
+            
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    info!("Application {} deployed successfully", app_id);
+                    Ok(Json(serde_json::json!({
+                        "success": true,
+                        "message": format!("Application {} deployed successfully", app_id)
+                    })))
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    error!("Failed to deploy application {}: {}", app_id, stderr);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+            Err(e) => {
+                error!("Failed to execute kubectl for application deployment {}: {}", app_id, e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    /// Stop application by ID
+    pub async fn stop_application_by_id(
+        State(state): State<Arc<DashboardState>>,
+        Path(app_id): Path<String>,
+        Json(request): Json<serde_json::Value>,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Stopping application {}: {:?}", app_id, request);
+        
+        // Update application status to "Stopped" using kubectl patch
+        let patch = serde_json::json!({
+            "status": {
+                "phase": "Stopped"
+            }
+        });
+        
+        let patch_str = serde_json::to_string(&patch).unwrap_or_else(|_| "{}".to_string());
+        
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["patch", "application", &app_id, "-n", "wasmbed", "--type", "merge", "--patch", &patch_str])
+            .output()
+            .await;
+            
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    info!("Application {} stopped successfully", app_id);
+                    Ok(Json(serde_json::json!({
+                        "success": true,
+                        "message": format!("Application {} stopped successfully", app_id)
+                    })))
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    error!("Failed to stop application {}: {}", app_id, stderr);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+            Err(e) => {
+                error!("Failed to execute kubectl for application stop {}: {}", app_id, e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
     }
 
     /// Deploy application
@@ -379,6 +1083,9 @@ impl DashboardApi {
             "curl -s http://localhost:30461/health",
             "curl -s http://localhost:30461/logs",
             "curl -s http://localhost:30453/api/v1/status",
+            "cd /home/lucadag/27_9_25_retrospect/retrospect && ./target/release/wasmbed-gateway-controller --kubeconfig ~/.kube/config &",
+            "cd /home/lucadag/27_9_25_retrospect/retrospect && ./target/release/wasmbed-device-controller --kubeconfig ~/.kube/config &",
+            "cd /home/lucadag/27_9_25_retrospect/retrospect && ./target/release/wasmbed-application-controller --kubeconfig ~/.kube/config &",
         ];
 
         if !allowed_commands.contains(&request.command.as_str()) {
@@ -795,6 +1502,9 @@ impl Dashboard {
                 }
             }
 
+            // Update infrastructure status
+            self.update_infrastructure_status(&mut status).await;
+
             status.last_update = SystemTime::now();
             status.uptime = status.last_update
                 .duration_since(UNIX_EPOCH)
@@ -808,6 +1518,105 @@ impl Dashboard {
         }
     }
 
+    async fn update_infrastructure_status(&self, status: &mut SystemStatus) {
+        // Check Certificate Authority status
+        match self.check_ca_status().await {
+            Ok(ca_status) => status.infrastructure.ca_status = ca_status,
+            Err(_) => status.infrastructure.ca_status = "error".to_string(),
+        }
+
+        // Check Secret Store status
+        match self.check_secret_store_status().await {
+            Ok(secret_status) => status.infrastructure.secret_store_status = secret_status,
+            Err(_) => status.infrastructure.secret_store_status = "error".to_string(),
+        }
+
+        // Check Monitoring status
+        match self.check_monitoring_status().await {
+            Ok(monitoring_status) => status.infrastructure.monitoring_status = monitoring_status,
+            Err(_) => status.infrastructure.monitoring_status = "error".to_string(),
+        }
+
+        // Check Logging status
+        match self.check_logging_status().await {
+            Ok(logging_status) => status.infrastructure.logging_status = logging_status,
+            Err(_) => status.infrastructure.logging_status = "error".to_string(),
+        }
+    }
+
+    async fn check_ca_status(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        // Check if CA certificates exist in Kubernetes
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["get", "secrets", "-n", "wasmbed", "--field-selector", "type=kubernetes.io/tls"])
+            .output()
+            .await?;
+
+        if output.status.success() {
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            if output_str.contains("ca-") || output_str.contains("tls-") {
+                Ok("healthy".to_string())
+            } else {
+                Ok("not_configured".to_string())
+            }
+        } else {
+            Ok("not_available".to_string())
+        }
+    }
+
+    async fn check_secret_store_status(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        // Check if secret store is available
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["get", "secrets", "-n", "wasmbed"])
+            .output()
+            .await?;
+
+        if output.status.success() {
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            if output_str.lines().count() > 1 { // More than just header
+                Ok("healthy".to_string())
+            } else {
+                Ok("empty".to_string())
+            }
+        } else {
+            Ok("not_available".to_string())
+        }
+    }
+
+    async fn check_monitoring_status(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        // Check if monitoring service is running
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-infrastructure"])
+            .output()
+            .await?;
+
+        if output.status.success() {
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            if output_str.contains("Running") {
+                Ok("healthy".to_string())
+            } else if output_str.contains("Pending") {
+                Ok("starting".to_string())
+            } else {
+                Ok("not_running".to_string())
+            }
+        } else {
+            Ok("not_available".to_string())
+        }
+    }
+
+    async fn check_logging_status(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        // Check if logging is working by testing the infrastructure service
+        match reqwest::get("http://localhost:30461/logs").await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    Ok("healthy".to_string())
+                } else {
+                    Ok("error".to_string())
+                }
+            },
+            Err(_) => Ok("not_available".to_string()),
+        }
+    }
+
     async fn run_web_server(self) -> anyhow::Result<()> {
         let app = Router::new()
             .route("/", get(DashboardApi::home))
@@ -815,6 +1624,8 @@ impl Dashboard {
             .route("/applications", get(DashboardApi::applications))
             .route("/gateways", get(DashboardApi::gateways))
             .route("/monitoring", get(DashboardApi::monitoring))
+            .route("/health", get(DashboardApi::health_check))
+            .route("/logs", get(DashboardApi::get_logs))
             .route("/api/status", get(DashboardApi::api_status))
             .route("/api/devices", get(DashboardApi::api_devices))
             .route("/api/applications", get(DashboardApi::api_applications))
@@ -822,9 +1633,19 @@ impl Dashboard {
             .route("/api/v1/status", get(DashboardApi::api_status))
             .route("/api/v1/devices", get(DashboardApi::api_devices))
             .route("/api/v1/applications", get(DashboardApi::api_applications))
+            .route("/api/v1/applications", post(DashboardApi::create_application))
             .route("/api/v1/gateways", get(DashboardApi::api_gateways))
             .route("/api/v1/gateways", post(DashboardApi::create_gateway))
+            .route("/api/v1/gateways/:id/toggle", post(DashboardApi::toggle_gateway))
+            .route("/api/v1/gateways/:id", delete(DashboardApi::delete_gateway))
+            .route("/api/v1/gateways/:id", put(DashboardApi::update_gateway))
             .route("/api/v1/devices", post(DashboardApi::create_device))
+            .route("/api/v1/devices/:id", delete(DashboardApi::delete_device))
+            .route("/api/v1/devices/:id/enroll", post(DashboardApi::enroll_device))
+            .route("/api/v1/devices/:id/connect", post(DashboardApi::connect_device))
+            .route("/api/v1/applications/:id", delete(DashboardApi::delete_application))
+            .route("/api/v1/applications/:id/deploy", post(DashboardApi::deploy_application_by_id))
+            .route("/api/v1/applications/:id/stop", post(DashboardApi::stop_application_by_id))
             .route("/api/deploy", post(DashboardApi::deploy_application))
             .route("/api/pairing/enable", post(DashboardApi::enable_pairing))
             .route("/api/pairing/disable", post(DashboardApi::disable_pairing))
@@ -834,6 +1655,12 @@ impl Dashboard {
             .route("/api/v1/metrics", get(DashboardApi::get_pod_metrics))
             .route("/api/v1/logs", get(DashboardApi::get_logs))
             .route("/ws", get(DashboardApi::websocket_handler))
+            .layer(
+                tower_http::cors::CorsLayer::new()
+                    .allow_origin(tower_http::cors::Any)
+                    .allow_methods(tower_http::cors::Any)
+                    .allow_headers(tower_http::cors::Any)
+            )
             .with_state(self.state);
 
         let addr = SocketAddr::from(([0, 0, 0, 0], self.config.port));

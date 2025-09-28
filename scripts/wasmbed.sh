@@ -42,20 +42,24 @@ show_help() {
     echo ""
     echo "Usage: $0 [COMMAND] [OPTIONS]"
     echo ""
-    echo "Commands:"
-    echo "  clean       Clean up all resources"
-    echo "  build       Build all components"
-    echo "  deploy      Deploy complete platform"
-    echo "  stop        Stop all services"
-    echo "  status      Check system status"
-    echo "  restart     Restart all services"
-    echo "  logs        Show system logs"
-    echo "  test        Run platform tests"
+    echo "Essential Commands:"
+    echo "  clean       Clean up all resources (k3d cluster, processes, build artifacts)"
+    echo "  build       Build all Rust components"
+    echo "  deploy      Deploy complete platform (k3d cluster + services)"
+    echo "  stop        Stop all services gracefully"
+    echo "  status      Check system status and health"
+    echo "  restart     Stop and restart all services"
     echo ""
     echo "Examples:"
-    echo "  $0 deploy"
-    echo "  $0 status"
-    echo "  $0 stop"
+    echo "  $0 deploy    # Deploy the complete platform"
+    echo "  $0 status    # Check if everything is running"
+    echo "  $0 stop      # Stop all services"
+    echo "  $0 clean     # Clean everything and start fresh"
+    echo ""
+    echo "Quick Start:"
+    echo "  1. $0 deploy    # Deploy the platform"
+    echo "  2. $0 status    # Verify deployment"
+    echo "  3. Open http://localhost:30453 in browser"
     echo ""
 }
 
@@ -86,14 +90,6 @@ case "${1:-help}" in
         "$SCRIPT_DIR/wasmbed-stop.sh"
         sleep 2
         "$SCRIPT_DIR/wasmbed-deploy.sh"
-        ;;
-    "logs")
-        print_status "INFO" "Showing Wasmbed platform logs..."
-        "$SCRIPT_DIR/wasmbed-logs.sh" "${@:2}"
-        ;;
-    "test")
-        print_status "INFO" "Running Wasmbed platform tests..."
-        "$SCRIPT_DIR/wasmbed-test-complete.sh"
         ;;
     "help"|"-h"|"--help")
         show_help

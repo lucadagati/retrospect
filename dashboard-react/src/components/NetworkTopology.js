@@ -11,6 +11,7 @@ import {
   ArrowRightOutlined,
   ArrowDownOutlined
 } from '@ant-design/icons';
+import { apiGet, fetchWithTimeout } from '../utils/api';
 
 const { Title, Text } = Typography;
 
@@ -29,15 +30,15 @@ const NetworkTopology = () => {
 
   const fetchTopologyData = async () => {
     try {
-      const [infrastructureResponse, gatewaysResponse, devicesResponse] = await Promise.all([
-        fetch('http://localhost:30461/api/v1/status'),
-        fetch('/api/v1/gateways'),
-        fetch('/api/v1/devices')
+      const [infrastructureResponse, gatewaysData, devicesData] = await Promise.all([
+        fetchWithTimeout('http://localhost:30461/api/v1/status', {}, 5000),
+        apiGet('/api/v1/gateways', 10000),
+        apiGet('/api/v1/devices', 10000)
       ]);
 
       const infrastructure = infrastructureResponse.ok ? await infrastructureResponse.json() : { status: 'unknown' };
-      const gateways = gatewaysResponse.ok ? await gatewaysResponse.json() : { gateways: [] };
-      const devices = devicesResponse.ok ? await devicesResponse.json() : { devices: [] };
+      const gateways = gatewaysData;
+      const devices = devicesData;
 
       let gatewayList = gateways.gateways || [];
       let deviceList = devices.devices || [];
@@ -348,7 +349,7 @@ const NetworkTopology = () => {
         size="small"
       >
         <Row gutter={[8, 8]}>
-          <Col xs={12} sm={6}>
+          <Col xs={12} sm={6} key="active-gateways">
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#52c41a' }}>
                 {topologyData.gateways.filter(g => g.status === 'active').length}
@@ -356,7 +357,7 @@ const NetworkTopology = () => {
               <Text type="secondary">Active Gateways</Text>
             </div>
           </Col>
-          <Col xs={12} sm={6}>
+          <Col xs={12} sm={6} key="total-devices">
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#1890ff' }}>
                 {topologyData.devices.length}
@@ -364,7 +365,7 @@ const NetworkTopology = () => {
               <Text type="secondary">Total Devices</Text>
             </div>
           </Col>
-          <Col xs={12} sm={6}>
+          <Col xs={12} sm={6} key="connected-devices">
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#52c41a' }}>
                 {topologyData.devices.filter(d => d.status === 'connected').length}
@@ -372,7 +373,7 @@ const NetworkTopology = () => {
               <Text type="secondary">Connected Devices</Text>
             </div>
           </Col>
-          <Col xs={12} sm={6}>
+          <Col xs={12} sm={6} key="disconnected-devices">
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#faad14' }}>
                 {topologyData.devices.filter(d => d.status === 'disconnected').length}

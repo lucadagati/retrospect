@@ -28,6 +28,7 @@ import {
   SettingOutlined,
   QuestionCircleOutlined,
 } from '@ant-design/icons';
+import { apiGet, apiPost, apiDelete, apiPut } from '../utils/api';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -49,17 +50,11 @@ const GatewayManagement = () => {
   const fetchGateways = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/v1/gateways');
-      if (response.ok) {
-        const data = await response.json();
-        let gatewayList = data.gateways || [];
-        
-        // Use real data from backend - no mock data
-        
-        setGateways(gatewayList);
-      } else {
-        console.error('Failed to fetch gateways:', response.status);
-      }
+      const data = await apiGet('/api/v1/gateways', 10000);
+      let gatewayList = data.gateways || [];
+      
+      // Use real data from backend - no mock data
+      setGateways(gatewayList);
     } catch (error) {
       console.error('Error fetching gateways:', error);
     } finally {
@@ -69,28 +64,19 @@ const GatewayManagement = () => {
 
   const handleCreateGateway = async (values) => {
     try {
-      const response = await fetch('/api/v1/gateways', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: values.name,
-          endpoint: values.endpoint,
-          maxDevices: values.maxDevices || 10,
-          region: values.region || 'us-west-1'
-        })
-      });
+      // Auto-generate endpoint if not provided
+      const gatewayCount = gateways.length + 1;
       
-      if (response.ok) {
-        const newGateway = await response.json();
-        setGateways(prevGateways => [...prevGateways, newGateway]);
-        console.log('Gateway created successfully:', newGateway.name);
-        setModalVisible(false);
-        form.resetFields();
-      } else {
-        console.error('Failed to create gateway:', response.status);
-      }
+      const result = await apiPost('/api/v1/gateways', {
+        count: 1,
+        endpoint: '127.0.0.1',
+        basePort: 30452 + (gatewayCount - 1) * 2
+      }, 15000);
+      
+      console.log('Gateway created successfully:', result.message);
+      setModalVisible(false);
+      form.resetFields();
+      fetchGateways(); // Refresh the list
     } catch (error) {
       console.error('Error creating gateway:', error);
     }
@@ -98,16 +84,9 @@ const GatewayManagement = () => {
 
   const handleDeleteGateway = async (gatewayId) => {
     try {
-      const response = await fetch(`/api/v1/gateways/${gatewayId}`, {
-        method: 'DELETE'
-      });
-      
-      if (response.ok) {
-        setGateways(prevGateways => prevGateways.filter(gateway => gateway.id !== gatewayId));
-        console.log('Gateway deleted successfully:', gatewayId);
-      } else {
-        console.error('Failed to delete gateway:', response.status);
-      }
+      await apiDelete(`/api/v1/gateways/${gatewayId}`, 10000);
+      setGateways(prevGateways => prevGateways.filter(gateway => gateway.id !== gatewayId));
+      console.log('Gateway deleted successfully:', gatewayId);
     } catch (error) {
       console.error('Error deleting gateway:', error);
     }
@@ -115,30 +94,19 @@ const GatewayManagement = () => {
 
   const handleUpdateGatewayConfig = async (values) => {
     try {
-      const response = await fetch(`/api/v1/gateways/${selectedGateway.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(values)
-      });
+      const updatedGateway = await apiPut(`/api/v1/gateways/${selectedGateway.id}`, values, 15000);
       
-      if (response.ok) {
-        const updatedGateway = await response.json();
-        setGateways(prevGateways => 
-          prevGateways.map(gateway => 
-            gateway.id === selectedGateway.id 
-              ? updatedGateway
-              : gateway
-          )
-        );
-        console.log('Gateway configuration updated successfully');
-        setConfigModalVisible(false);
-        configForm.resetFields();
-        setSelectedGateway(null);
-      } else {
-        console.error('Failed to update gateway configuration:', response.status);
-      }
+      setGateways(prevGateways => 
+        prevGateways.map(gateway => 
+          gateway.id === selectedGateway.id 
+            ? updatedGateway
+            : gateway
+        )
+      );
+      console.log('Gateway configuration updated successfully');
+      setConfigModalVisible(false);
+      configForm.resetFields();
+      setSelectedGateway(null);
     } catch (error) {
       console.error('Error updating gateway configuration:', error);
     }
@@ -146,27 +114,16 @@ const GatewayManagement = () => {
 
   const handleToggleGateway = async (gatewayId, enabled) => {
     try {
-      const response = await fetch(`/api/v1/gateways/${gatewayId}/toggle`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ enabled })
-      });
+      const updatedGateway = await apiPost(`/api/v1/gateways/${gatewayId}/toggle`, { enabled }, 10000);
       
-      if (response.ok) {
-        const updatedGateway = await response.json();
-        setGateways(prevGateways => 
-          prevGateways.map(gateway => 
-            gateway.id === gatewayId 
-              ? updatedGateway
-              : gateway
-          )
-        );
-        console.log(`Gateway ${enabled ? 'enabled' : 'disabled'} successfully:`, gatewayId);
-      } else {
-        console.error('Failed to update gateway status:', response.status);
-      }
+      setGateways(prevGateways => 
+        prevGateways.map(gateway => 
+          gateway.id === gatewayId 
+            ? updatedGateway
+            : gateway
+        )
+      );
+      console.log(`Gateway ${enabled ? 'enabled' : 'disabled'} successfully:`, gatewayId);
     } catch (error) {
       console.error('Error toggling gateway:', error);
     }
@@ -193,7 +150,7 @@ const GatewayManagement = () => {
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
-      sorter: (a, b) => a.name.localeCompare(b.name),
+      sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
     },
     {
       title: 'Status',
@@ -201,10 +158,10 @@ const GatewayManagement = () => {
       key: 'status',
       render: (status) => getStatusTag(status),
       filters: [
-        { text: 'Active', value: 'Active' },
-        { text: 'Inactive', value: 'Inactive' },
-        { text: 'Pending', value: 'Pending' },
-        { text: 'Degraded', value: 'Degraded' },
+        { text: 'Active', value: 'Active', key: 'active' },
+        { text: 'Inactive', value: 'Inactive', key: 'inactive' },
+        { text: 'Pending', value: 'Pending', key: 'pending' },
+        { text: 'Degraded', value: 'Degraded', key: 'degraded' },
       ],
       onFilter: (value, record) => record.status === value,
     },
@@ -232,17 +189,22 @@ const GatewayManagement = () => {
       render: (timestamp) => timestamp ? new Date(timestamp).toLocaleString() : 'Never',
     },
     {
-      title: 'Enabled',
-      dataIndex: 'enabled',
-      key: 'enabled',
-      render: (enabled, record) => (
-        <Switch
-          checked={enabled}
-          onChange={(checked) => handleToggleGateway(record.id, checked)}
-          checkedChildren="Active"
-          unCheckedChildren="Inactive"
-        />
-      ),
+      title: 'Status Control',
+      dataIndex: 'status',
+      key: 'statusControl',
+      render: (status, record) => {
+        const isActive = status === 'Running' || status === 'Active';
+        return (
+          <Switch
+            key={`switch-${record.gateway_id || record.id}`}
+            checked={isActive}
+            onChange={(checked) => handleToggleGateway(record.gateway_id || record.id, checked)}
+            checkedChildren="Running"
+            unCheckedChildren="Stopped"
+            disabled={status === 'Pending'}
+          />
+        );
+      },
     },
     {
       title: 'Actions',
@@ -250,8 +212,9 @@ const GatewayManagement = () => {
       width: 150,
       fixed: 'right',
       render: (_, record) => (
-        <Space size="small">
+        <Space size="small"           key={`actions-${record.gateway_id || record.id}`}>
           <Button
+            key={`configure-${record.gateway_id || record.id}`}
             type="link"
             icon={<SettingOutlined />}
             onClick={() => {
@@ -268,8 +231,9 @@ const GatewayManagement = () => {
             Configure
           </Button>
           <Popconfirm
+            key={`delete-${record.gateway_id || record.id}`}
             title="Are you sure you want to delete this gateway?"
-            onConfirm={() => handleDeleteGateway(record.id)}
+            onConfirm={() => handleDeleteGateway(record.gateway_id || record.id)}
             okText="Yes"
             cancelText="No"
           >
@@ -366,7 +330,7 @@ const GatewayManagement = () => {
         <Table
           columns={columns}
           dataSource={gateways}
-          rowKey="id"
+          rowKey={(record) => record.gateway_id || record.id}
           loading={loading}
           pagination={{
             pageSize: 10,
@@ -375,7 +339,7 @@ const GatewayManagement = () => {
             showTotal: (total, range) =>
               `${range[0]}-${range[1]} of ${total} gateways`,
           }}
-          scroll={{ x: 1200 }}
+          scroll={{ x: 'max-content' }}
           size="small"
           expandable={{
             expandedRowRender: (record) => (
@@ -437,34 +401,18 @@ const GatewayManagement = () => {
         >
           <Form.Item
             name="name"
-            label="Gateway Name"
-            rules={[{ required: true, message: 'Please enter gateway name' }]}
+            label="Gateway Name (Optional)"
+            help="Leave empty for auto-generated name"
           >
-            <Input placeholder="Enter gateway name" />
+            <Input placeholder="Auto-generated if empty" />
           </Form.Item>
 
           <Form.Item
             name="endpoint"
-            label="Endpoint"
-            rules={[{ required: true, message: 'Please enter endpoint' }]}
+            label="Endpoint (Optional)"
+            help="Leave empty for auto-generated endpoint"
           >
-            <Input placeholder="gateway-1.wasmbed.svc.cluster.local:30430" />
-          </Form.Item>
-
-          <Form.Item
-            name="capabilities"
-            label="Capabilities"
-            rules={[{ required: true, message: 'Please select capabilities' }]}
-          >
-            <Select
-              mode="multiple"
-              placeholder="Select capabilities"
-            >
-              <Option value="tls">TLS</Option>
-              <Option value="wasm-deployment">WASM Deployment</Option>
-              <Option value="device-management">Device Management</Option>
-              <Option value="monitoring">Monitoring</Option>
-            </Select>
+            <Input placeholder="Auto-generated if empty" />
           </Form.Item>
 
           <Form.Item>

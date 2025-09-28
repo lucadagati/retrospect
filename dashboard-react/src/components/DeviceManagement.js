@@ -27,6 +27,7 @@ import {
   UserAddOutlined,
   LinkOutlined,
 } from '@ant-design/icons';
+import { apiGet, apiPost, apiDelete } from '../utils/api';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -45,17 +46,11 @@ const DeviceManagement = () => {
   const fetchDevices = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/v1/devices');
-      if (response.ok) {
-        const data = await response.json();
-        let deviceList = data.devices || [];
-        
-        // Use real data from backend - no mock data
-        
-        setDevices(deviceList);
-      } else {
-        console.error('Failed to fetch devices:', response.status);
-      }
+      const data = await apiGet('/api/v1/devices', 10000);
+      let deviceList = data.devices || [];
+      
+      // Use real data from backend - no mock data
+      setDevices(deviceList);
     } catch (error) {
       console.error('Error fetching devices:', error);
     } finally {
@@ -65,28 +60,27 @@ const DeviceManagement = () => {
 
   const handleCreateDevice = async (values) => {
     try {
-      const response = await fetch('/api/v1/devices', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: values.name,
-          type: values.type,
-          architecture: values.architecture,
-          publicKey: values.publicKey || 'auto-generated'
-        })
-      });
+      // Auto-generate name if not provided
+      const deviceCount = devices.length + 1;
+      const deviceName = values.name || `device-gateway-1-${deviceCount}`;
       
-      if (response.ok) {
-        const newDevice = await response.json();
-        setDevices(prevDevices => [...prevDevices, newDevice]);
-        console.log('Device created successfully:', newDevice.name);
-        setModalVisible(false);
-        form.resetFields();
-      } else {
-        console.error('Failed to create device:', response.status);
-      }
+      // Auto-generate gateway endpoint if not provided
+      const gatewayEndpoint = values.gatewayEndpoint || 'gateway-1.wasmbed.svc.cluster.local:30430';
+      
+      const response = await apiPost('/api/v1/devices', {
+        name: deviceName,
+        type: values.deviceType || 'MCU',
+        architecture: values.architecture || 'riscv32',
+        publicKey: 'auto-generated',
+        gatewayEndpoint: gatewayEndpoint
+      }, 15000);
+      
+      // Refresh the devices list to get the updated data
+      const updatedDevices = await apiGet('/api/v1/devices');
+      setDevices(updatedDevices.devices || []);
+      console.log('Device created successfully:', response.message);
+      setModalVisible(false);
+      form.resetFields();
     } catch (error) {
       console.error('Error creating device:', error);
     }
@@ -94,16 +88,9 @@ const DeviceManagement = () => {
 
   const handleDeleteDevice = async (deviceId) => {
     try {
-      const response = await fetch(`/api/v1/devices/${deviceId}`, {
-        method: 'DELETE'
-      });
-      
-      if (response.ok) {
-        setDevices(prevDevices => prevDevices.filter(device => device.id !== deviceId));
-        console.log('Device deleted successfully:', deviceId);
-      } else {
-        console.error('Failed to delete device:', response.status);
-      }
+      await apiDelete(`/api/v1/devices/${deviceId}`, 10000);
+      setDevices(prevDevices => prevDevices.filter(device => device.id !== deviceId));
+      console.log('Device deleted successfully:', deviceId);
     } catch (error) {
       console.error('Error deleting device:', error);
     }
@@ -112,13 +99,7 @@ const DeviceManagement = () => {
   const handleEnrollDevice = async (deviceId) => {
     try {
       // First, get available gateways
-      const gatewaysResponse = await fetch('/api/v1/gateways');
-      if (!gatewaysResponse.ok) {
-        console.error('Failed to fetch gateways for enrollment');
-        return;
-      }
-      
-      const gateways = await gatewaysResponse.json();
+      const gateways = await apiGet('/api/v1/gateways', 10000);
       const availableGateways = gateways.gateways?.filter(g => g.status === 'Active') || [];
       
       if (availableGateways.length === 0) {
@@ -130,30 +111,19 @@ const DeviceManagement = () => {
       // In a real implementation, this could be a user selection
       const selectedGateway = availableGateways[0];
       
-      const response = await fetch(`/api/v1/devices/${deviceId}/enroll`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          gatewayId: selectedGateway.id,
-          gatewayName: selectedGateway.name
-        })
-      });
+      const data = await apiPost(`/api/v1/devices/${deviceId}/enroll`, {
+        gatewayId: selectedGateway.id,
+        gatewayName: selectedGateway.name
+      }, 15000);
       
-      if (response.ok) {
-        const data = await response.json();
-        setDevices(prevDevices => 
-          prevDevices.map(device => 
-            device.id === deviceId 
-              ? { ...device, enrolled: true, status: 'Enrolled', gatewayId: data.gatewayId, gatewayName: data.gatewayName }
-              : device
-          )
-        );
-        console.log(`Device ${deviceId} enrolled successfully to gateway ${selectedGateway.name}`);
-      } else {
-        console.error('Failed to enroll device:', response.status);
-      }
+      setDevices(prevDevices => 
+        prevDevices.map(device => 
+          device.id === deviceId 
+            ? { ...device, enrolled: true, status: 'Enrolled', gatewayId: data.gatewayId, gatewayName: data.gatewayName }
+            : device
+        )
+      );
+      console.log(`Device ${deviceId} enrolled successfully to gateway ${selectedGateway.name}`);
     } catch (error) {
       console.error('Error enrolling device:', error);
     }
@@ -161,26 +131,16 @@ const DeviceManagement = () => {
 
   const handleConnectDevice = async (deviceId) => {
     try {
-      const response = await fetch(`/api/v1/devices/${deviceId}/connect`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
+      const data = await apiPost(`/api/v1/devices/${deviceId}/connect`, {}, 15000);
       
-      if (response.ok) {
-        const data = await response.json();
-        setDevices(prevDevices => 
-          prevDevices.map(device => 
-            device.id === deviceId 
-              ? { ...device, status: 'Connected', connected: true, lastHeartbeat: data.lastHeartbeat }
-              : device
-          )
-        );
-        console.log(`Device ${deviceId} connected successfully`);
-      } else {
-        console.error('Failed to connect device:', response.status);
-      }
+      setDevices(prevDevices => 
+        prevDevices.map(device => 
+          device.id === deviceId 
+            ? { ...device, status: 'Connected', connected: true, lastHeartbeat: data.lastHeartbeat }
+            : device
+        )
+      );
+      console.log(`Device ${deviceId} connected successfully`);
     } catch (error) {
       console.error('Error connecting device:', error);
     }
@@ -206,9 +166,9 @@ const DeviceManagement = () => {
   const columns = [
     {
       title: 'Name',
-      dataIndex: 'name',
-      key: 'name',
-      sorter: (a, b) => a.name.localeCompare(b.name),
+      dataIndex: 'device_id',
+      key: 'device_id',
+      sorter: (a, b) => (a.device_id || '').localeCompare(b.device_id || ''),
     },
     {
       title: 'Status',
@@ -216,11 +176,11 @@ const DeviceManagement = () => {
       key: 'status',
       render: (status) => getStatusTag(status),
       filters: [
-        { text: 'Connected', value: 'Connected' },
-        { text: 'Enrolled', value: 'Enrolled' },
-        { text: 'Pending', value: 'Pending' },
-        { text: 'Failed', value: 'Failed' },
-        { text: 'Unreachable', value: 'Unreachable' },
+        { text: 'Connected', value: 'Connected', key: 'connected' },
+        { text: 'Enrolled', value: 'Enrolled', key: 'enrolled' },
+        { text: 'Pending', value: 'Pending', key: 'pending' },
+        { text: 'Failed', value: 'Failed', key: 'failed' },
+        { text: 'Unreachable', value: 'Unreachable', key: 'unreachable' },
       ],
       onFilter: (value, record) => record.status === value,
     },
@@ -229,33 +189,33 @@ const DeviceManagement = () => {
       dataIndex: 'architecture',
       key: 'architecture',
       filters: [
-        { text: 'arm64', value: 'arm64' },
-        { text: 'x86_64', value: 'x86_64' },
-        { text: 'riscv64', value: 'riscv64' },
+        { text: 'arm64', value: 'arm64', key: 'arm64' },
+        { text: 'x86_64', value: 'x86_64', key: 'x86_64' },
+        { text: 'riscv64', value: 'riscv64', key: 'riscv64' },
       ],
       onFilter: (value, record) => record.architecture === value,
     },
     {
       title: 'Device Type',
-      dataIndex: 'deviceType',
-      key: 'deviceType',
+      dataIndex: 'device_type',
+      key: 'device_type',
       filters: [
-        { text: 'MCU', value: 'MCU' },
-        { text: 'MPU', value: 'MPU' },
-        { text: 'RISC-V', value: 'RISC-V' },
+        { text: 'MCU', value: 'MCU', key: 'mcu' },
+        { text: 'MPU', value: 'MPU', key: 'mpu' },
+        { text: 'RISC-V', value: 'RISC-V', key: 'riscv' },
       ],
-      onFilter: (value, record) => record.deviceType === value,
+      onFilter: (value, record) => record.device_type === value,
     },
     {
       title: 'Gateway',
-      dataIndex: 'gateway',
-      key: 'gateway',
+      dataIndex: 'gateway_id',
+      key: 'gateway_id',
     },
     {
       title: 'Last Heartbeat',
-      dataIndex: 'lastHeartbeat',
-      key: 'lastHeartbeat',
-      render: (timestamp) => timestamp ? new Date(timestamp).toLocaleString() : 'Never',
+      dataIndex: 'last_heartbeat',
+      key: 'last_heartbeat',
+      render: (timestamp) => timestamp ? new Date(timestamp.secs_since_epoch * 1000).toLocaleString() : 'Never',
     },
     {
       title: 'Actions',
@@ -265,7 +225,7 @@ const DeviceManagement = () => {
       render: (_, record) => (
         <Space size="small">
           {record.status === 'Disconnected' && (
-            <Tooltip title="Enroll device in the system">
+            <Tooltip key="enroll" title="Enroll device in the system">
               <Button 
                 type="link" 
                 icon={<UserAddOutlined />}
@@ -277,7 +237,7 @@ const DeviceManagement = () => {
             </Tooltip>
           )}
           {record.status === 'Enrolled' && (
-            <Tooltip title="Connect device to gateway">
+            <Tooltip key="connect" title="Connect device to gateway">
               <Button 
                 type="link" 
                 icon={<LinkOutlined />}
@@ -289,6 +249,7 @@ const DeviceManagement = () => {
             </Tooltip>
           )}
           <Popconfirm
+            key="delete"
             title="Are you sure you want to delete this device?"
             onConfirm={() => handleDeleteDevice(record.id)}
             okText="Yes"
@@ -391,7 +352,7 @@ const DeviceManagement = () => {
         <Table
           columns={columns}
           dataSource={devices}
-          rowKey="id"
+          rowKey={(record) => record.device_id || record.id || Math.random()}
           loading={loading}
           pagination={{
             pageSize: 10,
@@ -400,7 +361,7 @@ const DeviceManagement = () => {
             showTotal: (total, range) =>
               `${range[0]}-${range[1]} of ${total} devices`,
           }}
-          scroll={{ x: 1000 }}
+          scroll={{ x: 'max-content' }}
           size="small"
         />
       </Card>
@@ -421,32 +382,19 @@ const DeviceManagement = () => {
         >
           <Form.Item
             name="name"
-            label={
-              <Space>
-                <span>Device Name</span>
-                <Tooltip title="Unique identifier for the device (e.g., mcu-board-1, riscv-board-2)">
-                  <QuestionCircleOutlined style={{ color: '#1890ff' }} />
-                </Tooltip>
-              </Space>
-            }
-            rules={[{ required: true, message: 'Please enter device name' }]}
+            label="Device Name (Optional)"
+            help="Leave empty for auto-generated name"
           >
-            <Input placeholder="Enter device name" />
+            <Input placeholder="Auto-generated if empty" />
           </Form.Item>
 
           <Form.Item
             name="architecture"
-            label={
-              <Space>
-                <span>Architecture</span>
-                <Tooltip title="CPU architecture of the device (ARM64, x86_64, RISC-V 64)">
-                  <QuestionCircleOutlined style={{ color: '#1890ff' }} />
-                </Tooltip>
-              </Space>
-            }
-            rules={[{ required: true, message: 'Please select architecture' }]}
+            label="Architecture (Optional)"
+            help="Leave empty for default RISC-V 32"
           >
-            <Select placeholder="Select architecture">
+            <Select placeholder="Default: RISC-V 32" allowClear>
+              <Option value="riscv32">RISC-V 32</Option>
               <Option value="arm64">ARM64</Option>
               <Option value="x86_64">x86_64</Option>
               <Option value="riscv64">RISC-V 64</Option>
@@ -455,17 +403,10 @@ const DeviceManagement = () => {
 
           <Form.Item
             name="deviceType"
-            label={
-              <Space>
-                <span>Device Type</span>
-                <Tooltip title="Type of device (MCU: Microcontroller, MPU: Microprocessor, RISC-V: RISC-V processor)">
-                  <QuestionCircleOutlined style={{ color: '#1890ff' }} />
-                </Tooltip>
-              </Space>
-            }
-            rules={[{ required: true, message: 'Please select device type' }]}
+            label="Device Type (Optional)"
+            help="Leave empty for default MCU"
           >
-            <Select placeholder="Select device type">
+            <Select placeholder="Default: MCU" allowClear>
               <Option value="MCU">MCU</Option>
               <Option value="MPU">MPU</Option>
               <Option value="RISC-V">RISC-V</Option>
@@ -474,17 +415,10 @@ const DeviceManagement = () => {
 
           <Form.Item
             name="gatewayEndpoint"
-            label={
-              <Space>
-                <span>Gateway Endpoint</span>
-                <Tooltip title="Network endpoint where the device will connect to the gateway">
-                  <QuestionCircleOutlined style={{ color: '#1890ff' }} />
-                </Tooltip>
-              </Space>
-            }
-            rules={[{ required: true, message: 'Please enter gateway endpoint' }]}
+            label="Gateway Endpoint (Optional)"
+            help="Leave empty for auto-generated endpoint"
           >
-            <Input placeholder="gateway-1.wasmbed.svc.cluster.local:30430" />
+            <Input placeholder="Auto-generated if empty" />
           </Form.Item>
 
           <Form.Item>

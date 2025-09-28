@@ -36,6 +36,7 @@ import {
   QuestionCircleOutlined,
 } from '@ant-design/icons';
 import GuidedDeployment from './GuidedDeployment';
+import { apiGet, apiPost, apiDelete } from '../utils/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
@@ -58,17 +59,11 @@ const ApplicationManagement = () => {
   const fetchApplications = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/v1/applications');
-      if (response.ok) {
-        const data = await response.json();
-        let applicationList = data.applications || [];
-        
-        // Use real data from backend - no mock data
-        
-        setApplications(applicationList);
-      } else {
-        console.error('Failed to fetch applications:', response.status);
-      }
+      const data = await apiGet('/api/v1/applications', 10000);
+      let applicationList = data.applications || [];
+      
+      // Use real data from backend - no mock data
+      setApplications(applicationList);
     } catch (error) {
       console.error('Error fetching applications:', error);
     } finally {
@@ -78,13 +73,8 @@ const ApplicationManagement = () => {
 
   const fetchDevices = async () => {
     try {
-      const response = await fetch('/api/v1/devices');
-      if (response.ok) {
-        const data = await response.json();
-        setDevices(data.devices || []);
-      } else {
-        console.error('Failed to fetch devices:', response.status);
-      }
+      const data = await apiGet('/api/v1/devices', 10000);
+      setDevices(data.devices || []);
     } catch (error) {
       console.error('Error fetching devices:', error);
     }
@@ -92,20 +82,18 @@ const ApplicationManagement = () => {
 
   const handleCreateApplication = async (values) => {
     try {
-      // Create new application with unique ID
-      const newApplication = {
-        id: Date.now(), // Simple unique ID
+      const response = await apiPost('/api/v1/applications', {
         name: values.name,
-        status: 'Pending',
         description: values.description,
         targetDevices: values.targetDevices || [],
-        createdAt: new Date().toISOString()
-      };
+        wasmBytes: values.wasmBytes || 'dGVzdA==' // Base64 encoded "test"
+      }, 15000);
       
-      // Add to applications list
-      setApplications(prevApplications => [...prevApplications, newApplication]);
+      // Refresh the applications list to get the updated data
+      const updatedApplications = await apiGet('/api/v1/applications');
+      setApplications(updatedApplications.applications || []);
       
-      console.log('Application created successfully:', newApplication);
+      console.log('Application created successfully:', response.message);
       setModalVisible(false);
       form.resetFields();
     } catch (error) {
@@ -115,7 +103,7 @@ const ApplicationManagement = () => {
 
   const handleDeleteApplication = async (appId) => {
     try {
-      // Remove application from list
+      await apiDelete(`/api/v1/applications/${appId}`, 10000);
       setApplications(prevApplications => prevApplications.filter(app => app.id !== appId));
       console.log('Application deleted successfully:', appId);
     } catch (error) {
@@ -134,32 +122,37 @@ const ApplicationManagement = () => {
         )
       );
       
-      // Simulate deployment process
-      setTimeout(() => {
-        setApplications(prevApplications => 
-          prevApplications.map(app => 
-            app.id === appId 
-              ? { ...app, status: 'Running' }
-              : app
-          )
-        );
-      }, 2000);
+      // Deploy application via API
+      await apiPost(`/api/v1/applications/${appId}/deploy`, {}, 20000);
       
-      // Check if there are connected devices
-      const connectedDevices = devices.filter(device => device.status === 'Connected');
-      if (connectedDevices.length === 0) {
-        console.log('No connected devices available for deployment');
-        return;
-      }
+      // Update status to Running
+      setApplications(prevApplications => 
+        prevApplications.map(app => 
+          app.id === appId 
+            ? { ...app, status: 'Running' }
+            : app
+        )
+      );
       
       console.log('Application deployment started:', appId);
     } catch (error) {
       console.error('Error deploying application:', error);
+      // Revert status on error
+      setApplications(prevApplications => 
+        prevApplications.map(app => 
+          app.id === appId 
+            ? { ...app, status: 'Failed' }
+            : app
+        )
+      );
     }
   };
 
   const handleStopApplication = async (appId) => {
     try {
+      // Stop application via API
+      await apiPost(`/api/v1/applications/${appId}/stop`, {}, 15000);
+      
       // Update application status to Stopped
       setApplications(prevApplications => 
         prevApplications.map(app => 
@@ -198,7 +191,7 @@ const ApplicationManagement = () => {
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
-      sorter: (a, b) => a.name.localeCompare(b.name),
+      sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
     },
     {
       title: 'Status',
@@ -206,12 +199,12 @@ const ApplicationManagement = () => {
       key: 'status',
       render: (status) => getStatusTag(status),
       filters: [
-        { text: 'Running', value: 'Running' },
-        { text: 'Deploying', value: 'Deploying' },
-        { text: 'Pending', value: 'Pending' },
-        { text: 'Failed', value: 'Failed' },
-        { text: 'Stopped', value: 'Stopped' },
-        { text: 'PartiallyRunning', value: 'PartiallyRunning' },
+        { text: 'Running', value: 'Running', key: 'running' },
+        { text: 'Deploying', value: 'Deploying', key: 'deploying' },
+        { text: 'Pending', value: 'Pending', key: 'pending' },
+        { text: 'Failed', value: 'Failed', key: 'failed' },
+        { text: 'Stopped', value: 'Stopped', key: 'stopped' },
+        { text: 'PartiallyRunning', value: 'PartiallyRunning', key: 'partially-running' },
       ],
       onFilter: (value, record) => record.status === value,
     },
@@ -274,6 +267,7 @@ const ApplicationManagement = () => {
         <Space size="small">
           {record.status === 'Pending' || record.status === 'Stopped' ? (
             <Button
+              key="deploy"
               type="link"
               icon={<PlayCircleOutlined />}
               onClick={() => handleDeployApplication(record.id)}
@@ -283,6 +277,7 @@ const ApplicationManagement = () => {
             </Button>
           ) : record.status === 'Running' ? (
             <Button
+              key="stop"
               type="link"
               icon={<PauseCircleOutlined />}
               onClick={() => handleStopApplication(record.id)}
@@ -292,6 +287,7 @@ const ApplicationManagement = () => {
             </Button>
           ) : null}
           <Popconfirm
+            key="delete"
             title="Are you sure you want to delete this application?"
             onConfirm={() => handleDeleteApplication(record.id)}
             okText="Yes"
@@ -472,7 +468,7 @@ const ApplicationManagement = () => {
         <Table
           columns={columns}
           dataSource={applications}
-          rowKey="id"
+          rowKey="app_id"
           loading={loading}
           pagination={{
             pageSize: 10,
@@ -481,7 +477,7 @@ const ApplicationManagement = () => {
             showTotal: (total, range) =>
               `${range[0]}-${range[1]} of ${total} applications`,
           }}
-          scroll={{ x: 1200 }}
+          scroll={{ x: 'max-content' }}
           size="small"
           expandable={{
             expandedRowRender: (record) => (
@@ -547,8 +543,8 @@ const ApplicationManagement = () => {
             >
               <Option value="all_devices">All Devices</Option>
               {devices.map((device) => (
-                <Option key={device.id} value={device.name}>
-                  {device.name} ({device.architecture})
+                <Option key={device.device_id} value={device.device_id}>
+                  {device.device_id} ({device.architecture})
                 </Option>
               ))}
             </Select>
