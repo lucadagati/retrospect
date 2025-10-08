@@ -386,6 +386,7 @@ async fn create_device_crd(
     // Create Device spec
     let device_spec = wasmbed_k8s_resource::DeviceSpec {
         public_key: public_key_b64,
+        mcu_type: Some("mps2-an385".to_string()),
     };
     
     // Create Device status

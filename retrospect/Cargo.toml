@@ -24,6 +24,7 @@ members = [
     "crates/wasmbed-qemu-serial-bridge",
     "crates/wasmbed-config",
     "crates/wasmbed-config-manager",
+    "firmware",
 ]
 
 [workspace.package]

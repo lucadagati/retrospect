@@ -48,9 +48,6 @@ pub enum WasmRuntimeError {
     #[error("Configuration error: {0}")]
     ConfigError(String),
 
-    #[error("Device-specific error: {0}")]
-    DeviceError(String),
-
     #[error("Serialization error: {0}")]
     SerializationError(String),
 

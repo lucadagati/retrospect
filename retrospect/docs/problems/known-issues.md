@@ -10,7 +10,7 @@ The Wasmbed Platform has solid architecture but **critical firmware implementati
 
 **Problem**: The system lacks real ARM Cortex-M firmware for QEMU devices.
 
-**Impact**:
+**Impact**: 
 - QEMU devices cannot boot properly
 - No real device communication
 - WASM applications cannot execute on devices

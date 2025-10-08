@@ -364,10 +364,6 @@ impl QemuManager {
             format!("tcp:{}:server,nowait", device.endpoint), // TCP serial bridge
             "-monitor".to_string(),
             format!("tcp:{}:server,nowait", device.endpoint.replace(":", ":1")), // QEMU monitor
-            "-kernel".to_string(),
-            "/dev/zero".to_string(), // Use /dev/zero as kernel (minimal approach)
-            "-dtb".to_string(),
-            "/dev/null".to_string(), // Device tree (optional)
         ];
 
         // Add networking for supported MCU types
@@ -389,9 +385,9 @@ impl QemuManager {
         match device.mcu_type {
             McuType::Mps2An385 => {
                 args.push("-kernel".to_string());
-                args.push("wasmbed-firmware-mps2-an385.bin".to_string());
+                args.push("/home/lucadag/8_10_25_retrospect/retrospect/firmware/build/wasmbed-firmware-mps2-an385.bin".to_string());
                 args.push("-dtb".to_string());
-                args.push("mps2-an385.dtb".to_string());
+                args.push("/home/lucadag/8_10_25_retrospect/retrospect/firmware/build/mps2-an385.dtb".to_string());
             }
             McuType::Mps2An386 => {
                 args.push("-kernel".to_string());

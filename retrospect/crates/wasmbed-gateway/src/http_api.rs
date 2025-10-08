@@ -397,20 +397,44 @@ impl HttpApiServer {
 
     /// Send message to a specific device via TLS
     async fn send_message_to_device(&self, device_id: &str, message: &ServerMessage) -> Result<()> {
-        // This would implement the actual TLS communication
-        // For now, we'll simulate the communication
         info!("Sending message to device {}: {:?}", device_id, message);
         
-        // In a real implementation, this would:
-        // 1. Get the TLS connection for the device
-        // 2. Serialize the message to CBOR
-        // 3. Send it over the TLS connection
-        // 4. Wait for acknowledgment
+        let connections = self.device_connections.read().await;
         
-        // Simulate network delay
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        
-        Ok(())
+        if let Some(connection) = connections.get(device_id) {
+            if let Some(tls_stream) = &connection.tls_connection {
+                let mut stream = tls_stream.write().await;
+                
+                // Serialize message to CBOR
+                let cbor_data = minicbor::to_vec(&message)?;
+                
+                // Create message wrapper
+                let cbor_message = CborTlsMessage {
+                    message_type: "server_message".to_string(),
+                    data: cbor_data,
+                    signature: vec![], // In real implementation, sign the message
+                    timestamp: SystemTime::now(),
+                };
+                
+                // Serialize wrapper to CBOR
+                let message_data = serde_cbor::to_vec(&cbor_message)?;
+                
+                // Send length prefix + data
+                let length = message_data.len() as u32;
+                let length_bytes = length.to_be_bytes();
+                
+                stream.write_all(&length_bytes).await?;
+                stream.write_all(&message_data).await?;
+                stream.flush().await?;
+                
+                debug!("Sent CBOR/TLS message to device {}", device_id);
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("No TLS connection for device {}", device_id))
+            }
+        } else {
+            Err(anyhow::anyhow!("Device {} not found", device_id))
+        }
     }
 }
 
@@ -1358,6 +1382,7 @@ async fn create_device(
         },
         spec: wasmbed_k8s_resource::DeviceSpec {
             public_key: public_key.clone(),
+            mcu_type: Some("mps2-an385".to_string()),
         },
         status: Some(wasmbed_k8s_resource::DeviceStatus {
             phase: wasmbed_k8s_resource::DevicePhase::Pending,

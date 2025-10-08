@@ -1,0 +1,50 @@
+[package]
+name = "wasmbed-firmware"
+version = "0.1.0"
+edition = "2021"
+authors = ["Wasmbed contributors"]
+license = "AGPL-3.0"
+description = "Complete ARM Cortex-M firmware for Wasmbed platform"
+
+[[bin]]
+name = "wasmbed-firmware"
+path = "src/main.rs"
+
+[dependencies]
+# Core embedded dependencies
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+embedded-hal = "1.0"
+nb = "1.0"
+heapless = "0.8"
+
+# Error handling
+anyhow = { version = "1.0", default-features = false }
+
+# Logging
+log = "0.4"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"], default-features = false }
+
+# Crypto
+sha2 = { version = "0.10", default-features = false }
+
+[features]
+default = []
+std = []
+
+# Linker script
+[target.thumbv7m-none-eabi]
+rustflags = ["-C", "link-arg=-Tmemory.x"]
+
+[profile.release]
+opt-level = "z"  # Optimize for size
+lto = true       # Link-time optimization
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = "s"  # Optimize for size in debug
+panic = "abort"

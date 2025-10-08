@@ -271,8 +271,8 @@ impl DeviceController {
             },
             spec: Some(k8s_openapi::api::core::v1::PodSpec {
                 containers: vec![k8s_openapi::api::core::v1::Container {
-                    name: "device-proxy".to_string(),
-                    image: Some("nginx:alpine".to_string()), // Using nginx as a proxy for QEMU devices
+                    name: "qemu-device".to_string(),
+                    image: Some("qemu/qemu:latest".to_string()),
                     env: Some(vec![
                         k8s_openapi::api::core::v1::EnvVar {
                             name: "DEVICE_NAME".to_string(),

@@ -1,0 +1,78 @@
+/dts-v1/;
+/ {
+    compatible = "arm,mps2-an385";
+    model = "ARM MPS2-AN385";
+    #address-cells = <1>;
+    #size-cells = <1>;
+    
+    memory@20000000 {
+        device_type = "memory";
+        reg = <0x20000000 0x10000000>;
+    };
+    
+    uart@40004000 {
+        compatible = "arm,pl011";
+        reg = <0x40004000 0x1000>;
+        interrupts = <0 1 4>;
+        clock-frequency = <24000000>;
+        status = "okay";
+    };
+    
+    uart@40005000 {
+        compatible = "arm,pl011";
+        reg = <0x40005000 0x1000>;
+        interrupts = <0 2 4>;
+        clock-frequency = <24000000>;
+        status = "okay";
+    };
+    
+    timer@40000000 {
+        compatible = "arm,sp804";
+        reg = <0x40000000 0x1000>;
+        interrupts = <0 0 4>;
+        clocks = <&refclk>;
+        status = "okay";
+    };
+    
+    timer@40001000 {
+        compatible = "arm,sp804";
+        reg = <0x40001000 0x1000>;
+        interrupts = <0 1 4>;
+        clocks = <&refclk>;
+        status = "okay";
+    };
+    
+    ethernet@40020000 {
+        compatible = "smsc,lan9118";
+        reg = <0x40020000 0x1000>;
+        interrupts = <0 3 4>;
+        phy-mode = "mii";
+        status = "okay";
+    };
+    
+    gpio@40010000 {
+        compatible = "arm,pl061";
+        reg = <0x40010000 0x1000>;
+        interrupts = <0 4 4>;
+        gpio-controller;
+        #gpio-cells = <2>;
+        status = "okay";
+    };
+    
+    refclk: refclk {
+        compatible = "fixed-clock";
+        #clock-cells = <0>;
+        clock-frequency = <24000000>;
+    };
+    
+    chosen {
+        bootargs = "console=ttyAMA0,115200";
+        stdout-path = "serial0:115200n8";
+    };
+    
+    aliases {
+        serial0 = &uart0;
+        serial1 = &uart1;
+    };
+};
+
