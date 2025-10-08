@@ -1,0 +1,3 @@
+# Creiamo un firmware minimo che fa solo un loop infinito
+# Questo è un placeholder - in un sistema reale avremmo un firmware completo
+# Per ora creiamo un file binario vuoto che QEMU può caricare

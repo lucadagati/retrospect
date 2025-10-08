@@ -1,0 +1,123 @@
+{
+  "test-device-form": {
+    "id": "test-device-form",
+    "name": "test-device-form",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "Mps2An385",
+    "status": "Stopped",
+    "process_id": null,
+    "endpoint": "127.0.0.1:30466",
+    "wasm_runtime": null
+  },
+  "test-device-fixed": {
+    "id": "test-device-fixed",
+    "name": "test-device-fixed",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "Mps2An385",
+    "status": "Stopped",
+    "process_id": null,
+    "endpoint": "127.0.0.1:30467",
+    "wasm_runtime": null
+  },
+  "device-gateway-1-1-2": {
+    "id": "device-gateway-1-1-2",
+    "name": "device-gateway-1-1-2",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "Mps2An385",
+    "status": "Stopped",
+    "process_id": null,
+    "endpoint": "127.0.0.1:30470",
+    "wasm_runtime": null
+  },
+  "test-fixed-device": {
+    "id": "test-fixed-device",
+    "name": "test-fixed-device",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "Mps2An385",
+    "status": "Stopped",
+    "process_id": null,
+    "endpoint": "127.0.0.1:30467",
+    "wasm_runtime": null
+  },
+  "test-device-pippo": {
+    "id": "test-device-pippo",
+    "name": "test-device-pippo",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "Mps2An500",
+    "status": "Stopped",
+    "process_id": null,
+    "endpoint": "127.0.0.1:30467",
+    "wasm_runtime": null
+  },
+  "device-gateway-1-1": {
+    "id": "device-gateway-1-1",
+    "name": "device-gateway-1-1",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "Mps2An385",
+    "status": "Stopped",
+    "process_id": null,
+    "endpoint": "127.0.0.1:30468",
+    "wasm_runtime": null
+  },
+  "test-ui-device": {
+    "id": "test-ui-device",
+    "name": "test-ui-device",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "Mps2An385",
+    "status": "Stopped",
+    "process_id": null,
+    "endpoint": "127.0.0.1:30464",
+    "wasm_runtime": null
+  },
+  "device-gateway-1-1-1": {
+    "id": "device-gateway-1-1-1",
+    "name": "device-gateway-1-1-1",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "Mps2An385",
+    "status": "Stopped",
+    "process_id": null,
+    "endpoint": "127.0.0.1:30470",
+    "wasm_runtime": null
+  },
+  "test-device": {
+    "id": "test-device",
+    "name": "test-device",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "Mps2An385",
+    "status": "Stopped",
+    "process_id": null,
+    "endpoint": "127.0.0.1:30461",
+    "wasm_runtime": null
+  },
+  "eewrw": {
+    "id": "eewrw",
+    "name": "eewrw",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "Mps2An385",
+    "status": "Stopped",
+    "process_id": null,
+    "endpoint": "127.0.0.1:30455",
+    "wasm_runtime": null
+  },
+  "test-device-maria": {
+    "id": "test-device-maria",
+    "name": "test-device-maria",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "Mps2An386",
+    "status": "Stopped",
+    "process_id": null,
+    "endpoint": "127.0.0.1:30467",
+    "wasm_runtime": null
+  }
+}

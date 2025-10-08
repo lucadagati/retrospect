@@ -1,0 +1,189 @@
+' SPDX-License-Identifier: CC-BY-4.0
+' Copyright © 2025 Wasmbed contributors
+
+@startuml
+title Application Deployment - Complete Workflow
+
+skinparam wrapMessageWidth 200
+skinparam sequenceMessageAlign center
+skinparam sequenceArrowThickness 2
+skinparam sequenceLifeLineBackgroundColor #E8F4FD
+skinparam sequenceActorBackgroundColor #D4E6F1
+skinparam sequenceParticipantBackgroundColor #F8F9FA
+
+actor "User" as USER #LightBlue
+participant "kubectl" as KUBECTL #LightGreen
+participant "Kubernetes API" as K8S_API #LightGray
+participant "Controller" as CONTROLLER #LightCyan
+participant "Gateway Server" as GATEWAY #LightCoral
+participant "Device Manager" as DEV_MGR #LightYellow
+participant "Application Manager" as APP_MGR #LightPink
+participant "WASM Runtime" as WASM_RT #LightSteelBlue
+participant "MCU Device" as MCU #LightBlue
+database "etcd" as ETCD #LightSteelBlue
+
+== Application Creation Phase ==
+
+USER -> KUBECTL : **Apply Application Manifest**
+note right : kubectl apply -f app.yaml\nApplication CRD manifest\nWASM bytecode (base64)\nTarget device selection
+
+KUBECTL -> K8S_API : **POST Application Resource**
+note right : POST /apis/wasmbed.github.io/v1alpha1/namespaces/wasmbed/applications\nValidate manifest\nCheck device availability\nStore resource
+
+K8S_API -> ETCD : **Store Application Resource**
+note right : Persist application resource\nGenerate resource version\nCreate watch events\nSet status: Pending
+
+ETCD -> K8S_API : **Application Created**
+note right : Resource stored successfully\nVersion: 1\nUID generated\nStatus: Pending
+
+K8S_API -> KUBECTL : **HTTP 201 Created**
+note right : Application resource created\nLocation header\nResource metadata
+
+== Controller Notification ==
+
+K8S_API -> CONTROLLER : **Watch Event: Application Added**
+note right : Event type: ADDED\nObject: Application resource\nNamespace: wasmbed\nResource version
+
+CONTROLLER -> CONTROLLER : **Reconcile Application**
+note right : Parse application resource\nValidate application spec\nCheck WASM bytecode\nFind target devices
+
+CONTROLLER -> K8S_API : **Query Target Devices**
+note right : GET /apis/wasmbed.github.io/v0/namespaces/wasmbed/devices\nFilter by device names\nCheck device status\nVerify device capabilities
+
+K8S_API -> ETCD : **Query Devices**
+note right : Search device resources\nFilter by labels/names\nCheck device status\nReturn matching devices
+
+ETCD -> K8S_API : **Return Device List**
+note right : List of matching devices\nDevice status: Connected\nDevice capabilities\nGateway assignments
+
+K8S_API -> CONTROLLER : **Device List Response**
+note right : HTTP 200 OK\nDevice resources\nStatus information\nGateway references
+
+== Device Selection and Validation ==
+
+CONTROLLER -> CONTROLLER : **Select Target Device**
+note right : Choose best available device\nCheck device capabilities\nVerify device status\nAssign gateway
+
+CONTROLLER -> K8S_API : **Update Application Status**
+note right : PATCH application resource\nStatus.phase: "Deploying"\nStatus.target_device: device-name\nStatus.gateway: gateway-pod-name
+
+K8S_API -> ETCD : **Update Application Status**
+note right : Update resource in etcd\nIncrement resource version\nGenerate watch events
+
+== Gateway Communication ==
+
+CONTROLLER -> GATEWAY : **Deployment Request**
+note right : HTTP POST /deploy\nDevice ID\nApplication ID\nWASM bytecode\nConfiguration parameters
+
+GATEWAY -> DEV_MGR : **Validate Device**
+note right : Check device connection\nVerify device capabilities\nValidate device status\nCheck resource limits
+
+DEV_MGR -> GATEWAY : **Device Valid**
+note right : Device is available\nCapabilities match\nResources sufficient\nReady for deployment
+
+GATEWAY -> APP_MGR : **Prepare Application**
+note right : Decode WASM bytecode\nValidate WASM format\nCheck memory requirements\nPrepare deployment package
+
+APP_MGR -> APP_MGR : **Validate WASM Module**
+note right : Parse WASM binary\nCheck function exports\nValidate memory layout\nVerify security constraints
+
+APP_MGR -> GATEWAY : **WASM Valid**
+note right : WASM module valid\nMemory requirements calculated\nSecurity checks passed\nReady for deployment
+
+== Device Communication ==
+
+GATEWAY -> MCU : **TLS Encrypted Deployment**
+note right : Encrypted deployment message\nDevice ID\nApplication ID\nWASM bytecode\nConfiguration
+
+MCU -> MCU : **Receive Deployment**
+note right : Decrypt deployment message\nValidate device ID\nCheck application ID\nPrepare WASM runtime
+
+MCU -> WASM_RT : **Load WASM Module**
+note right : Parse WASM binary\nInitialize module\nAllocate memory\nSet up execution context
+
+WASM_RT -> WASM_RT : **Initialize WASM Instance**
+note right : Create WASM instance\nSet up memory\nInitialize globals\nPrepare function table
+
+WASM_RT -> MCU : **WASM Loaded**
+note right : Module loaded successfully\nInstance created\nMemory allocated\nReady for execution
+
+MCU -> GATEWAY : **Deployment Success**
+note right : Encrypted success response\nApplication ID\nInstance ID\nStatus: Running\nMemory usage
+
+== Status Updates ==
+
+GATEWAY -> CONTROLLER : **Deployment Complete**
+note right : HTTP 200 OK\nDeployment successful\nApplication running\nDevice status updated
+
+CONTROLLER -> K8S_API : **Update Application Status**
+note right : PATCH application resource\nStatus.phase: "Running"\nStatus.instance_id: instance-id\nStatus.memory_usage: bytes\nStatus.started_at: timestamp
+
+K8S_API -> ETCD : **Update Application Status**
+note right : Update resource in etcd\nIncrement resource version\nGenerate watch events
+
+ETCD -> K8S_API : **Status Updated**
+note right : Resource updated successfully\nNew version generated\nWatch events created
+
+K8S_API -> CONTROLLER : **Update Confirmed**
+note right : HTTP 200 OK\nResource updated\nNew version\nStatus confirmed
+
+== Application Execution ==
+
+MCU -> WASM_RT : **Execute Application**
+note right : Call main function\nInitialize application\nStart execution loop\nMonitor performance
+
+WASM_RT -> WASM_RT : **Run Application Logic**
+note right : Execute WASM functions\nProcess input data\nGenerate output\nUpdate state
+
+WASM_RT -> MCU : **Application Running**
+note right : Application executing\nFunctions called\nMemory accessed\nPerformance metrics
+
+MCU -> GATEWAY : **Status Updates**
+note right : Periodic status reports\nPerformance metrics\nMemory usage\nError counts\nHealth status
+
+GATEWAY -> CONTROLLER : **Forward Status**
+note right : Relay status updates\nApplication metrics\nDevice health\nPerformance data
+
+CONTROLLER -> K8S_API : **Update Application Metrics**
+note right : PATCH application resource\nStatus.metrics: performance-data\nStatus.health: "healthy"\nStatus.last_activity: timestamp
+
+== Error Handling ==
+
+alt **Deployment Failure**
+    WASM_RT -> MCU : **Load Error**
+    note right : Invalid WASM format\nMemory allocation failed\nSecurity violation\nFunction not found
+    
+    MCU -> GATEWAY : **Deployment Error**
+    note right : Encrypted error response\nError code\nError message\nRetry information
+    
+    GATEWAY -> CONTROLLER : **Deployment Failed**
+    note right : HTTP 400 Bad Request\nError details\nFailure reason\nSuggested actions
+    
+    CONTROLLER -> K8S_API : **Update Application Status**
+    note right : PATCH application resource\nStatus.phase: "Failed"\nStatus.error: error-message\nStatus.retry_count: count
+end
+
+alt **Device Unavailable**
+    CONTROLLER -> CONTROLLER : **No Available Devices**
+    note right : No matching devices found\nAll devices busy\nDevice capabilities insufficient\nDevice offline
+    
+    CONTROLLER -> K8S_API : **Update Application Status**
+    note right : PATCH application resource\nStatus.phase: "Failed"\nStatus.error: "No available devices"\nStatus.retry_after: timestamp
+end
+
+alt **Application Crash**
+    WASM_RT -> MCU : **Application Error**
+    note right : Runtime error\nMemory access violation\nFunction call failed\nStack overflow
+    
+    MCU -> GATEWAY : **Error Report**
+    note right : Encrypted error report\nError details\nStack trace\nMemory state
+    
+    GATEWAY -> CONTROLLER : **Forward Error**
+    note right : Relay error report\nApplication crashed\nError details\nRecovery options
+    
+    CONTROLLER -> K8S_API : **Update Application Status**
+    note right : PATCH application resource\nStatus.phase: "Failed"\nStatus.error: error-details\nStatus.crash_count: count
+end
+
+@enduml
+

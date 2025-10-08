@@ -1,0 +1,29 @@
+# Multi-stage build for Wasmbed Device Runtime
+FROM rust:latest as builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy Cargo files
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ crates/
+
+# Build the device runtime
+RUN cargo build --release --bin wasmbed-device-runtime
+
+# Runtime stage
+FROM debian:testing-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the binary
+COPY --from=builder /app/target/release/wasmbed-device-runtime /usr/local/bin/
+
+# Expose port
+EXPOSE 8080
+
+# Run the device runtime
+CMD ["wasmbed-device-runtime"]

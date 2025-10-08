@@ -1,0 +1,76 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: devices.wasmbed.github.io
+spec:
+  group: wasmbed.github.io
+  versions:
+  - name: v0
+    served: true
+    storage: true
+    subresources:
+      status: {}
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              publicKey:
+                type: string
+              mcuType:
+                type: string
+                enum: ["Mps2An385", "Mps2An386", "Mps2An500", "Mps2An505", "Stm32Vldiscovery", "OlimexStm32H405"]
+                default: "Mps2An385"
+              deviceType:
+                type: string
+                enum: ["MCU", "SENSOR", "ACTUATOR"]
+                default: "MCU"
+              architecture:
+                type: string
+                enum: ["ARM_CORTEX_M", "ARM_CORTEX_A", "X86"]
+                default: "ARM_CORTEX_M"
+            required: ["publicKey"]
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum: ["Pending", "Enrolling", "Enrolled", "Connected", "Disconnected", "Unreachable"]
+                default: "Pending"
+              gateway:
+                type: object
+                nullable: true
+                properties:
+                  name:
+                    type: string
+                    nullable: true
+                  endpoint:
+                    type: string
+                    nullable: true
+                  connectedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+              connectedSince:
+                type: string
+                format: date-time
+                nullable: true
+              lastHeartbeat:
+                type: string
+                format: date-time
+                nullable: true
+              pairingMode:
+                type: boolean
+                default: false
+              pairing_mode:
+                type: boolean
+                default: false
+  scope: Namespaced
+  names:
+    plural: devices
+    singular: device
+    kind: Device
+    shortNames:
+    - dev
