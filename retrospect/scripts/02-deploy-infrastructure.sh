@@ -164,9 +164,60 @@ if ! kill -0 $INFRASTRUCTURE_PID 2>/dev/null; then
 fi
 print_status "SUCCESS" "Infrastructure Service started (PID: $INFRASTRUCTURE_PID)"
 
-# Skip Gateway startup - requires certificates and Kubernetes deployment
-print_status "INFO" "Skipping Gateway startup - requires certificates and Kubernetes deployment"
-print_status "WARNING" "Gateway will be deployed via Kubernetes with proper certificates"
+# Generate TLS certificates if they don't exist
+print_status "INFO" "Checking TLS certificates..."
+if [ ! -d "certs" ] || [ ! -f "certs/ca-cert.pem" ] || [ ! -f "certs/server-cert.pem" ] || [ ! -f "certs/server-key.pem" ]; then
+    print_status "INFO" "Generating TLS certificates..."
+    mkdir -p certs
+    
+    # Generate CA certificate
+    openssl genrsa -out certs/ca-key.pem 2048
+    openssl req -new -x509 -key certs/ca-key.pem -out certs/ca-cert.pem -days 365 -subj "/C=IT/ST=Italy/L=Italy/O=Wasmbed/OU=Development/CN=Wasmbed CA"
+    
+    # Generate server certificate
+    openssl genrsa -out certs/server-key.pem 2048
+    openssl req -new -key certs/server-key.pem -out certs/server.csr -subj "/C=IT/ST=Italy/L=Italy/O=Wasmbed/OU=Development/CN=localhost"
+    openssl x509 -req -in certs/server.csr -CA certs/ca-cert.pem -CAkey certs/ca-key.pem -CAcreateserial -out certs/server-cert.pem -days 365
+    rm certs/server.csr
+    
+    print_status "SUCCESS" "TLS certificates generated successfully"
+else
+    print_status "SUCCESS" "TLS certificates already exist"
+fi
+
+# Create Kubernetes secret for certificates
+print_status "INFO" "Creating Kubernetes secret for certificates..."
+kubectl create secret generic gateway-certificates \
+    --from-file=ca-cert.pem=certs/ca-cert.pem \
+    --from-file=ca-key.pem=certs/ca-key.pem \
+    --from-file=server-cert.pem=certs/server-cert.pem \
+    --from-file=server-key.pem=certs/server-key.pem \
+    -n wasmbed 2>/dev/null || {
+    print_status "WARNING" "Certificate secret already exists or failed to create"
+}
+
+# Start Gateway (non-blocking)
+print_status "INFO" "Starting Gateway..."
+nohup ./target/release/wasmbed-gateway \
+    --bind-addr 127.0.0.1:30452 \
+    --http-addr 127.0.0.1:30453 \
+    --private-key certs/server-key.pem \
+    --certificate certs/server-cert.pem \
+    --client-ca certs/ca-cert.pem \
+    --namespace wasmbed \
+    --pod-namespace wasmbed \
+    --pod-name gateway-1 > logs/gateway.log 2>&1 &
+GATEWAY_PID=$!
+echo $GATEWAY_PID > .gateway.pid
+disown
+sleep 3
+
+# Verify Gateway is running
+if ! kill -0 $GATEWAY_PID 2>/dev/null; then
+    print_status "ERROR" "Gateway service failed to start"
+    exit 1
+fi
+print_status "SUCCESS" "Gateway started (PID: $GATEWAY_PID)"
 
 # Start Controllers (non-blocking)
 print_status "INFO" "Starting Controllers..."
@@ -260,6 +311,14 @@ else
     print_status "WARNING" "Infrastructure API is not responding"
 fi
 
+# Test Gateway
+print_status "INFO" "Testing Gateway..."
+if curl -4 -s http://localhost:30453/health >/dev/null 2>&1; then
+    print_status "SUCCESS" "Gateway is responding"
+else
+    print_status "WARNING" "Gateway is not responding"
+fi
+
 # Test API Server
 print_status "INFO" "Testing API Server..."
 if curl -4 -s http://localhost:3001/health >/dev/null 2>&1; then
@@ -287,14 +346,16 @@ print_status "INFO" "=== DEPLOYMENT SUMMARY ==="
 print_status "INFO" "Infrastructure API: http://localhost:30460"
 print_status "INFO" "API Server: http://localhost:3001"
 print_status "INFO" "Dashboard UI: http://localhost:3000 (React frontend)"
-print_status "INFO" "Gateway: Will be deployed via Kubernetes with certificates"
+print_status "INFO" "Gateway HTTP API: http://localhost:30453"
+print_status "INFO" "Gateway TLS: 127.0.0.1:30452 (Device communication)"
 print_status "INFO" "Controllers: Running (Device, Application, Gateway)"
-print_status "INFO" "Next Steps: Use dashboard to configure gateways and devices"
+print_status "INFO" "TLS Certificates: Generated and configured"
+print_status "INFO" "Next Steps: Use dashboard to deploy WASM applications to devices"
 
 print_status "SUCCESS" "Wasmbed Platform deployed successfully!"
 
 # Save PIDs for cleanup
-echo "$INFRASTRUCTURE_PID $DEVICE_CONTROLLER_PID $APPLICATION_CONTROLLER_PID $GATEWAY_CONTROLLER_PID $API_SERVER_PID $DASHBOARD_PID" > .wasmbed-pids
+echo "$INFRASTRUCTURE_PID $GATEWAY_PID $DEVICE_CONTROLLER_PID $APPLICATION_CONTROLLER_PID $GATEWAY_CONTROLLER_PID $API_SERVER_PID $DASHBOARD_PID" > .wasmbed-pids
 
 print_status "INFO" "Use './scripts/05-stop-services.sh' to stop all services"
 print_status "INFO" "Use './scripts/00-cleanup-environment.sh' for complete cleanup"

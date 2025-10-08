@@ -64,6 +64,14 @@ else
     exit 1
 fi
 
+# Check Gateway
+if curl -4 -s http://localhost:30453/health >/dev/null 2>&1; then
+    print_status "SUCCESS" "Gateway is responding"
+else
+    print_status "ERROR" "Gateway is not responding. Please run deployment first."
+    exit 1
+fi
+
 # Check API Server
 if curl -4 -s http://localhost:3001/health >/dev/null 2>&1; then
     print_status "SUCCESS" "API Server is responding"

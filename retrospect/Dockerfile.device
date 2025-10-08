@@ -8,8 +8,8 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 
-# Build the device runtime
-RUN cargo build --release --bin wasmbed-device-runtime
+    # Build the device runtime (excluding firmware)
+    RUN cargo build --release --workspace --exclude wasmbed-firmware --bin wasmbed-device-runtime
 
 # Runtime stage
 FROM debian:testing-slim

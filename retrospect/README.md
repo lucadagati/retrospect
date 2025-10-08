@@ -11,7 +11,7 @@ cd retrospect
 ./scripts/06-master-control.sh deploy
 
 # Access dashboard
-open http://localhost:30470
+open http://localhost:3000
 ```
 
 ## 🎉 **IMPLEMENTATION COMPLETE**
@@ -259,10 +259,11 @@ sequenceDiagram
 
 | Service | Endpoint | Port | Description |
 |---------|----------|------|-------------|
-| **Dashboard UI** | http://localhost:30470 | 30470 | React-based web interface |
-| **Dashboard API** | http://localhost:30453 | 30453 | Backend API for dashboard |
-| **Infrastructure API** | http://localhost:30461 | 30461 | Infrastructure services |
-| **Gateway API** | http://localhost:30451 | 30451 | Gateway management |
+| **Dashboard UI** | http://localhost:3000 | 3000 | React-based web interface |
+| **API Server** | http://localhost:3001 | 3001 | Backend API for dashboard |
+| **Gateway HTTP API** | http://localhost:30453 | 30453 | Gateway management API |
+| **Gateway TLS** | 127.0.0.1:30452 | 30452 | Device communication (TLS) |
+| **Infrastructure API** | http://localhost:30460 | 30460 | Infrastructure services |
 
 ## 🛠️ Management Scripts
 

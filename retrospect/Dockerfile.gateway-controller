@@ -8,8 +8,8 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 
-# Build the gateway controller
-RUN cargo build --release --bin wasmbed-gateway-controller
+    # Build the gateway controller (excluding firmware)
+    RUN cargo build --release --workspace --exclude wasmbed-firmware --bin wasmbed-gateway-controller
 
 # Runtime stage
 FROM debian:testing-slim

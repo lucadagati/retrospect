@@ -40,9 +40,23 @@ const GuidedDeployment = ({ visible, onCancel, onSuccess }) => {
   const [loadingDevices, setLoadingDevices] = useState(false);
   const { message } = App.useApp();
 
-  // Load available devices when modal opens
+  // Load available devices when modal opens and reset state
   useEffect(() => {
     if (visible) {
+      // Reset all state when modal opens
+      setCurrentStep(0);
+      setSelectedTemplate(null);
+      setCompilationStatus('idle');
+      setAvailableDevices([]);
+      
+      // Reset form
+      form.resetFields();
+      form.setFieldsValue({
+        compiledWasm: null
+      });
+      
+      console.log('Modal opened - all state reset');
+      
       loadAvailableDevices();
     }
   }, [visible]);
@@ -189,18 +203,42 @@ fn main() {
   const handleTemplateSelect = (templateId) => {
     const template = testApplications.find(t => t.id === templateId);
     setSelectedTemplate(template);
+    
+    // Reset compilation status when changing template
+    setCompilationStatus('idle');
+    
+    // Reset form values and clear compiled WASM
     form.setFieldsValue({
       name: template.name.toLowerCase().replace(/\s+/g, '-'),
       description: template.description,
-      language: template.language
+      language: template.language,
+      compiledWasm: null, // Clear any previously compiled WASM
+      targetDevices: [] // Clear target devices
     });
+    
+    console.log('Template selected:', template.name, '- Compilation status reset');
   };
 
   const handleCompile = async () => {
     setCompilationStatus('compiling');
     
     try {
-      const code = form.getFieldValue('code') || selectedTemplate?.code || '';
+      const code = selectedTemplate?.code || '';
+      
+      if (!code) {
+        setCompilationStatus('error');
+        message.error('No code to compile. Please select a template first.');
+        return;
+      }
+      
+      if (!selectedTemplate) {
+        setCompilationStatus('error');
+        message.error('No template selected. Please go back and select a template.');
+        return;
+      }
+      
+      console.log('Compiling template:', selectedTemplate.name);
+      console.log('Code length:', code.length);
       
       const response = await fetch('/api/v1/compile', {
         method: 'POST',
@@ -218,15 +256,22 @@ fn main() {
       if (result.success) {
         setCompilationStatus('success');
         message.success(`Code compiled successfully! WASM size: ${result.size} bytes`);
+        
         // Store the compiled WASM bytes for deployment
         form.setFieldsValue({ compiledWasm: result.wasmBytes });
+        
+        console.log('WASM compiled and stored:', result.wasmBytes ? 'YES' : 'NO');
+        console.log('WASM size:', result.size, 'bytes');
+        console.log('WASM length:', result.wasmBytes ? result.wasmBytes.length : 0);
       } else {
         setCompilationStatus('error');
         message.error(`Compilation failed: ${result.error}`);
+        console.error('Compilation failed:', result.error);
       }
     } catch (error) {
       setCompilationStatus('error');
       message.error(`Compilation failed: ${error.message}`);
+      console.error('Compilation error:', error);
     }
   };
 
@@ -235,8 +280,26 @@ fn main() {
       // Get compiled WASM bytes
       const compiledWasm = values.compiledWasm;
       
+      console.log('=== DEPLOYMENT DEBUG ===');
+      console.log('Deployment values:', values);
+      console.log('Compiled WASM present:', compiledWasm ? 'YES' : 'NO');
+      console.log('Compiled WASM length:', compiledWasm ? compiledWasm.length : 0);
+      console.log('Selected template:', selectedTemplate?.name);
+      console.log('Compilation status:', compilationStatus);
+      
+      // Double-check compilation status
+      if (compilationStatus !== 'success') {
+        message.error('Compilation not completed successfully. Please compile your code first.');
+        return;
+      }
+      
       if (!compiledWasm) {
         message.error('No compiled WASM found. Please compile your code first.');
+        return;
+      }
+
+      if (!selectedTemplate) {
+        message.error('No template selected. Please go back and select a template.');
         return;
       }
 
@@ -249,6 +312,9 @@ fn main() {
         wasmBytes: compiledWasm,
         targetDevices: values.targetDevices || []
       };
+
+      console.log('Creating application:', application.name);
+      console.log('Target devices:', application.targetDevices);
 
       // Deploy to API server
       const response = await fetch('/api/v1/applications', {
@@ -267,9 +333,11 @@ fn main() {
         onCancel();
       } else {
         message.error(`Deployment failed: ${result.message || 'Unknown error'}`);
+        console.error('Deployment failed:', result);
       }
     } catch (error) {
       message.error(`Deployment failed: ${error.message}`);
+      console.error('Deployment error:', error);
     }
   };
 
@@ -332,7 +400,8 @@ fn main() {
               initialValues={{
                 name: selectedTemplate?.name.toLowerCase().replace(/\s+/g, '-'),
                 description: selectedTemplate?.description,
-                language: selectedTemplate?.language
+                language: selectedTemplate?.language,
+                compiledWasm: null
               }}
             >
               <Row gutter={16}>
@@ -396,6 +465,11 @@ fn main() {
                     </Option>
                   )}
                 </Select>
+              </Form.Item>
+              
+              {/* Hidden field for compiled WASM */}
+              <Form.Item name="compiledWasm" style={{ display: 'none' }}>
+                <Input />
               </Form.Item>
             </Form>
           </div>
@@ -471,9 +545,13 @@ fn main() {
             </Paragraph>
             
             <Alert
-              message="Ready to Deploy"
-              description={`Application "${form.getFieldValue('name')}" is ready to be deployed to the selected devices.`}
-              type="success"
+              message={compilationStatus === 'success' ? "Ready to Deploy" : "Compilation Required"}
+              description={
+                compilationStatus === 'success' 
+                  ? `Application "${form.getFieldValue('name')}" is ready to be deployed to the selected devices.`
+                  : `Please complete the compilation step first. Current status: ${compilationStatus}`
+              }
+              type={compilationStatus === 'success' ? "success" : "warning"}
               showIcon
               style={{ marginBottom: '24px' }}
             />
@@ -539,10 +617,26 @@ fn main() {
       message.warning('Please complete compilation first');
       return;
     }
+    
+    // If going to step 2 (compile), reset compilation status if no WASM is stored
+    if (currentStep === 1 && currentStep + 1 === 2) {
+      const compiledWasm = form.getFieldValue('compiledWasm');
+      if (!compiledWasm) {
+        setCompilationStatus('idle');
+        console.log('Going to compile step - resetting status to idle');
+      }
+    }
+    
     setCurrentStep(currentStep + 1);
   };
 
   const handlePrev = () => {
+    // If going back from compile step, reset compilation status
+    if (currentStep === 2) {
+      setCompilationStatus('idle');
+      console.log('Going back from compile step - resetting status to idle');
+    }
+    
     setCurrentStep(currentStep - 1);
   };
 

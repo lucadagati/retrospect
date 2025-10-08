@@ -299,7 +299,26 @@ impl GatewayController {
                     spec: Some(k8s_openapi::api::core::v1::PodSpec {
                         containers: vec![k8s_openapi::api::core::v1::Container {
                             name: "gateway".to_string(),
-                            image: Some("nginx:alpine".to_string()), // Using nginx for testing
+                            image: Some("wasmbed/gateway:latest".to_string()),
+                            command: Some(vec![
+                                "./wasmbed-gateway".to_string(),
+                                "--bind-addr".to_string(),
+                                format!("0.0.0.0:{}", 8443),
+                                "--http-addr".to_string(),
+                                "0.0.0.0:8080".to_string(),
+                                "--private-key".to_string(),
+                                "/certs/server-key.pem".to_string(),
+                                "--certificate".to_string(),
+                                "/certs/server-cert.pem".to_string(),
+                                "--client-ca".to_string(),
+                                "/certs/ca-cert.pem".to_string(),
+                                "--namespace".to_string(),
+                                "wasmbed".to_string(),
+                                "--pod-namespace".to_string(),
+                                "wasmbed".to_string(),
+                                "--pod-name".to_string(),
+                                gateway.name_any(),
+                            ]),
                             ports: Some(vec![
                                 k8s_openapi::api::core::v1::ContainerPort {
                                     container_port: 8080,
@@ -324,8 +343,26 @@ impl GatewayController {
                                     ..Default::default()
                                 },
                             ]),
+                            volume_mounts: Some(vec![
+                                k8s_openapi::api::core::v1::VolumeMount {
+                                    name: "certificates".to_string(),
+                                    mount_path: "/certs".to_string(),
+                                    read_only: Some(true),
+                                    ..Default::default()
+                                },
+                            ]),
                             ..Default::default()
                         }],
+                        volumes: Some(vec![
+                            k8s_openapi::api::core::v1::Volume {
+                                name: "certificates".to_string(),
+                                secret: Some(k8s_openapi::api::core::v1::SecretVolumeSource {
+                                    secret_name: Some("gateway-certificates".to_string()),
+                                    ..Default::default()
+                                }),
+                                ..Default::default()
+                            },
+                        ]),
                         ..Default::default()
                     }),
                 },

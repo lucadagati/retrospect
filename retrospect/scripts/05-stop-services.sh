@@ -40,7 +40,7 @@ print_status "INFO" "Stopping Wasmbed Platform services..."
 print_status "INFO" "Stopping services using PID files..."
 
 # List of services to stop
-services=("infrastructure" "device-controller" "application-controller" "gateway-controller" "api-server" "dashboard" "multi-gateway")
+services=("infrastructure" "gateway" "device-controller" "application-controller" "gateway-controller" "api-server" "dashboard" "multi-gateway")
 
 for service in "${services[@]}"; do
     pid_file=".${service}.pid"

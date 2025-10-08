@@ -71,7 +71,8 @@ This directory contains all the scripts needed to deploy, manage, and test the W
 2. **Application Deployment Workflow**
    - Creates application via Kubernetes CRD
    - Application Controller processes the CRD
-   - Application moves to "Deploying" status
+   - Gateway receives deployment commands
+   - WASM applications deployed to connected devices
    - API reflects real application state
 
 3. **System Monitoring Workflow**
@@ -107,6 +108,8 @@ After deployment, these endpoints will be available:
 | Infrastructure API | http://localhost:30460 | Core infrastructure services |
 | API Server (Backend) | http://localhost:3001 | REST API for dashboard |
 | Dashboard UI (Frontend) | http://localhost:3000 | React web interface |
+| Gateway HTTP API | http://localhost:30453 | Gateway management API |
+| Gateway TLS | 127.0.0.1:30452 | Device communication (TLS) |
 | Kubernetes API | `kubectl cluster-info` | Kubernetes cluster |
 
 ## 🔧 Management Commands
@@ -125,6 +128,7 @@ After deployment, these endpoints will be available:
 tail -f device-controller.log
 tail -f application-controller.log
 tail -f gateway-controller.log
+tail -f gateway.log
 tail -f api-server.log
 tail -f infrastructure.log
 ```
