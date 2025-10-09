@@ -18,7 +18,6 @@ members = [
     "crates/wasmbed-gateway-controller",
     "crates/wasmbed-device-runtime",
     "crates/wasmbed-infrastructure",
-    "firmware",
     "crates/wasmbed-api-server",
     "crates/wasmbed-qemu-manager",
     "crates/wasmbed-qemu-deployment",
@@ -80,15 +79,3 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
-
-# Firmware-specific profiles
-[profile.firmware-release]
-inherits = "release"
-opt-level = "z"  # Optimize for size
-lto = true       # Link-time optimization
-codegen-units = 1
-strip = true
-
-[profile.firmware-dev]
-inherits = "dev"
-opt-level = "s"  # Optimize for size in debug

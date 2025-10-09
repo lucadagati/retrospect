@@ -1,48 +1,7 @@
 // TLS client module
 use heapless::{String, Vec};
 use log::info;
-use embedded_tls::*;
-use rand_core::{RngCore, CryptoRng};
-
-// Simple RNG for embedded TLS
-#[derive(Clone)]
-pub struct SimpleRng {
-    state: u64,
-}
-
-impl SimpleRng {
-    pub fn new() -> Self {
-        Self { state: 0x123456789ABCDEF0 }
-    }
-}
-
-impl RngCore for SimpleRng {
-    fn next_u32(&mut self) -> u32 {
-        self.state = self.state.wrapping_mul(1103515245).wrapping_add(12345);
-        (self.state >> 16) as u32
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        let high = self.next_u32() as u64;
-        let low = self.next_u32() as u64;
-        (high << 32) | low
-    }
-
-    fn fill_bytes(&mut self, dest: &mut [u8]) {
-        for chunk in dest.chunks_mut(4) {
-            let bytes = self.next_u32().to_le_bytes();
-            let (head, _) = bytes.split_at(chunk.len());
-            chunk.copy_from_slice(head);
-        }
-    }
-
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
-        self.fill_bytes(dest);
-        Ok(())
-    }
-}
-
-impl CryptoRng for SimpleRng {}
+use core::str::FromStr;
 
 pub enum Message {
     DeployApplication { app_id: String<32>, bytecode: Vec<u8, 1024> },
@@ -68,25 +27,11 @@ impl TlsClient {
 
     pub fn connect(&mut self, gateway_endpoint: &str, device_id: &str) -> Result<(), &'static str> {
         info!("Connecting to gateway: {}", gateway_endpoint);
-        
-        // Store connection info
+        // Simulate TLS handshake
+        self.connected = true;
         self.gateway_endpoint.push_str(gateway_endpoint).map_err(|_| "Gateway endpoint too long")?;
         self.device_id.push_str(device_id).map_err(|_| "Device ID too long")?;
-        
-        // Create TLS configuration for embedded-tls
-        let config = TlsConfig::new()
-            .with_ca(Certificate::X509(&[])); // Empty CA for now - in production would load real CA
-        
-        // Create RNG for TLS
-        let mut rng = SimpleRng::new();
-        
-        // For now, simulate TLS handshake since we don't have real network stack
-        // In a real implementation, this would establish actual TLS connection
-        info!("TLS handshake initiated (using embedded-tls)");
-        
-        // Simulate successful handshake
-        self.connected = true;
-        info!("TLS connection established with embedded-tls");
+        info!("TLS connection established (simulated).");
 
         // Send device registration message
         let mut registration_msg = String::<128>::new();
@@ -102,33 +47,35 @@ impl TlsClient {
         if !self.connected {
             return Err("Not connected to gateway");
         }
-        
-        // Use embedded-tls to encrypt and send data
-        // For now, simulate encrypted transmission
-        // In a real implementation, this would use TlsContext::write()
-        info!("TLS TX (encrypted with embedded-tls): {} bytes", data.len());
-        info!("TLS TX data: {:?}", data);
-        
-        // Simulate successful encrypted transmission
+        // Simulate sending encrypted data
+        info!("TLS TX: {:?}", data);
         Ok(())
     }
 
     pub fn receive_message(&mut self) -> Result<Option<Message>, &'static str> {
-        if !self.connected {
-            return Err("Not connected to gateway");
-        }
+        // Simulate receiving encrypted data
+        // For now, we'll simulate a deployment message after some time
+        // In a real scenario, this would read from the network/serial
         
-        // Use embedded-tls to receive and decrypt data
-        // For now, simulate encrypted reception
-        // In a real implementation, this would use TlsContext::read()
+        // Example: Simulate receiving a deploy application message
+        // let raw_message = "DEPLOY:app1:0102030405"; // Example raw message
+        // if raw_message.starts_with("DEPLOY:") {
+        //     let parts: Vec<&str, 3> = raw_message.split(':').collect();
+        //     if parts.len() == 3 {
+        //         let app_id = String::from_str(parts[1]).map_err(|_| "App ID too long")?;
+        //         let bytecode_hex = parts[2];
+        //         let mut bytecode = Vec::<u8, 1024>::new();
+        //         // Simulate hex to bytes conversion
+        //         for i in (0..bytecode_hex.len()).step_by(2) {
+        //             let byte_str = &bytecode_hex[i..i+2];
+        //             let byte = u8::from_str_radix(byte_str, 16).map_err(|_| "Invalid bytecode hex")?;
+        //             bytecode.push(byte).map_err(|_| "Bytecode too large")?;
+        //         }
+        //         return Ok(Some(Message::DeployApplication { app_id, bytecode }));
+        //     }
+        // }
         
-        // Simulate receiving encrypted data from gateway
-        // In production, this would decrypt TLS frames and parse CBOR messages
-        info!("TLS RX: Checking for encrypted messages from gateway");
-        
-        // For demonstration, simulate receiving a heartbeat acknowledgment
-        // In real implementation, this would parse actual CBOR/TLS messages
-        Ok(None) // No messages received for now
+        Ok(None)
     }
 
     pub fn send_heartbeat(&mut self) -> Result<(), &'static str> {

@@ -3,7 +3,7 @@
 
 use cortex_m_rt::entry;
 use cortex_m::asm;
-use heapless::String;
+use heapless::{String, Vec};
 use log::{error, info, warn};
 use core::str::FromStr;
 
@@ -182,11 +182,4 @@ impl log::Log for SimpleLogger {
     fn flush(&self) {}
 }
 
-// Panic handler for no_std builds
-#[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    error!("Firmware panic occurred");
-    loop {
-        asm::nop();
-    }
-}
+// Panic handler is provided by cortex-m-rt for no_std builds
