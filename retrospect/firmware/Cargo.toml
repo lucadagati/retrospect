@@ -30,6 +30,10 @@ chrono = { version = "0.4", features = ["serde"], default-features = false }
 # Crypto
 sha2 = { version = "0.10", default-features = false }
 
+# TLS implementation for no_std
+embedded-tls = { git = "https://github.com/fratrung/embedded-tls.git", default-features = false }
+rand_core = { version = "0.6", default-features = false }
+
 [features]
 default = []
 std = []
@@ -39,12 +43,7 @@ std = []
 rustflags = ["-C", "link-arg=-Tmemory.x"]
 
 [profile.release]
-opt-level = "z"  # Optimize for size
-lto = true       # Link-time optimization
-codegen-units = 1
-panic = "abort"
-strip = true
+inherits = "firmware-release"
 
 [profile.dev]
-opt-level = "s"  # Optimize for size in debug
-panic = "abort"
+inherits = "firmware-dev"

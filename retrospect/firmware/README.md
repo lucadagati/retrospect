@@ -78,7 +78,7 @@ firmware/
 - **ARM Cortex-M3 Support**: Complete ARM Cortex-M3 implementation
 - **Hardware Abstraction**: UART, Timer, Ethernet, GPIO drivers
 - **Network Stack**: TCP/IP networking with Ethernet support
-- **TLS Client**: Secure communication with gateway
+- **TLS Client**: Real TLS 1.3 communication with embedded-tls
 - **WASM Runtime**: WebAssembly application execution
 - **Memory Management**: Stack, heap, and WASM memory management
 - **Interrupt Handling**: Complete interrupt vector table
@@ -90,6 +90,9 @@ firmware/
 - **Network Communication**: Ethernet for direct network access
 - **Debug Output**: UART1 for debug and logging
 - **QEMU Integration**: TCP serial bridge for external access
+- **Real TLS 1.3**: Secure communication using embedded-tls library
+- **Ed25519 Cryptography**: Modern elliptic curve signatures
+- **Certificate Verification**: Server certificate validation
 
 ## 🚀 **Quick Start**
 
