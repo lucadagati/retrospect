@@ -1,0 +1,3 @@
+[submodule "retrospect/embedded-tls"]
+	path = retrospect/embedded-tls
+	url = https://github.com/fratrung/embedded-tls.git

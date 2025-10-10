@@ -3,9 +3,17 @@
 
 use cortex_m_rt::entry;
 use cortex_m::asm;
-use heapless::{String, Vec};
+use heapless::String;
 use log::{error, info, warn};
 use core::str::FromStr;
+
+// Panic handler
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {
+        asm::nop();
+    }
+}
 
 // Global allocator for no_std
 use core::alloc::{GlobalAlloc, Layout};
