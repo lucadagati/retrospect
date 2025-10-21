@@ -1,81 +1,36 @@
-[workspace]
-resolver = "2"
-members = [
-    "crates/wasmbed-cert",
-    "crates/wasmbed-cert-tool",
-    "crates/wasmbed-gateway",
-    "crates/wasmbed-k8s-resource",
-    "crates/wasmbed-k8s-resource-tool",
-    "crates/wasmbed-protocol",
-    "crates/wasmbed-protocol-server",
-    "crates/wasmbed-protocol-tool",
-    "crates/wasmbed-test-utils",
-    "crates/wasmbed-tls-utils",
-    "crates/wasmbed-types",
-    "crates/wasmbed-wasm-runtime",
-    "crates/wasmbed-device-controller",
-    "crates/wasmbed-application-controller",
-    "crates/wasmbed-gateway-controller",
-    "crates/wasmbed-device-runtime",
-    "crates/wasmbed-infrastructure",
-    "crates/wasmbed-api-server",
-    "crates/wasmbed-qemu-manager",
-    "crates/wasmbed-qemu-deployment",
-    "crates/wasmbed-qemu-serial-bridge",
-    "crates/wasmbed-config",
-    "crates/wasmbed-config-manager",
-    "firmware",
-]
-
-[workspace.package]
-version = "0.0.1"
+[package]
+name = "wasmbed-firmware-arduino-nano-33-ble"
+version = "0.1.0"
 edition = "2021"
-rust-version = "1.88.0"
-repository = "https://github.com/turlando/wasmed"
-license = "AGPL-3.0"
 
-[workspace.metadata.crane]
-name = "wasmbed"
+[dependencies]
+# TLS and networking
+rustls = "0.23"
+rustls-pemfile = "2.0"
+tokio = { version = "1.0", features = ["full"] }
 
-[workspace.lints.rust]
-arithmetic_overflow = "deny" # Prevent operations that would cause integer overflow
-unnecessary_transmutes = "deny" # Prevent unsafe transmutation
+# Serialization
+ciborium = "0.2"
+serde = { version = "1.0", features = ["derive"] }
 
-[workspace.lints.clippy]
-# Arithmetic
-checked_conversions = "deny" # Suggest using checked conversions between numeric types
-cast_possible_truncation = "deny" # Detect when casting might truncate a value
-cast_sign_loss = "deny" # Detect when casting might lose sign information
-cast_possible_wrap = "deny" # Detect when casting might cause value to wrap around
-cast_precision_loss = "deny" # Detect when casting might lose precision
-integer_division = "deny" # Highlight potential bugs from integer division truncation
-arithmetic_side_effects = "deny" # Detect arithmetic operations with potential side effects
-unchecked_duration_subtraction = "deny" # Ensure duration subtraction won't cause underflow
+# WASM runtime
+wasmtime = "18.0"
 
-# Unwraps
-unwrap_used = "warn" # Discourage using .unwrap() which can cause panics
-expect_used = "warn" # Discourage using .expect() which can cause panics
-panicking_unwrap = "deny" # Prevent unwrap on values known to cause panics
-option_env_unwrap = "deny" # Prevent unwrapping environment variables which might be absent
+# Utilities
+uuid = { version = "1.0", features = ["v4"] }
+log = "0.4"
+env_logger = "0.10"
+anyhow = "1.0"
 
-# Array indexing
-indexing_slicing = "deny" # Avoid direct array indexing and use safer methods like .get()
-
-# Path handling
-join_absolute_paths = "deny" # Prevent issues when joining paths with absolute paths
-
-# Serialization issues
-serde_api_misuse = "deny" # Prevent incorrect usage of Serde's serialization/deserialization API
-
-# Unbounded input
-uninit_vec = "deny" # Prevent creating uninitialized vectors which is unsafe
-
-# Unsafe code detection
-transmute_ptr_to_ref = "deny" # Prevent unsafe transmutation from pointers to references
-transmute_undefined_repr = "deny" # Detect transmutes with potentially undefined representations
-
-[profile.dev]
-panic = "abort"
+[[bin]]
+name = "firmware_arduino_nano_33_ble"
+path = "firmware_arduino_nano_33_ble.rs"
 
 [profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
 panic = "abort"
+
+[profile.dev]
+opt-level = 1

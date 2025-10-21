@@ -19,6 +19,7 @@ use wasmbed_k8s_resource::{Device, DeviceStatusUpdate, Application, DevicePhase,
 use wasmbed_protocol::{ClientMessage, ServerMessage, DeviceUuid};
 use wasmbed_tls_utils::{TlsUtils, GatewayServer, GatewayServerConfig, ServerIdentity, AuthorizationResult, MessageContextWithKey, OnClientConnectWithKey, OnClientDisconnectWithKey, OnClientMessageWithKey};
 use wasmbed_types::{GatewayReference, PublicKey};
+use rustls;
 
 mod http_api;
 use http_api::{HttpApiServer, DeviceCapabilities};
@@ -515,6 +516,10 @@ async fn check_heartbeat_timeouts(api: &Api<Device>, timeout_duration: Duration)
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Install rustls crypto provider
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
     
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)
@@ -653,7 +658,9 @@ async fn main() -> Result<()> {
         shutdown: shutdown.clone(),
     };
 
+    info!("Creating GatewayServer with config");
     let server = GatewayServer::new(config);
+    info!("GatewayServer created successfully");
     
     // Start HTTP API server
     let http_router = http_server.router();
@@ -704,9 +711,11 @@ async fn main() -> Result<()> {
     });
 
     info!("Starting TLS server on {}", args.bind_addr);
+    info!("About to call server.run().await");
     if let Err(e) = server.run().await {
         error!("Server error: {}", e);
     }
+    info!("server.run().await returned");
 
     Ok(())
 }

@@ -5,8 +5,8 @@
 
 set -e
 
-# Wasmbed Platform - QEMU Dashboard Integration Test
-# This script tests the complete integration between QEMU and Dashboard
+# Wasmbed Platform - Renode Dashboard Integration Test
+# This script tests the complete integration between Renode and Dashboard
 
 # Colors for output
 RED='\033[0;31m'

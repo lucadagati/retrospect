@@ -61,7 +61,7 @@ devices:
       - pwm
       - can
       - ethernet
-      - qemu
+      - renode
       - rust_native
   instances:
   - name: arm-cortex-m-board-1

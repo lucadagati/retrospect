@@ -22,93 +22,69 @@ pub struct QemuDevice {
     pub wasm_runtime: Option<WasmRuntime>,
 }
 
-/// Supported MCU types with QEMU and Rust compatibility
+/// Supported MCU types with Renode compatibility for constrained devices
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum McuType {
-    /// ARM MPS2-AN385 (Cortex-M3) - Default, most compatible
-    Mps2An385,
-    /// ARM MPS2-AN386 (Cortex-M4) - Enhanced with FPU
-    Mps2An386,
-    /// ARM MPS2-AN500 (Cortex-M7) - High performance
-    Mps2An500,
-    /// ARM MPS2-AN505 (Cortex-M33) - TrustZone support
-    Mps2An505,
-    /// STM32VLDISCOVERY (Cortex-M3) - STMicroelectronics
-    Stm32Vldiscovery,
-    /// Olimex STM32-H405 (Cortex-M4) - Olimex board
-    OlimexStm32H405,
+    /// Renode Arduino Nano 33 BLE (ARM Cortex-M4) - Constrained device
+    RenodeArduinoNano33Ble,
+    /// Renode STM32F4 Discovery (ARM Cortex-M4) - Constrained device
+    RenodeStm32F4Discovery,
+    /// Renode Arduino Uno R4 (ARM Cortex-M4) - Constrained device
+    RenodeArduinoUnoR4,
 }
 
 impl McuType {
-    /// Get QEMU machine name for this MCU
-    pub fn qemu_machine(&self) -> &'static str {
+    /// Get Renode platform name for this MCU
+    pub fn renode_platform(&self) -> &'static str {
         match self {
-            McuType::Mps2An385 => "mps2-an385",
-            McuType::Mps2An386 => "mps2-an386", 
-            McuType::Mps2An500 => "mps2-an500",
-            McuType::Mps2An505 => "mps2-an505",
-            McuType::Stm32Vldiscovery => "stm32vldiscovery",
-            McuType::OlimexStm32H405 => "olimex-stm32-h405",
+            McuType::RenodeArduinoNano33Ble => "arduino_nano_33_ble",
+            McuType::RenodeStm32F4Discovery => "stm32f4_discovery",
+            McuType::RenodeArduinoUnoR4 => "arduino_uno_r4_minima",
         }
     }
 
-    /// Get QEMU CPU name for this MCU
-    pub fn qemu_cpu(&self) -> &'static str {
+    /// Get CPU architecture for this MCU
+    pub fn cpu_architecture(&self) -> &'static str {
         match self {
-            McuType::Mps2An385 => "cortex-m3",
-            McuType::Mps2An386 => "cortex-m4",
-            McuType::Mps2An500 => "cortex-m7", 
-            McuType::Mps2An505 => "cortex-m33",
-            McuType::Stm32Vldiscovery => "cortex-m3",
-            McuType::OlimexStm32H405 => "cortex-m4",
+            McuType::RenodeArduinoNano33Ble => "cortex-m4",
+            McuType::RenodeStm32F4Discovery => "cortex-m4",
+            McuType::RenodeArduinoUnoR4 => "cortex-m4",
         }
     }
 
     /// Get memory size for this MCU
     pub fn memory_size(&self) -> &'static str {
         match self {
-            McuType::Mps2An385 => "16M",
-            McuType::Mps2An386 => "16M",
-            McuType::Mps2An500 => "16M",
-            McuType::Mps2An505 => "16M", 
-            McuType::Stm32Vldiscovery => "8M",
-            McuType::OlimexStm32H405 => "16M",
+            McuType::RenodeArduinoNano33Ble => "1M",
+            McuType::RenodeStm32F4Discovery => "1M",
+            McuType::RenodeArduinoUnoR4 => "512K",
         }
     }
 
     /// Get display name for UI
     pub fn display_name(&self) -> &'static str {
         match self {
-            McuType::Mps2An385 => "ARM MPS2-AN385 (Cortex-M3)",
-            McuType::Mps2An386 => "ARM MPS2-AN386 (Cortex-M4)",
-            McuType::Mps2An500 => "ARM MPS2-AN500 (Cortex-M7)",
-            McuType::Mps2An505 => "ARM MPS2-AN505 (Cortex-M33)",
-            McuType::Stm32Vldiscovery => "STM32VLDISCOVERY (Cortex-M3)",
-            McuType::OlimexStm32H405 => "Olimex STM32-H405 (Cortex-M4)",
+            McuType::RenodeArduinoNano33Ble => "Renode Arduino Nano 33 BLE (Cortex-M4)",
+            McuType::RenodeStm32F4Discovery => "Renode STM32F4 Discovery (Cortex-M4)",
+            McuType::RenodeArduinoUnoR4 => "Renode Arduino Uno R4 (Cortex-M4)",
         }
     }
 
     /// Get Rust HAL crate name (if available)
     pub fn rust_hal_crate(&self) -> Option<&'static str> {
         match self {
-            McuType::Mps2An385 => Some("cortex-m"),
-            McuType::Mps2An386 => Some("cortex-m"),
-            McuType::Mps2An500 => Some("cortex-m"),
-            McuType::Mps2An505 => Some("cortex-m"),
-            McuType::Stm32Vldiscovery => Some("stm32f1xx-hal"),
-            McuType::OlimexStm32H405 => Some("stm32f4xx-hal"),
+            McuType::RenodeArduinoNano33Ble => Some("nrf52840-hal"),
+            McuType::RenodeStm32F4Discovery => Some("stm32f4xx-hal"),
+            McuType::RenodeArduinoUnoR4 => Some("renesas-ra-hal"),
         }
     }
 
     /// Get all supported MCU types
     pub fn all_types() -> Vec<McuType> {
         vec![
-            McuType::Mps2An385,
-            McuType::Mps2An386,
-            McuType::Mps2An500,
-            McuType::Mps2An505,
-            McuType::Stm32Vldiscovery,
-            McuType::OlimexStm32H405,
+            McuType::RenodeArduinoNano33Ble,
+            McuType::RenodeStm32F4Discovery,
+            McuType::RenodeArduinoUnoR4,
         ]
     }
 }
@@ -146,14 +122,14 @@ pub enum WasmRuntimeStatus {
 }
 
 #[derive(Debug)]
-pub struct QemuManager {
+pub struct RenodeManager {
     devices: Arc<Mutex<HashMap<String, QemuDevice>>>,
-    qemu_binary: String,
+    renode_binary: String,
     base_port: u16,
 }
 
-impl QemuManager {
-    pub fn new(qemu_binary: String, base_port: u16) -> Self {
+impl RenodeManager {
+    pub fn new(renode_binary: String, base_port: u16) -> Self {
         let mut devices_map = HashMap::new();
         
         // Load persisted devices synchronously
@@ -169,7 +145,7 @@ impl QemuManager {
         
         Self {
             devices: Arc::new(Mutex::new(devices_map)),
-            qemu_binary,
+            renode_binary,
             base_port,
         }
     }
@@ -229,10 +205,11 @@ impl QemuManager {
 
         device.status = QemuDeviceStatus::Starting;
 
-        // Start QEMU process
-        let qemu_args = self.build_qemu_args(device);
-        let mut cmd = Command::new(&self.qemu_binary);
-        cmd.args(&qemu_args);
+        // Start Renode process
+        let renode_args = self.build_renode_args(device);
+        println!("Starting Renode with args: {:?}", renode_args);
+        let mut cmd = Command::new(&renode_args[0]);
+        cmd.args(&renode_args[1..]);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
@@ -246,7 +223,9 @@ impl QemuManager {
                 let devices_clone = self.devices.clone();
                 
                 std::thread::spawn(move || {
-                    let _ = child.wait();
+                    let exit_status = child.wait();
+                    println!("QEMU process for device {} exited with status: {:?}", device_id_clone, exit_status);
+                    
                     // Process ended, update status
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     rt.block_on(async {
@@ -254,6 +233,7 @@ impl QemuManager {
                         if let Some(device) = devices.get_mut(&device_id_clone) {
                             device.status = QemuDeviceStatus::Stopped;
                             device.process_id = None;
+                            println!("Updated device {} status to Stopped", device_id_clone);
                         }
                     });
                 });
@@ -350,73 +330,19 @@ impl QemuManager {
         devices.values().cloned().collect()
     }
 
-    fn build_qemu_args(&self, device: &QemuDevice) -> Vec<String> {
-        // MCU-specific configuration for optimal Rust support
+    fn build_renode_args(&self, device: &QemuDevice) -> Vec<String> {
         let mut args = vec![
-            "-machine".to_string(),
-            device.mcu_type.qemu_machine().to_string(),
-            "-cpu".to_string(),
-            device.mcu_type.qemu_cpu().to_string(),
-            "-m".to_string(),
-            device.mcu_type.memory_size().to_string(),
-            "-nographic".to_string(),
-            "-serial".to_string(),
-            format!("tcp:{}:server,nowait", device.endpoint), // TCP serial bridge
-            "-monitor".to_string(),
-            format!("tcp:{}:server,nowait", device.endpoint.replace(":", ":1")), // QEMU monitor
+            "/home/lucadag/18_10_23_retrospect/renode_1.15.0_portable/renode".to_string(),
+            "--console".to_string(),
+            "--port".to_string(),
+            device.endpoint.split(':').nth(1).unwrap_or("3000").to_string(),
+            "--execute".to_string(),
+            format!(
+                "mach create; mach LoadPlatformDescription @platforms/boards/{}.repl",
+                device.mcu_type.renode_platform()
+            ),
         ];
-
-        // Add networking for supported MCU types
-        match device.mcu_type {
-            McuType::Mps2An385 | McuType::Mps2An386 | McuType::Mps2An500 | McuType::Mps2An505 => {
-                // MPS2 boards support networking
-                args.push("-netdev".to_string());
-                args.push(format!("user,id=net0,hostfwd=tcp::{}-:8080", device.endpoint.split(':').nth(1).unwrap_or("8080")));
-                args.push("-device".to_string());
-                args.push("lan9118,netdev=net0".to_string()); // Ethernet controller
-            }
-            McuType::Stm32Vldiscovery | McuType::OlimexStm32H405 => {
-                // STM32 boards may not have networking in QEMU
-                // Skip networking configuration
-            }
-        }
-
-        // Add firmware and device tree for supported MCU types
-        match device.mcu_type {
-            McuType::Mps2An385 => {
-                args.push("-kernel".to_string());
-                args.push("/home/lucadag/8_10_25_retrospect/retrospect/firmware/build/wasmbed-firmware-mps2-an385.bin".to_string());
-                args.push("-dtb".to_string());
-                args.push("/home/lucadag/8_10_25_retrospect/retrospect/firmware/build/mps2-an385.dtb".to_string());
-            }
-            McuType::Mps2An386 => {
-                args.push("-kernel".to_string());
-                args.push("wasmbed-firmware-mps2-an386.bin".to_string());
-                args.push("-dtb".to_string());
-                args.push("mps2-an386.dtb".to_string());
-            }
-            McuType::Mps2An500 => {
-                args.push("-kernel".to_string());
-                args.push("wasmbed-firmware-mps2-an500.bin".to_string());
-                args.push("-dtb".to_string());
-                args.push("mps2-an500.dtb".to_string());
-            }
-            McuType::Mps2An505 => {
-                args.push("-kernel".to_string());
-                args.push("wasmbed-firmware-mps2-an505.bin".to_string());
-                args.push("-dtb".to_string());
-                args.push("mps2-an505.dtb".to_string());
-            }
-            McuType::Stm32Vldiscovery => {
-                args.push("-kernel".to_string());
-                args.push("wasmbed-firmware-stm32vldiscovery.bin".to_string());
-            }
-            McuType::OlimexStm32H405 => {
-                args.push("-kernel".to_string());
-                args.push("wasmbed-firmware-olimex-stm32-h405.bin".to_string());
-            }
-        }
-
+        
         args
     }
 }

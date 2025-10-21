@@ -7,7 +7,7 @@ use kube::{
     ResourceExt,
 };
 use wasmbed_k8s_resource::{Application, Device, ApplicationStatus, ApplicationPhase, DeviceApplicationPhase};
-use wasmbed_qemu_manager::{QemuManager, WasmConfig};
+use wasmbed_qemu_manager::{RenodeManager, WasmConfig};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::sync::Mutex;
@@ -43,12 +43,12 @@ pub struct QemuDeploymentService {
     client: Client,
     applications: Api<Application>,
     devices: Api<Device>,
-    qemu_manager: QemuManager,
+    qemu_manager: RenodeManager,
     deployments: Mutex<HashMap<String, DeploymentStatus>>,
 }
 
 impl QemuDeploymentService {
-    pub fn new(client: Client, qemu_manager: QemuManager) -> Self {
+    pub fn new(client: Client, qemu_manager: RenodeManager) -> Self {
         Self {
             applications: Api::<Application>::all(client.clone()),
             devices: Api::<Device>::all(client.clone()),
@@ -274,7 +274,7 @@ mod tests {
     async fn test_deployment_service() {
         // This test uses a real Kubernetes client
         // For now, just test the basic structure
-        let qemu_manager = QemuManager::new("qemu-system-aarch64".to_string(), 30000);
+        let qemu_manager = RenodeManager::new("renode".to_string(), 30000);
         // Note: We can't create a real QemuDeploymentService without a Kubernetes client
         // This would need to be tested in integration tests
     }

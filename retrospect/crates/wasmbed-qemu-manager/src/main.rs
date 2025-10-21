@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright © 2025 Wasmbed contributors
 
-use wasmbed_qemu_manager::{QemuManager, QemuDevice, WasmConfig};
+use wasmbed_qemu_manager::{RenodeManager, WasmConfig};
 use clap::{Parser, Subcommand};
 use serde_json;
 use std::io::{self, Write};
@@ -59,8 +59,8 @@ enum Commands {
     },
     /// Run as daemon
     Daemon {
-        #[arg(short, long, default_value = "qemu-system-arm")]
-        qemu_binary: String,
+        #[arg(short, long, default_value = "renode")]
+        renode_binary: String,
         #[arg(short, long, default_value = "30000")]
         base_port: u16,
     },
@@ -72,19 +72,16 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Create { id, name, architecture, device_type, mcu_type } => {
-            let manager = QemuManager::new("qemu-system-arm".to_string(), 30000);
+            let manager = RenodeManager::new("renode".to_string(), 30000);
             
             // Parse MCU type
             let mcu_type_enum = match mcu_type.as_str() {
-                "Mps2An385" => wasmbed_qemu_manager::McuType::Mps2An385,
-                "Mps2An386" => wasmbed_qemu_manager::McuType::Mps2An386,
-                "Mps2An500" => wasmbed_qemu_manager::McuType::Mps2An500,
-                "Mps2An505" => wasmbed_qemu_manager::McuType::Mps2An505,
-                "Stm32Vldiscovery" => wasmbed_qemu_manager::McuType::Stm32Vldiscovery,
-                "OlimexStm32H405" => wasmbed_qemu_manager::McuType::OlimexStm32H405,
+                "RenodeArduinoNano33Ble" => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble,
+                "RenodeStm32F4Discovery" => wasmbed_qemu_manager::McuType::RenodeStm32F4Discovery,
+                "RenodeArduinoUnoR4" => wasmbed_qemu_manager::McuType::RenodeArduinoUnoR4,
                 _ => {
-                    println!("Unknown MCU type: {}. Using default Mps2An385", mcu_type);
-                    wasmbed_qemu_manager::McuType::Mps2An385
+                    println!("Unknown MCU type: {}. Using default RenodeArduinoNano33Ble", mcu_type);
+                    wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble
                 }
             };
             
@@ -92,17 +89,17 @@ async fn main() -> anyhow::Result<()> {
             println!("Created device: {}", serde_json::to_string_pretty(&device)?);
         }
         Commands::Start { id } => {
-            let manager = QemuManager::new("qemu-system-arm".to_string(), 30000);
+            let manager = RenodeManager::new("renode".to_string(), 30000);
             manager.start_device(&id).await?;
             println!("Started device: {}", id);
         }
         Commands::Stop { id } => {
-            let manager = QemuManager::new("qemu-system-arm".to_string(), 30000);
+            let manager = RenodeManager::new("renode".to_string(), 30000);
             manager.stop_device(&id).await?;
             println!("Stopped device: {}", id);
         }
         Commands::Deploy { device_id, wasm_file, memory_limit, execution_timeout } => {
-            let manager = QemuManager::new("qemu-system-arm".to_string(), 30000);
+            let manager = RenodeManager::new("renode".to_string(), 30000);
             
             // Read WASM file
             let wasm_bytes = std::fs::read(&wasm_file)?;
@@ -117,24 +114,24 @@ async fn main() -> anyhow::Result<()> {
             println!("Deployed WASM to device: {}", device_id);
         }
         Commands::List => {
-            let manager = QemuManager::new("qemu-system-arm".to_string(), 30000);
+            let manager = RenodeManager::new("renode".to_string(), 30000);
             let devices = manager.list_devices().await;
             println!("Devices: {}", serde_json::to_string_pretty(&devices)?);
         }
         Commands::Status { id } => {
-            let manager = QemuManager::new("qemu-system-arm".to_string(), 30000);
+            let manager = RenodeManager::new("renode".to_string(), 30000);
             if let Some(device) = manager.get_device(&id).await {
                 println!("Device status: {}", serde_json::to_string_pretty(&device)?);
             } else {
                 println!("Device not found: {}", id);
             }
         }
-        Commands::Daemon { qemu_binary, base_port } => {
-            println!("Starting QEMU Manager daemon...");
-            println!("QEMU binary: {}", qemu_binary);
+        Commands::Daemon { renode_binary, base_port } => {
+            println!("Starting Renode Manager daemon...");
+            println!("Renode binary: {}", renode_binary);
             println!("Base port: {}", base_port);
             
-            let manager = QemuManager::new(qemu_binary, base_port);
+            let manager = RenodeManager::new(renode_binary, base_port);
             
             // Keep running
             loop {

@@ -26,6 +26,11 @@ rand_core = "0.6"
 # For async networking
 tokio = { version = "1.47", features = ["net", "io-util", "macros", "rt-multi-thread", "time"] }
 
+# For real TLS implementation
+rustls = { version = "0.23", features = ["ring"] }
+tokio-rustls = "0.26"
+webpki = "0.22"
+
 # For examples
 env_logger = "0.11"
 

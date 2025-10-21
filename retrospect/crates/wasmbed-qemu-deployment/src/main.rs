@@ -2,7 +2,7 @@
 // Copyright © 2025 Wasmbed contributors
 
 use wasmbed_qemu_deployment::QemuDeploymentService;
-use wasmbed_qemu_manager::QemuManager;
+use wasmbed_qemu_manager::RenodeManager;
 use kube::client::Client;
 use clap::{Parser, Subcommand};
 use tracing::{info, error};
@@ -58,7 +58,7 @@ async fn main() -> anyhow::Result<()> {
             info!("Base port: {}", base_port);
 
             let client = Client::try_default().await?;
-            let qemu_manager = QemuManager::new(qemu_binary, base_port);
+            let qemu_manager = RenodeManager::new(qemu_binary, base_port);
             let deployment_service = QemuDeploymentService::new(client, qemu_manager);
 
             info!("QEMU deployment service started successfully");

@@ -47,10 +47,11 @@ This directory contains all the scripts needed to deploy, manage, and test the W
 
 | Script | Description | Usage |
 |--------|-------------|-------|
-| `04-test-arm-cortex-m.sh` | Test QEMU ARM Cortex-M emulation | `./scripts/04-test-arm-cortex-m.sh` |
+| `04-test-arm-cortex-m.sh` | Test Renode ARM Cortex-M emulation | `./scripts/04-test-arm-cortex-m.sh` |
 | `07-test-workflows.sh` | Test all workflows comprehensively | `./scripts/07-test-workflows.sh` |
 | `08-test-3-workflows.sh` | Test the 3 main workflows only | `./scripts/08-test-3-workflows.sh` |
 | `09-test-dashboard.sh` | Test complete dashboard functionality | `./scripts/09-test-dashboard.sh` |
+| `10-test-renode-dashboard.sh` | Test Renode-Dashboard integration | `./scripts/10-test-renode-dashboard.sh` |
 
 ### Master Scripts
 
@@ -108,8 +109,8 @@ After deployment, these endpoints will be available:
 | Infrastructure API | http://localhost:30460 | Core infrastructure services |
 | API Server (Backend) | http://localhost:3001 | REST API for dashboard |
 | Dashboard UI (Frontend) | http://localhost:3000 | React web interface |
-| Gateway HTTP API | http://localhost:30453 | Gateway management API |
-| Gateway TLS | 127.0.0.1:30452 | Device communication (TLS) |
+| Gateway HTTP API | http://localhost:8080 | Gateway management API |
+| Gateway TLS | 127.0.0.1:8081 | Device communication (TLS) |
 | Kubernetes API | `kubectl cluster-info` | Kubernetes cluster |
 
 ## 🔧 Management Commands
@@ -141,7 +142,9 @@ All scripts use real data:
 - ✅ Real API endpoints with live data
 - ✅ Real device and application states
 - ✅ Real-time monitoring and heartbeat data
-- ✅ Real QEMU ARM Cortex-M emulation
+- ✅ Real Renode ARM Cortex-M emulation
+- ✅ Real TLS handshake and communication
+- ✅ Real WASM runtime execution
 
 ### Manual Verification
 ```bash

@@ -34,7 +34,7 @@ use monitoring::MonitoringDashboard;
 use templates::DashboardTemplates;
 
 // QEMU Manager integration
-use wasmbed_qemu_manager::{QemuManager, QemuDevice, QemuDeviceStatus};
+use wasmbed_qemu_manager::{RenodeManager, QemuDevice, QemuDeviceStatus};
 
 #[derive(Parser)]
 #[command(name = "wasmbed-api-server")]
@@ -78,7 +78,7 @@ pub struct DashboardState {
     pub monitoring: Arc<MonitoringDashboard>,
     pub templates: Arc<DashboardTemplates>,
     pub system_status: Arc<RwLock<SystemStatus>>,
-    pub qemu_manager: Arc<QemuManager>,
+    pub qemu_manager: Arc<RenodeManager>,
 }
 
 /// System status
@@ -692,16 +692,13 @@ status:
         
         let mcu_type_str = request.get("mcuType")
             .and_then(|v| v.as_str())
-            .unwrap_or("Mps2An385");
+            .unwrap_or("RenodeArduinoNano33Ble");
         
         let mcu_type = match mcu_type_str {
-            "Mps2An385" => wasmbed_qemu_manager::McuType::Mps2An385,
-            "Mps2An386" => wasmbed_qemu_manager::McuType::Mps2An386,
-            "Mps2An500" => wasmbed_qemu_manager::McuType::Mps2An500,
-            "Mps2An505" => wasmbed_qemu_manager::McuType::Mps2An505,
-            "Stm32Vldiscovery" => wasmbed_qemu_manager::McuType::Stm32Vldiscovery,
-            "OlimexStm32H405" => wasmbed_qemu_manager::McuType::OlimexStm32H405,
-            _ => wasmbed_qemu_manager::McuType::Mps2An385, // Default fallback
+            "RenodeArduinoNano33Ble" => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble,
+            "RenodeStm32F4Discovery" => wasmbed_qemu_manager::McuType::RenodeStm32F4Discovery,
+            "RenodeArduinoUnoR4" => wasmbed_qemu_manager::McuType::RenodeArduinoUnoR4,
+            _ => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble, // Default fallback
         };
         
         let device_name = request.get("name")
@@ -1281,13 +1278,10 @@ status:
                     let endpoint = format!("127.0.0.1:{}", 30450 + device_id.len() as u16);
                     // Get MCU type from device info or use default
                     let mcu_type = match device_info.mcu_type.as_deref() {
-                        Some("Mps2An385") => wasmbed_qemu_manager::McuType::Mps2An385,
-                        Some("Mps2An386") => wasmbed_qemu_manager::McuType::Mps2An386,
-                        Some("Mps2An500") => wasmbed_qemu_manager::McuType::Mps2An500,
-                        Some("Mps2An505") => wasmbed_qemu_manager::McuType::Mps2An505,
-                        Some("Stm32Vldiscovery") => wasmbed_qemu_manager::McuType::Stm32Vldiscovery,
-                        Some("OlimexStm32H405") => wasmbed_qemu_manager::McuType::OlimexStm32H405,
-                        _ => wasmbed_qemu_manager::McuType::Mps2An385, // Default fallback
+                        Some("RenodeArduinoNano33Ble") => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble,
+                        Some("RenodeStm32F4Discovery") => wasmbed_qemu_manager::McuType::RenodeStm32F4Discovery,
+                        Some("RenodeArduinoUnoR4") => wasmbed_qemu_manager::McuType::RenodeArduinoUnoR4,
+                        _ => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble, // Default fallback
                     };
                     
                     state.qemu_manager.create_device(
@@ -1975,7 +1969,7 @@ impl Dashboard {
         }));
 
         // Initialize QEMU Manager
-        let qemu_manager = Arc::new(QemuManager::new("qemu-system-arm".to_string(), 30450));
+        let qemu_manager = Arc::new(RenodeManager::new("renode".to_string(), 30450));
 
         let state = Arc::new(DashboardState {
             config: config.clone(),

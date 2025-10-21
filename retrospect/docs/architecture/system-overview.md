@@ -2,13 +2,7 @@
 
 ## Introduction
 
-The Wasmbed platform implements a comprehensive 3-layer architecture designed for secure deployment and execution of WebAssembly applications on industrial robotic systems. The architecture follows cloud-fog-edge principles with Kubernetes orchestration and real-time communication capabilities.
-
-# System Architecture Overview
-
-## Introduction
-
-The Wasmbed platform implements a comprehensive 3-layer architecture designed for secure deployment and execution of WebAssembly applications on industrial robotic systems. The architecture follows cloud-fog-edge principles with Kubernetes orchestration and real-time communication capabilities.
+The Wasmbed platform implements a comprehensive 3-layer architecture designed for secure deployment and execution of WebAssembly applications on constrained devices. The architecture follows cloud-fog-edge principles with Kubernetes orchestration and real-time communication capabilities using Renode emulation.
 
 ## High-Level Architecture
 
@@ -24,28 +18,20 @@ graph TB
     end
     
     subgraph "Fog Layer"
-        GW[Gateway MPU]
+        GW[Gateway Server]
         TLS[TLS Bridge]
-        MR[microROS Bridge]
-        FDDS[FastDDS Middleware]
-        AUTH[Device Authentication]
         HTTP[HTTP API Server]
         HB[Heartbeat Monitor]
+        AUTH[Device Authentication]
+        WASM_RT[WASM Runtime]
     end
     
     subgraph "Edge Layer"
-        MPU[MPU Devices]
-        MCU[MCU Devices]
-        RISCV[RISC-V Devices]
-        WASM[WebAssembly Runtime]
+        RENODE[Renode Emulation]
+        ARM[ARM Cortex-M4 Devices]
+        FIRMWARE[Real Firmware]
         TLS_CLIENT[TLS Client]
-        QEMU[QEMU Emulation]
-    end
-    
-    subgraph "PX4 Integration"
-        PX4[PX4 Autopilot]
-        UORB[UORB Topics]
-        MAV[MAVLink Protocol]
+        WASM[WebAssembly Runtime]
     end
     
     K8S --> GW
@@ -56,41 +42,22 @@ graph TB
     API --> CTRL
     
     GW --> TLS
-    GW --> MR
-    GW --> FDDS
-    GW --> AUTH
     GW --> HTTP
     GW --> HB
+    GW --> AUTH
+    GW --> WASM_RT
     
-    TLS --> MPU
-    TLS --> MCU
-    TLS --> RISCV
-    MR --> MPU
-    FDDS --> MCU
-    AUTH --> RISCV
+    TLS --> RENODE
+    AUTH --> RENODE
+    WASM_RT --> RENODE
     
-    MPU --> WASM
-    MCU --> WASM
-    RISCV --> WASM
-    MPU --> TLS_CLIENT
-    MCU --> TLS_CLIENT
-    RISCV --> TLS_CLIENT
-    
-    RISCV --> QEMU
-    MCU --> QEMU
-    MPU --> QEMU
-    
-    MR --> PX4
-    FDDS --> PX4
-    PX4 --> UORB
-    PX4 --> MAV
+    RENODE --> ARM
+    ARM --> FIRMWARE
+    FIRMWARE --> TLS_CLIENT
+    FIRMWARE --> WASM
 ```
 
 ## Architectural Layers
-
-### Cloud Layer
-
-The cloud layer provides centralized orchestration and management capabilities through Kubernetes.
 
 ### Cloud Layer
 
@@ -108,13 +75,13 @@ graph LR
     subgraph "Custom Resources"
         APP[Application CRD]
         DEV[Device CRD]
-        CFG[Configuration CRD]
+        GW[Gateway CRD]
     end
     
     subgraph "Custom Controllers"
         APP_CTRL[Application Controller]
         DEV_CTRL[Device Controller]
-        CFG_CTRL[Configuration Controller]
+        GW_CTRL[Gateway Controller]
     end
     
     subgraph "RBAC"
@@ -126,11 +93,11 @@ graph LR
     API --> CTRL
     CTRL --> APP_CTRL
     CTRL --> DEV_CTRL
-    CTRL --> CFG_CTRL
+    CTRL --> GW_CTRL
     
     APP_CTRL --> APP
     DEV_CTRL --> DEV
-    CFG_CTRL --> CFG
+    GW_CTRL --> GW
     
     SA --> ROLE
     ROLE --> RB
@@ -139,14 +106,15 @@ graph LR
 #### Components
 
 **Kubernetes Cluster**
-- Custom Resource Definitions (CRDs) for Applications and Devices
-- Controller for application lifecycle management
+- Custom Resource Definitions (CRDs) for Applications, Devices, and Gateways
+- Controllers for application lifecycle management
 - RBAC for secure access control
 - etcd for state persistence
 
 **Custom Controllers**
 - Application Controller: Manages WASM application deployment
 - Device Controller: Handles device registration and status
+- Gateway Controller: Manages gateway instances
 - Reconciliation loops for maintaining desired state
 
 **API Server**
@@ -156,28 +124,22 @@ graph LR
 
 ### Fog Layer
 
-The fog layer consists of gateway MPU devices that bridge cloud orchestration with edge device communication.
-
-### Fog Layer
-
-The fog layer consists of gateway MPU devices that bridge cloud orchestration with edge device communication.
+The fog layer consists of gateway servers that bridge cloud orchestration with edge device communication.
 
 ```mermaid
 graph TB
-    subgraph "Gateway MPU"
-        HTTP[HTTP API Server]
-        TLS_SRV[TLS Server]
-        MR_BRIDGE[microROS Bridge]
-        FDDS_MW[FastDDS Middleware]
-        AUTH_SRV[Authentication Service]
+    subgraph "Gateway Server"
+        HTTP[HTTP API Server :8080]
+        TLS_SRV[TLS Server :8081]
         HB_MON[Heartbeat Monitor]
         APP_MGR[Application Manager]
+        AUTH_SRV[Authentication Service]
+        WASM_RT[WASM Runtime]
     end
     
     subgraph "Communication Protocols"
         TLS_PROTO[TLS 1.3]
         CBOR_PROTO[CBOR Protocol]
-        DDS_PROTO[DDS Protocol]
         HTTP_PROTO[HTTP/2]
     end
     
@@ -189,8 +151,6 @@ graph TB
     
     HTTP --> HTTP_PROTO
     TLS_SRV --> TLS_PROTO
-    MR_BRIDGE --> DDS_PROTO
-    FDDS_MW --> DDS_PROTO
     AUTH_SRV --> CBOR_PROTO
     
     CERT_MGR --> TLS_SRV
@@ -205,12 +165,13 @@ graph TB
 - Device enrollment and authentication
 - Application deployment coordination
 - Heartbeat monitoring and device status tracking
+- Real WASM runtime execution
 
 **Communication Protocols**
 - TLS 1.3 with mutual authentication
 - CBOR message encoding for efficiency
 - HTTP API for management operations
-- WebSocket for real-time updates
+- Real-time device communication
 
 **Security Features**
 - Certificate-based device authentication
@@ -220,88 +181,83 @@ graph TB
 
 ### Edge Layer
 
-The edge layer encompasses heterogeneous devices running WebAssembly applications.
-
-### Edge Layer
-
-The edge layer encompasses heterogeneous devices running WebAssembly applications.
+The edge layer encompasses constrained devices running WebAssembly applications through Renode emulation.
 
 ```mermaid
 graph TB
-    subgraph "Device Types"
-        MPU[MPU Devices]
-        MCU[MCU Devices]
-        RISCV[RISC-V Devices]
+    subgraph "Renode Emulation"
+        RENODE[Renode Platform]
+        ARDUINO[Arduino Nano 33 BLE]
+        STM32[STM32F4 Discovery]
+        UNO[Arduino Uno R4]
     end
     
-    subgraph "Runtime Components"
-        WASM_RT[WebAssembly Runtime]
+    subgraph "Real Firmware"
+        FIRMWARE[Rust Firmware]
         TLS_CLI[TLS Client]
         APP_LOADER[Application Loader]
         HB_CLIENT[Heartbeat Client]
+        WASM_RT[WASM Runtime]
     end
     
-    subgraph "QEMU Emulation"
-        QEMU_RISCV[qemu-system-riscv32]
-        QEMU_ARM[qemu-system-arm]
-        QEMU_XTENSA[qemu-system-xtensa]
+    subgraph "Communication"
         SERIAL_BRIDGE[Serial Bridge]
+        TCP_BRIDGE[TCP Bridge]
+        TLS_CONN[TLS Connection]
     end
     
-    MPU --> WASM_RT
-    MCU --> WASM_RT
-    RISCV --> WASM_RT
+    RENODE --> ARDUINO
+    RENODE --> STM32
+    RENODE --> UNO
     
-    MPU --> TLS_CLI
-    MCU --> TLS_CLI
-    RISCV --> TLS_CLI
+    ARDUINO --> FIRMWARE
+    STM32 --> FIRMWARE
+    UNO --> FIRMWARE
     
-    MPU --> APP_LOADER
-    MCU --> APP_LOADER
-    RISCV --> APP_LOADER
+    FIRMWARE --> TLS_CLI
+    FIRMWARE --> APP_LOADER
+    FIRMWARE --> HB_CLIENT
+    FIRMWARE --> WASM_RT
     
-    RISCV --> QEMU_RISCV
-    MCU --> QEMU_ARM
-    MPU --> QEMU_XTENSA
-    
-    QEMU_RISCV --> SERIAL_BRIDGE
-    QEMU_ARM --> SERIAL_BRIDGE
-    QEMU_XTENSA --> SERIAL_BRIDGE
+    FIRMWARE --> SERIAL_BRIDGE
+    SERIAL_BRIDGE --> TCP_BRIDGE
+    TCP_BRIDGE --> TLS_CONN
 ```
 
 #### Device Types
 
-**MPU (Microprocessor Unit)**
-- Full-featured embedded systems
-- Complete operating system support
-- Rich communication capabilities
-- High-performance WebAssembly execution
+**Arduino Nano 33 BLE**
+- ARM Cortex-M4 processor
+- 256KB RAM, 1MB Flash
+- Bluetooth Low Energy support
+- Real-time capabilities
 
-**MCU (Microcontroller Unit)**
-- Resource-constrained systems
-- Real-time operating system support
-- Limited communication interfaces
-- Optimized WebAssembly runtime
+**STM32F4 Discovery**
+- ARM Cortex-M4 processor
+- 192KB RAM, 1MB Flash
+- Rich peripheral set
+- High-performance processing
 
-**RISC-V Systems**
-- Open-source instruction set architecture
-- Customizable processor implementations
-- Embedded system integration
-- WebAssembly native support
+**Arduino Uno R4**
+- ARM Cortex-M4 processor
+- 32KB RAM, 256KB Flash
+- Cost-effective solution
+- Educational platform
 
-#### WebAssembly Runtime
+#### Real Firmware Implementation
 
-**no_std Compatibility**
+**Rust no_std Firmware**
 - Minimal standard library dependencies
 - Custom allocator implementations
 - Embedded system optimizations
 - Memory management for constrained environments
 
 **Runtime Features**
-- Function call execution
-- Memory management and sandboxing
-- Import/export interface
-- Error handling and recovery
+- Real TLS client implementation
+- CBOR message serialization
+- WASM runtime integration
+- Heartbeat and status reporting
+- Application lifecycle management
 
 ## Communication Architecture
 
@@ -390,7 +346,7 @@ graph TB
 **Custom Resource Definitions**
 - Application CRD for WASM application management
 - Device CRD for edge device registration
-- Configuration CRDs for platform settings
+- Gateway CRD for gateway management
 - Status CRDs for runtime monitoring
 
 **Controller Architecture**
@@ -398,12 +354,6 @@ graph TB
 - State machine implementation
 - Error handling and recovery
 - Scalability and performance optimization
-
-**Service Mesh Integration**
-- Istio or Linkerd integration
-- Service discovery and routing
-- Load balancing and failover
-- Observability and monitoring
 
 ### Container Orchestration
 
@@ -508,3 +458,25 @@ graph TB
 - Proactive failure detection
 - Automated recovery actions
 - Alert and notification systems
+
+## Production Status
+
+### ✅ Production Ready Features
+
+- **Real TLS Communication**: Complete TLS 1.3 implementation
+- **Renode Emulation**: Full constrained device emulation
+- **WASM Runtime**: Complete WebAssembly execution engine
+- **Kubernetes Integration**: Full CRD and controller implementation
+- **Real-time Dashboard**: Live monitoring and management interface
+- **Certificate Management**: Complete TLS certificate infrastructure
+- **Device Lifecycle**: Create, deploy, monitor, stop devices
+- **Application Deployment**: Full WASM application orchestration
+
+### 🚀 Advanced Capabilities
+
+- **Multi-Architecture Support**: ARM Cortex-M4, RISC-V
+- **Real Device Communication**: Actual device-to-gateway protocols
+- **Secure Enrollment**: Certificate-based device authentication
+- **Real-time Monitoring**: Live device status and health
+- **Scalable Architecture**: Kubernetes-native orchestration
+- **Production Security**: Complete security architecture

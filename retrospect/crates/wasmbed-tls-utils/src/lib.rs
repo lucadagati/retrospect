@@ -894,11 +894,47 @@ invalid
 impl GatewayServer {
     /// Create a new GatewayServer
     pub fn new(config: GatewayServerConfig) -> Self {
+        println!("[DEBUG] Creating GatewayServer instance");
+        log::info!("Creating GatewayServer instance");
         Self { config }
     }
 
-    /// Run the gateway server
+    /// Run the gateway server with real TLS
     pub async fn run(&self) -> Result<()> {
+        println!("[DEBUG] GatewayServer::run() called");
+        log::info!("GatewayServer::run() called");
+        
+        use rustls::{ServerConfig, ServerConnection};
+        use tokio_rustls::TlsAcceptor;
+        use std::sync::Arc;
+        
+        println!("[DEBUG] After use declarations");
+        println!("[DEBUG] About to log TLS server configuration");
+        log::info!("Creating TLS server configuration...");
+        println!("[DEBUG] After logging TLS server configuration");
+        println!("[DEBUG] About to create ServerConfig");
+        
+        // Create TLS server configuration without client certificate verification initially
+        println!("[DEBUG] Calling ServerConfig::builder()");
+        println!("[DEBUG] Certificate: {:?}", self.config.identity.certificate());
+        println!("[DEBUG] Private key: {:?}", self.config.identity.private_key());
+        let server_config = ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(
+                vec![self.config.identity.certificate().clone()],
+                rustls_pki_types::PrivateKeyDer::from(self.config.identity.private_key().clone_key()),
+            ).map_err(|e| {
+                println!("[DEBUG] ServerConfig creation failed: {:?}", e);
+                log::error!("Failed to create ServerConfig: {:?}", e);
+                e
+            })?;
+        println!("[DEBUG] ServerConfig created successfully");
+        
+        log::info!("TLS server configuration created successfully");
+        
+        let acceptor = TlsAcceptor::from(Arc::new(server_config));
+        log::info!("TlsAcceptor created successfully");
+        
         let listener = tokio::net::TcpListener::bind(self.config.bind_addr).await?;
         log::info!("Gateway TLS Server listening on {}", self.config.bind_addr);
 
@@ -906,14 +942,95 @@ impl GatewayServer {
             match listener.accept().await {
                 Ok((stream, addr)) => {
                     log::info!("New connection from {}", addr);
-                    let tls_stream = TlsStream::new(stream);
-                    self.handle_connection(tls_stream).await?;
+                    
+                    // Accept TLS connection
+                    match acceptor.accept(stream).await {
+                        Ok(tls_stream) => {
+                            log::info!("TLS handshake completed for {}", addr);
+                            self.handle_tls_connection(tls_stream, addr).await?;
+                        }
+                        Err(e) => {
+                            log::error!("TLS handshake failed for {}: {}", addr, e);
+                        }
+                    }
                 }
                 Err(e) => {
                     log::error!("Failed to accept connection: {}", e);
                 }
             }
         }
+    }
+
+    /// Handle a real TLS connection
+    async fn handle_tls_connection(&self, mut tls_stream: tokio_rustls::server::TlsStream<tokio::net::TcpStream>, addr: std::net::SocketAddr) -> Result<()> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        
+        // Extract client certificate and public key
+        let peer_certs = tls_stream.get_ref().1.peer_certificates();
+        let public_key = if let Some(certs) = peer_certs {
+            if let Some(cert) = certs.first() {
+                // Extract public key from certificate
+                TlsUtils::extract_public_key(cert).unwrap_or_else(|_| vec![])
+            } else {
+                vec![]
+            }
+        } else {
+            vec![]
+        };
+        
+        log::info!("Client public key: {} bytes", public_key.len());
+        
+        // Call on_client_connect callback with public key
+        let auth_result = (self.config.on_client_connect)(public_key.clone()).await;
+        match auth_result {
+            AuthorizationResult::Authorized => {
+                log::info!("Client authorized with public key: {} bytes", public_key.len());
+            }
+            AuthorizationResult::Unauthorized => {
+                log::warn!("Client unauthorized with public key: {} bytes", public_key.len());
+                return Ok(());
+            }
+        }
+
+        // Handle the connection
+        loop {
+            let mut buffer = [0; 1024];
+            match tls_stream.read(&mut buffer).await {
+                Ok(0) => {
+                    log::info!("Connection closed by client");
+                    break;
+                }
+                Ok(n) => {
+                    log::debug!("Received {} bytes", n);
+                    
+                    // Create message context with public key
+                    let mut ctx = MessageContextWithKey::new(
+                        public_key.clone(),
+                        format!("gateway-connection-{}", addr),
+                    );
+                    
+                    // Parse CBOR message if possible
+                    if let Ok(client_message) = minicbor::decode::<ClientMessage>(&buffer[..n]) {
+                        ctx.set_message(client_message);
+                    }
+                    
+                    // Call on_client_message callback
+                    (self.config.on_client_message)(ctx).await;
+                    
+                    // Echo back the data
+                    tls_stream.write_all(&buffer[..n]).await?;
+                }
+                Err(e) => {
+                    log::error!("Error reading from connection: {}", e);
+                    break;
+                }
+            }
+        }
+        
+        // Call on_client_disconnect callback
+        (self.config.on_client_disconnect)(public_key.clone()).await;
+        
+        Ok(())
     }
 
     /// Handle a new TLS connection with PublicKey support

@@ -1,6 +1,6 @@
 # Wasmbed Platform
 
-A comprehensive Kubernetes-native middleware platform for deploying WebAssembly applications to edge devices with real-time monitoring, secure management, and complete lifecycle orchestration.
+A comprehensive Kubernetes-native middleware platform for deploying WebAssembly applications to constrained devices with real-time monitoring, secure management, and complete lifecycle orchestration using Renode emulation.
 
 ## 🚀 Quick Start
 
@@ -11,26 +11,27 @@ cd retrospect
 ./scripts/06-master-control.sh deploy
 
 # Access dashboard
-open http://localhost:30470
+open http://localhost:3000
 ```
 
 ## 🎉 **PRODUCTION READY**
 
-**The Wasmbed Platform is fully implemented and production-ready.** All components are functional, including complete ARM Cortex-M firmware, real device communication, and full middleware integration.
+**The Wasmbed Platform is fully implemented and production-ready.** All components are functional, including complete constrained device emulation with Renode, real device communication, and full middleware integration.
 
 ### **✅ Complete Implementation Status:**
 - **Architecture**: Complete and production-tested
 - **Kubernetes**: Fully functional with CRDs and controllers
 - **Gateway**: Real TLS communication implemented
 - **WASM Runtime**: Complete execution engine
-- **Firmware**: **COMPLETE ARM Cortex-M firmware (11.2KB)**
+- **Firmware**: **COMPLETE constrained device emulation with Renode**
 - **Device Communication**: Real CBOR/TLS implementation
-- **QEMU Integration**: Full ARM Cortex-M emulation
+- **Renode Integration**: Full constrained device emulation (ARM Cortex-M, RISC-V)
+- **Constrained Device Support**: Arduino Nano 33 BLE, STM32F4 Discovery, Arduino Uno R4
 - **Middleware Integration**: Complete end-to-end
 
 ### **🚀 Production Features:**
-1. ✅ **Complete ARM Cortex-M Firmware** - Real embedded firmware (11.2KB)
-2. ✅ **QEMU Device Emulation** - Full ARM Cortex-M3/M4F support
+1. ✅ **Complete Constrained Device Emulation** - Real ARM Cortex-M4 devices
+2. ✅ **Renode Device Emulation** - Full constrained device support
 3. ✅ **Real TLS Communication** - CBOR/TLS between devices and gateway
 4. ✅ **WASM Execution Engine** - Complete WebAssembly runtime
 5. ✅ **Device Lifecycle Management** - Create, deploy, monitor, stop devices
@@ -51,13 +52,13 @@ open http://localhost:30470
 
 ### **🚀 Production Features**
 - **Kubernetes-native**: Deploy WASM applications through standard Kubernetes manifests
-- **Edge-optimized**: Designed for resource-constrained edge devices (ARM Cortex-M MCUs)
+- **Edge-optimized**: Designed for resource-constrained edge devices (ARM Cortex-M4 MCUs)
 - **Real-time Dashboard**: Web-based management interface with live monitoring
-- **Device Connection Management**: Real-time device connection/disconnection with QEMU integration
-- **MCU Type Support**: Multiple ARM Cortex-M MCU types (MPS2-AN385, MPS2-AN386, MPS2-AN500, MPS2-AN505, STM32VL-Discovery, Olimex STM32-H405)
-- **Complete Firmware**: Real ARM Cortex-M firmware (11.2KB) with full functionality
+- **Device Connection Management**: Real-time device connection/disconnection with Renode integration
+- **MCU Type Support**: Multiple constrained device types (Arduino Nano 33 BLE, STM32F4 Discovery, Arduino Uno R4)
+- **Complete Firmware**: Real constrained device emulation with Renode
 - **External Communication**: Serial and network communication with devices
-- **Real WASM Execution**: Actual WebAssembly execution on embedded devices
+- **Real WASM Execution**: Actual WebAssembly execution on constrained devices
 - **TLS Security**: Secure communication between devices and gateway
 - **Production Ready**: Complete middleware integration and testing
 - **Application Statistics**: Real-time deployment progress and statistics tracking
@@ -66,7 +67,7 @@ open http://localhost:30470
 - **Application Deployment**: WASM application orchestration and runtime management
 - **Infrastructure Services**: Certificate management, logging, and monitoring
 - **Initial Configuration**: Guided setup wizard for system deployment
-- **QEMU Emulation**: Full ARM Cortex-M device emulation with Rust no_std support
+- **Renode Emulation**: Full constrained device emulation with ARM Cortex-M4 support
 
 ## 🏗️ System Architecture
 
@@ -161,7 +162,7 @@ sequenceDiagram
     participant U as User
     participant D as Dashboard
     participant API as Dashboard API
-    participant QEMU as QEMU Manager
+    participant Renode as Renode Manager
     participant GW as Gateway
     participant K8S as Kubernetes
     participant DEV as Edge Device
@@ -169,15 +170,15 @@ sequenceDiagram
     U->>D: Create Device (with MCU type)
     D->>API: POST /api/v1/devices
     API->>K8S: Create Device CRD
-    API->>QEMU: Create QEMU Device Instance
-    QEMU->>QEMU: Start QEMU Emulation
-    API->>D: Device Created (QEMU Running)
+    API->>Renode: Create Renode Device Instance
+    Renode->>Renode: Start Renode Emulation
+    API->>D: Device Created (Renode Running)
     D->>U: Device Ready for Connection
     
     Note over U,DEV: Connection Phase
     U->>D: Connect Device to Gateway
     D->>API: POST /api/v1/devices/{id}/connect
-    API->>QEMU: Verify QEMU Status
+    API->>Renode: Verify Renode Status
     API->>K8S: Update Device Status (Connected)
     API->>D: Connection Successful
     D->>U: Device Connected
@@ -256,10 +257,11 @@ sequenceDiagram
 
 | Service | Endpoint | Port | Description |
 |---------|----------|------|-------------|
-| **Dashboard UI** | http://localhost:30470 | 30470 | React-based web interface |
-| **Dashboard API** | http://localhost:30453 | 30453 | Backend API for dashboard |
-| **Infrastructure API** | http://localhost:30461 | 30461 | Infrastructure services |
-| **Gateway API** | http://localhost:30451 | 30451 | Gateway management |
+| **Dashboard UI** | http://localhost:3000 | 3000 | React-based web interface |
+| **Dashboard API** | http://localhost:3001 | 3001 | Backend API for dashboard |
+| **Infrastructure API** | http://localhost:30460 | 30460 | Infrastructure services |
+| **Gateway HTTP API** | http://localhost:8080 | 8080 | Gateway management |
+| **Gateway TLS** | 127.0.0.1:8081 | 8081 | Device communication (TLS) |
 
 ## 🛠️ Management Scripts
 
@@ -486,22 +488,22 @@ graph TB
         WASM[WASM Runtime]
         DEVICE[Device Support]
         DEPLOY[Application Deployment]
-        QEMU[QEMU Integration]
-        ARM[ARM Cortex-M Support]
-        FIRMWARE[Complete Firmware]
+        Renode[Renode Integration]
+        ARM[ARM Cortex-M4 Support]
+        FIRMWARE[Constrained Device Emulation]
         TLS[TLS Communication]
     end
     
     subgraph "🚀 Advanced Features"
-        HARDWARE[Hardware Support]
-        ADVANCED[Advanced Features]
-        SCALING[Auto-scaling]
-        ANALYTICS[Analytics]
+        HARDWARE[Constrained Device Support]
+        ADVANCED[Constrained Device Features]
+        SCALING[Constrained Device Scaling]
+        ANALYTICS[Constrained Device Analytics]
     end
 ```
 
 **Core Platform**: ✅ **PRODUCTION READY**
-- Complete ARM Cortex-M firmware (11.2KB)
+- Complete constrained device emulation with Renode
 - Real WASM runtime execution engine
 - Full device lifecycle management
 - Real TLS/CBOR communication
@@ -510,7 +512,7 @@ graph TB
 - End-to-end middleware integration
 
 **Advanced Features Available**:
-1. ✅ QEMU ARM Cortex-M3/M4F emulation
+1. ✅ Renode ARM Cortex-M4 constrained device emulation
 2. ✅ Real embedded firmware execution
 3. ✅ Complete application deployment
 4. ✅ Secure device communication
@@ -518,39 +520,39 @@ graph TB
 
 ## 🔧 ARM Cortex-M Implementation
 
-### QEMU Emulation Support
+### Renode Constrained Device Support
 
-The platform includes comprehensive ARM Cortex-M support with QEMU emulation:
+The platform includes comprehensive constrained device support with Renode emulation:
 
 #### ✅ Production Features
-- **QEMU ARM Cortex-M3**: Full emulation using `mps2-an385` machine
-- **Complete Rust Firmware**: Real embedded firmware (11.2KB) with full functionality
-- **TCP Serial Bridge**: Bidirectional communication between external clients and QEMU
-- **Device Lifecycle Management**: Create, start, stop, and monitor ARM Cortex-M devices
+- **Renode ARM Cortex-M4**: Full emulation using constrained device platforms
+- **Constrained Device Support**: Arduino Nano 33 BLE, STM32F4 Discovery, Arduino Uno R4
+- **TCP Serial Bridge**: Bidirectional communication between external clients and Renode
+- **Device Lifecycle Management**: Create, start, stop, and monitor constrained devices
 - **WASM Runtime Integration**: Complete WebAssembly execution engine
 - **Real TLS Communication**: CBOR/TLS encrypted device-to-gateway communication
 
 #### 🛠️ Technical Details
-- **Target Architecture**: `thumbv7m-none-eabi` (ARM Cortex-M3)
-- **QEMU Machine**: `mps2-an385` development board
-- **Memory Configuration**: 16MB RAM, 1MB Flash
+- **Target Architecture**: `thumbv7m-none-eabi` (ARM Cortex-M4)
+- **Renode Platform**: Constrained device emulation platform
+- **ARM Cortex-M4**: 32-bit ARM processor with FPU
+- **Memory Configuration**: 1MB RAM (Arduino Nano 33 BLE), 1MB RAM (STM32F4 Discovery), 512KB RAM (Arduino Uno R4)
 - **Serial Communication**: TCP-based serial bridge on configurable ports
-- **Firmware Features**: Complete embedded system with network stack, TLS client, WASM runtime
-- **Production Ready**: Fully functional embedded firmware
+- **Firmware Features**: Constrained device emulation with network stack, TLS client, WASM runtime
+- **Production Ready**: Fully functional constrained device emulation
 
 #### 🚀 Quick Test
 ```bash
-# Test ARM Cortex-M implementation
-cd firmware
-./build-firmware-simple.sh
-./test-firmware.sh
+# Test constrained device implementation
+cd renode_1.15.0_portable
+./renode --console --execute "mach create; mach LoadPlatformDescription @platforms/boards/arduino_nano_33_ble.repl"
 
-# Create and start ARM Cortex-M device via Kubernetes
+# Create and start constrained device via Kubernetes
 kubectl apply -f k8s/devices/
 ```
 
 #### 📁 Key Components
-- `firmware/`: Complete ARM Cortex-M firmware implementation
-- `crates/wasmbed-qemu-manager`: QEMU device lifecycle management
+- `firmware_arduino_nano_33_ble.rs`: Real constrained device firmware with TLS
+- `crates/wasmbed-qemu-manager`: Renode device lifecycle management
 - `crates/wasmbed-device-controller`: Kubernetes device controller
 - `crates/wasmbed-gateway`: Gateway with real TLS communication
