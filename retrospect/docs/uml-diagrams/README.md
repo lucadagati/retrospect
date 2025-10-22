@@ -4,7 +4,49 @@ This directory contains comprehensive UML diagrams for the Wasmbed Platform arch
 
 ## Diagram Overview
 
-### System Architecture Diagrams
+### Simplified Architecture Diagrams (Recommended)
+
+#### 1. High Level Architecture (`high-level-architecture.puml`)
+- **Purpose**: Simplified system overview with main components
+- **Scope**: Core layers and key components only
+- **Key Components**: React Dashboard, API Gateway, Device Management, Kubernetes Platform
+- **Implementation**: Reflects current Renode integration and real TLS implementation
+- **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **LOW** - Easy to read and understand
+
+#### 2. Communication Layers (`communication-layers.puml`)
+- **Purpose**: Detailed communication flow between layers
+- **Scope**: Frontend, API, Gateway, Device, and Infrastructure layers
+- **Key Components**: Layer-by-layer communication protocols
+- **Implementation**: Real TLS 1.3 and HTTP/HTTPS communication
+- **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **MEDIUM** - Focused on communication patterns
+
+#### 3. Renode Devices (`renode-devices-simple.puml`)
+- **Purpose**: Simplified device emulation architecture
+- **Scope**: Renode emulation, ARM Cortex-M4 devices, firmware components
+- **Key Components**: Arduino Nano 33 BLE, STM32F4 Discovery, Arduino Uno R4, real firmware
+- **Implementation**: Complete constrained device emulation with Renode
+- **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **MEDIUM** - Focused on device architecture
+
+#### 4. Security Architecture (`security-simple.puml`)
+- **Purpose**: Simplified security model and TLS implementation
+- **Scope**: Certificate Authority, TLS communication, device authentication
+- **Key Components**: X.509 v3 certificates, TLS 1.3, rustls implementation, WASM sandbox
+- **Implementation**: Real certificate management and mutual TLS authentication
+- **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **MEDIUM** - Focused on security components
+
+#### 5. Application Deployment (`application-deployment-simple.puml`)
+- **Purpose**: Simplified WASM application deployment pipeline
+- **Scope**: Compilation, deployment, execution, monitoring
+- **Key Components**: Rust compiler, WASM runtime, device execution, Kubernetes integration
+- **Implementation**: Real WASM compilation and deployment to constrained devices
+- **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **MEDIUM** - Focused on deployment flow
+
+### Detailed Architecture Diagrams (Complete)
 
 #### 1. System Architecture (`system-architecture.puml`)
 - **Purpose**: Complete system overview with all layers and components
@@ -12,6 +54,7 @@ This directory contains comprehensive UML diagrams for the Wasmbed Platform arch
 - **Key Components**: React Dashboard, API Server, Gateway, Renode Manager, ARM Cortex-M4 devices
 - **Implementation**: Reflects current Renode integration and real TLS implementation
 - **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **HIGH** - Complete system view
 
 #### 2. Security Architecture (`security-architecture.puml`)
 - **Purpose**: Comprehensive security model and TLS implementation
@@ -19,6 +62,7 @@ This directory contains comprehensive UML diagrams for the Wasmbed Platform arch
 - **Key Components**: X.509 v3 certificates, TLS 1.3, rustls implementation, WASM sandbox
 - **Implementation**: Real certificate management and mutual TLS authentication
 - **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **HIGH** - Complete security view
 
 #### 3. Renode Device Architecture (`renode-device-architecture.puml`)
 - **Purpose**: Detailed device emulation and firmware architecture
@@ -26,6 +70,7 @@ This directory contains comprehensive UML diagrams for the Wasmbed Platform arch
 - **Key Components**: Arduino Nano 33 BLE, STM32F4 Discovery, Arduino Uno R4, real firmware
 - **Implementation**: Complete constrained device emulation with Renode
 - **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **HIGH** - Complete device view
 
 #### 4. Application Deployment Architecture (`application-deployment-architecture.puml`)
 - **Purpose**: WASM application deployment pipeline and runtime management
@@ -33,22 +78,41 @@ This directory contains comprehensive UML diagrams for the Wasmbed Platform arch
 - **Key Components**: Rust compiler, WASM runtime, device execution, Kubernetes integration
 - **Implementation**: Real WASM compilation and deployment to constrained devices
 - **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **HIGH** - Complete deployment view
 
 ### Sequence Diagrams
 
-#### 1. Device Enrollment (`../sequence-diagrams/device-enrollment-detailed.puml`)
+#### 1. Device Enrollment - Simple (`../sequence-diagrams/device-enrollment-simple.puml`)
+- **Purpose**: Simplified device enrollment workflow with Renode integration
+- **Scope**: Device initialization, TLS handshake, enrollment, heartbeat setup
+- **Key Components**: Arduino Nano 33 BLE, TLS client, Gateway, Renode Manager, Kubernetes
+- **Implementation**: Real TLS 1.3 handshake and X.509 v3 certificate validation
+- **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **MEDIUM** - Focused on enrollment flow
+
+#### 2. Application Deployment - Simple (`../sequence-diagrams/application-deployment-simple.puml`)
+- **Purpose**: Simplified application deployment workflow from compilation to execution
+- **Scope**: Rust compilation, WASM deployment, device execution, monitoring
+- **Key Components**: User, Dashboard, API Server, Gateway, WASM Runtime, Arduino devices
+- **Implementation**: Real WASM compilation and deployment to Renode devices
+- **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **MEDIUM** - Focused on deployment flow
+
+#### 3. Device Enrollment - Detailed (`../sequence-diagrams/device-enrollment-detailed.puml`)
 - **Purpose**: Complete device enrollment workflow with Renode integration
 - **Scope**: Device initialization, TLS handshake, enrollment, heartbeat setup
 - **Key Components**: Arduino Nano 33 BLE, TLS client, Gateway, Renode Manager, Kubernetes
 - **Implementation**: Real TLS 1.3 handshake and X.509 v3 certificate validation
 - **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **HIGH** - Complete enrollment flow
 
-#### 2. Application Deployment (`../sequence-diagrams/application-deployment-detailed.puml`)
+#### 4. Application Deployment - Detailed (`../sequence-diagrams/application-deployment-detailed.puml`)
 - **Purpose**: Complete application deployment workflow from compilation to execution
 - **Scope**: Rust compilation, WASM deployment, device execution, monitoring
 - **Key Components**: User, Dashboard, API Server, Gateway, WASM Runtime, Arduino devices
 - **Implementation**: Real WASM compilation and deployment to Renode devices
 - **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **HIGH** - Complete deployment flow
 
 ## Technical Implementation Details
 
@@ -115,6 +179,24 @@ All diagrams are optimized for A4 format with:
 - **Readable Text**: Appropriate font sizes for A4 printing
 - **Professional Appearance**: Clean, professional styling
 
+### Diagram Selection Guide
+
+#### For Presentations and Documentation
+- **Start with**: `high-level-architecture.puml` - Simple overview
+- **Then use**: `communication-layers.puml` - Layer details
+- **Add**: `renode-devices-simple.puml` - Device architecture
+- **Include**: `security-simple.puml` - Security model
+
+#### For Technical Deep Dives
+- **Use**: `system-architecture.puml` - Complete system view
+- **Add**: `security-architecture.puml` - Complete security view
+- **Include**: `renode-device-architecture.puml` - Complete device view
+- **Reference**: `application-deployment-architecture.puml` - Complete deployment view
+
+#### For Workflow Documentation
+- **Simple flows**: `device-enrollment-simple.puml` and `application-deployment-simple.puml`
+- **Complete flows**: `device-enrollment-detailed.puml` and `application-deployment-detailed.puml`
+
 ### Editing Diagrams
 
 1. Open `.puml` files in any text editor
@@ -179,4 +261,5 @@ All diagrams are optimized for A4 format with:
 **Last Updated**: 2025  
 **Version**: 0.1.0  
 **Status**: Production Ready  
-**Format**: A4 Optimized
+**Format**: A4 Optimized  
+**Complexity**: Simplified + Detailed versions available
