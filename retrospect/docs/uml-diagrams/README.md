@@ -11,24 +11,28 @@ This directory contains comprehensive UML diagrams for the Wasmbed Platform arch
 - **Scope**: Frontend, API, Gateway, Device Management, Kubernetes, and Device layers
 - **Key Components**: React Dashboard, API Server, Gateway, Renode Manager, ARM Cortex-M4 devices
 - **Implementation**: Reflects current Renode integration and real TLS implementation
+- **Layout**: Vertical orientation optimized for A4 format
 
 #### 2. Security Architecture (`security-architecture.puml`)
 - **Purpose**: Comprehensive security model and TLS implementation
 - **Scope**: Certificate Authority, TLS communication, device authentication, infrastructure security
 - **Key Components**: X.509 v3 certificates, TLS 1.3, rustls implementation, WASM sandbox
 - **Implementation**: Real certificate management and mutual TLS authentication
+- **Layout**: Vertical orientation optimized for A4 format
 
 #### 3. Renode Device Architecture (`renode-device-architecture.puml`)
 - **Purpose**: Detailed device emulation and firmware architecture
 - **Scope**: Renode emulation layer, ARM Cortex-M4 devices, firmware components
 - **Key Components**: Arduino Nano 33 BLE, STM32F4 Discovery, Arduino Uno R4, real firmware
 - **Implementation**: Complete constrained device emulation with Renode
+- **Layout**: Vertical orientation optimized for A4 format
 
 #### 4. Application Deployment Architecture (`application-deployment-architecture.puml`)
 - **Purpose**: WASM application deployment pipeline and runtime management
 - **Scope**: Compilation, deployment, execution, monitoring, and management
 - **Key Components**: Rust compiler, WASM runtime, device execution, Kubernetes integration
 - **Implementation**: Real WASM compilation and deployment to constrained devices
+- **Layout**: Vertical orientation optimized for A4 format
 
 ### Sequence Diagrams
 
@@ -37,12 +41,14 @@ This directory contains comprehensive UML diagrams for the Wasmbed Platform arch
 - **Scope**: Device initialization, TLS handshake, enrollment, heartbeat setup
 - **Key Components**: Arduino Nano 33 BLE, TLS client, Gateway, Renode Manager, Kubernetes
 - **Implementation**: Real TLS 1.3 handshake and X.509 v3 certificate validation
+- **Layout**: Vertical orientation optimized for A4 format
 
 #### 2. Application Deployment (`../sequence-diagrams/application-deployment-detailed.puml`)
 - **Purpose**: Complete application deployment workflow from compilation to execution
 - **Scope**: Rust compilation, WASM deployment, device execution, monitoring
 - **Key Components**: User, Dashboard, API Server, Gateway, WASM Runtime, Arduino devices
 - **Implementation**: Real WASM compilation and deployment to Renode devices
+- **Layout**: Vertical orientation optimized for A4 format
 
 ## Technical Implementation Details
 
@@ -86,15 +92,28 @@ All diagrams reflect the **production-ready implementation** with:
 # Install PlantUML
 sudo apt-get install plantuml
 
-# Generate PNG images
+# Generate PNG images (A4 optimized)
 plantuml -tpng *.puml
 
-# Generate SVG images
+# Generate SVG images (A4 optimized)
 plantuml -tsvg *.puml
 
-# Generate PDF images
+# Generate PDF images (A4 optimized)
 plantuml -tpdf *.puml
+
+# Generate high-resolution images for A4 printing
+plantuml -tpng -Sdpi=300 *.puml
 ```
+
+### A4 Format Optimization
+
+All diagrams are optimized for A4 format with:
+
+- **Vertical Layout**: `skinparam direction top to bottom` for better A4 fit
+- **Compact Design**: Optimized component spacing and sizing
+- **Clear Hierarchy**: Logical top-to-bottom flow
+- **Readable Text**: Appropriate font sizes for A4 printing
+- **Professional Appearance**: Clean, professional styling
 
 ### Editing Diagrams
 
@@ -102,6 +121,7 @@ plantuml -tpdf *.puml
 2. Modify components, connections, and notes as needed
 3. Use PlantUML syntax for additional elements
 4. Test changes using PlantUML online server
+5. Maintain vertical layout for A4 compatibility
 
 ## Architecture Principles
 
@@ -138,6 +158,7 @@ plantuml -tpdf *.puml
 - Maintain consistency with codebase
 - Document architectural decisions
 - Update component relationships
+- Maintain A4 format optimization
 
 ### Version Control
 
@@ -157,4 +178,5 @@ plantuml -tpdf *.puml
 
 **Last Updated**: 2025  
 **Version**: 0.1.0  
-**Status**: Production Ready
+**Status**: Production Ready  
+**Format**: A4 Optimized

@@ -10,6 +10,7 @@ skinparam sequenceArrowThickness 2
 skinparam sequenceLifeLineBackgroundColor #E8F4FD
 skinparam sequenceActorBackgroundColor #D4E6F1
 skinparam sequenceParticipantBackgroundColor #F8F9FA
+skinparam direction top to bottom
 
 actor "User" as USER #LightBlue
 participant "React Dashboard" as DASHBOARD #LightGreen

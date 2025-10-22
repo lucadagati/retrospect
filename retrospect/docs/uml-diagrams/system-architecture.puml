@@ -9,6 +9,7 @@ skinparam componentStyle rectangle
 skinparam packageStyle rectangle
 skinparam noteBackgroundColor #F8F9FA
 skinparam noteBorderColor #6C757D
+skinparam direction top to bottom
 
 package "Frontend Layer" as Frontend #LightBlue {
     component [React Dashboard] as Dashboard

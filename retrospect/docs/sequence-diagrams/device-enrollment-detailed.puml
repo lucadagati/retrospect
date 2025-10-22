@@ -10,6 +10,7 @@ skinparam sequenceArrowThickness 2
 skinparam sequenceLifeLineBackgroundColor #E8F4FD
 skinparam sequenceActorBackgroundColor #D4E6F1
 skinparam sequenceParticipantBackgroundColor #F8F9FA
+skinparam direction top to bottom
 
 actor "Arduino Nano 33 BLE" as MCU #LightBlue
 participant "TLS Client" as TLS_CLIENT #LightGreen
