@@ -1,757 +1,390 @@
-# Deployment Guide
+# Wasmbed Platform Deployment Guide
 
-## Overview
-
-This document provides comprehensive deployment instructions for the Wasmbed platform, including production deployment, configuration management, and scaling strategies.
-
-## Deployment Architecture
-
-### Production Architecture
-
-**High Availability Setup**:
-- Multiple gateway instances with load balancing
-- Kubernetes cluster with multiple nodes
-- Database clustering and replication
-- Network load balancers
-- Health checks and monitoring
-
-**Scalability Considerations**:
-- Horizontal scaling of gateway instances
-- Auto-scaling based on load metrics
-- Resource quotas and limits
-- Performance monitoring
-- Capacity planning
+This guide provides step-by-step instructions for deploying the Wasmbed Platform, a Kubernetes-native middleware platform for deploying WebAssembly applications to constrained devices using Renode emulation.
 
 ## Prerequisites
 
+Before deploying the Wasmbed Platform, ensure you have the following prerequisites installed:
+
+### Required Software
+
+- **Rust**: 1.70+ (for backend services)
+- **Kubernetes**: 1.25+ (for orchestration)
+- **Node.js**: 18+ (for React dashboard)
+- **Kind**: Latest (for local Kubernetes cluster)
+- **Docker**: Latest (for containerization)
+- **Renode**: 1.15.0+ (for constrained device emulation)
+
 ### System Requirements
 
-**Minimum Production Requirements**:
-- CPU: 8 cores per node
-- RAM: 16GB per node
-- Storage: 100GB SSD per node
-- Network: 1Gbps bandwidth
+- **CPU**: 4+ cores recommended
+- **RAM**: 8GB+ recommended
+- **Storage**: 10GB+ free space
+- **OS**: Linux, macOS, or Windows with WSL2
 
-**Recommended Production Requirements**:
-- CPU: 16 cores per node
-- RAM: 32GB per node
-- Storage: 500GB NVMe SSD per node
-- Network: 10Gbps bandwidth
+## Quick Deployment
 
-### Software Dependencies
+### Automated Deployment
 
-**Kubernetes Cluster**:
-- Kubernetes 1.25+
-- etcd 3.5+
-- CNI plugin (Calico recommended)
-- Ingress controller (NGINX recommended)
-- Storage class (local-path or cloud storage)
+The fastest way to deploy the platform is using the automated deployment script:
 
-**Additional Software**:
-- Docker 20.10+
-- Helm 3.0+
-- kubectl 1.25+
-- QEMU system emulators
-- Monitoring stack (Prometheus, Grafana)
-
-## Deployment Methods
-
-### Method 1: Automated Deployment
-
-**Complete Platform Deployment**:
 ```bash
-# Deploy complete platform
-./scripts/deploy.sh
+# Clone the repository
+git clone https://github.com/lucadagati/retrospect.git
+cd retrospect/retrospect
 
-# Verify deployment
-./scripts/monitor.sh status
+# Run complete deployment
+./scripts/99-full-deployment.sh
 ```
 
-**Deployment Process**:
-1. Create Kubernetes cluster
-2. Build and push Docker images
-3. Generate TLS certificates
-4. Deploy Kubernetes resources
-5. Verify deployment status
+This script will:
+1. Clean the environment
+2. Build all components
+3. Deploy infrastructure
+4. Start all services
+5. Run comprehensive tests
 
-### Method 2: Manual Deployment
+### Manual Step-by-Step Deployment
 
-#### Step 1: Create Kubernetes Cluster
+For more control over the deployment process, follow these manual steps:
 
-**k3d Cluster (Development)**:
+#### Step 1: Environment Setup
+
 ```bash
-# Create k3d cluster
-k3d cluster create wasmbed \
-  --port "8080:80@loadbalancer" \
-  --port "4423:443@loadbalancer" \
-  --agents 3 \
-  --k3s-arg "--disable=traefik@server:0"
+# Clean any existing environment
+./scripts/00-cleanup-environment.sh
 
-# Verify cluster
-kubectl cluster-info
-kubectl get nodes
+# Build all components
+./scripts/01-build-components.sh
 ```
 
-**Production Cluster (Cloud)**:
+#### Step 2: Infrastructure Deployment
+
 ```bash
-# Create production cluster (example for AWS EKS)
-eksctl create cluster \
-  --name wasmbed-prod \
-  --version 1.25 \
-  --region us-west-2 \
-  --nodegroup-name workers \
-  --node-type m5.xlarge \
-  --nodes 3 \
-  --nodes-min 1 \
-  --nodes-max 10 \
-  --managed
+# Deploy core infrastructure
+./scripts/02-deploy-infrastructure.sh
 ```
 
-#### Step 2: Build and Push Docker Images
+This step will:
+- Create Kind Kubernetes cluster
+- Install Custom Resource Definitions (CRDs)
+- Generate TLS certificates
+- Start core services (Gateway, API Server, Controllers)
 
-**Build Images**:
+#### Step 3: Verification
+
 ```bash
-# Build gateway image
-docker build -f Dockerfile.gateway -t wasmbed-gateway:latest .
+# Check system status
+./scripts/03-check-system-status.sh
 
-# Build controller image
-docker build -f Dockerfile.controller -t wasmbed-k8s-controller:latest .
-
-# Build QEMU bridge image
-docker build -f Dockerfile.qemu-bridge -t wasmbed-qemu-bridge:latest .
+# Test constrained device emulation
+./scripts/04-test-arm-cortex-m.sh
 ```
 
-**Push Images**:
-```bash
-# Tag images for registry
-docker tag wasmbed-gateway:latest registry.example.com/wasmbed-gateway:latest
-docker tag wasmbed-k8s-controller:latest registry.example.com/wasmbed-k8s-controller:latest
-docker tag wasmbed-qemu-bridge:latest registry.example.com/wasmbed-qemu-bridge:latest
+#### Step 4: Dashboard Access
 
-# Push images
-docker push registry.example.com/wasmbed-gateway:latest
-docker push registry.example.com/wasmbed-k8s-controller:latest
-docker push registry.example.com/wasmbed-qemu-bridge:latest
+```bash
+# Start React dashboard
+cd dashboard-react
+npm start
 ```
 
-#### Step 3: Generate TLS Certificates
+Access the dashboard at: http://localhost:3000
 
-**Certificate Generation**:
+## Service Configuration
+
+### Port Configuration
+
+The platform uses the following ports:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| Dashboard UI | 3000 | React web interface |
+| Dashboard API | 3001 | REST API backend |
+| Infrastructure API | 30460 | Infrastructure services |
+| Gateway HTTP | 8080 | Gateway management API |
+| Gateway TLS | 8081 | Device communication (TLS) |
+
+### Environment Variables
+
+Key environment variables for configuration:
+
+```bash
+# Kubernetes configuration
+export KUBECONFIG=~/.kube/config
+
+# Renode binary path
+export RENODE_BINARY=/path/to/renode
+
+# Certificate paths
+export CA_CERT_PATH=certs/ca-cert.pem
+export SERVER_CERT_PATH=certs/server-cert.pem
+export SERVER_KEY_PATH=certs/server-key.pem
+```
+
+## Certificate Management
+
+### Automatic Certificate Generation
+
+Certificates are automatically generated during deployment:
+
+```bash
+# Certificates are created in the certs/ directory
+ls certs/
+# ca-cert.pem, ca-cert.der
+# server-cert.pem, server-cert.der
+# device-cert.pem, device-cert.der
+# server-key.pem, device-key.pem
+```
+
+### Manual Certificate Generation
+
+If you need to regenerate certificates:
+
 ```bash
 # Generate CA certificate
-openssl genrsa -out ca-key.pem 4096
-openssl req -new -x509 -days 365 -key ca-key.pem -out ca-cert.pem
+openssl req -x509 -newkey rsa:4096 -keyout certs/ca-key.pem -out certs/ca-cert.pem -days 365 -nodes -subj "/C=IT/ST=Italy/L=Italy/O=Wasmbed/OU=Development/CN=Wasmbed CA"
 
 # Generate server certificate
-openssl genrsa -out server-key.pem 4096
-openssl req -new -key server-key.pem -out server.csr
-openssl x509 -req -days 365 -in server.csr -CA ca-cert.pem -CAkey ca-key.pem -out server-cert.pem
+openssl req -newkey rsa:4096 -keyout certs/server-key.pem -out certs/server.csr -nodes -subj "/C=IT/ST=Italy/L=Italy/O=Wasmbed/OU=Development/CN=127.0.0.1"
 
-# Generate client certificate
-openssl genrsa -out client-key.pem 4096
-openssl req -new -key client-key.pem -out client.csr
-openssl x509 -req -days 365 -in client.csr -CA ca-cert.pem -CAkey ca-key.pem -out client-cert.pem
+# Sign server certificate
+openssl x509 -req -in certs/server.csr -CA certs/ca-cert.pem -CAkey certs/ca-key.pem -out certs/server-cert.pem -days 365 -CAcreateserial
 ```
 
-**Create Kubernetes Secrets**:
-```bash
-# Create TLS secret
-kubectl create secret tls wasmbed-tls-secret-rsa \
-  --cert=server-cert.pem \
-  --key=server-key.pem \
-  -n wasmbed
+## Device Management
 
-# Create CA secret
-kubectl create secret generic wasmbed-ca-secret-rsa \
-  --from-file=ca-cert.pem \
-  -n wasmbed
+### Supported Device Types
+
+The platform supports the following constrained device types:
+
+- **Arduino Nano 33 BLE** (`RenodeArduinoNano33Ble`)
+- **STM32F4 Discovery** (`RenodeStm32F4Discovery`)
+- **Arduino Uno R4** (`RenodeArduinoUnoR4`)
+
+### Creating Devices
+
+#### Via API
+
+```bash
+# Create a device
+curl -X POST http://localhost:3001/api/v1/devices \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "my-device",
+    "name": "My Arduino Device",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "RenodeArduinoNano33Ble"
+  }'
 ```
 
-#### Step 4: Deploy Kubernetes Resources
+#### Via Dashboard
 
-**Deploy CRDs**:
+1. Open http://localhost:3000
+2. Navigate to "Device Management"
+3. Click "Create Device"
+4. Fill in device details
+5. Click "Create"
+
+### Starting Devices
+
 ```bash
-# Deploy Custom Resource Definitions
-kubectl apply -f resources/k8s/crds/application-crd.yaml
-kubectl apply -f resources/k8s/crds/device-crd.yaml
+# Start device emulation
+curl -X POST http://localhost:3001/api/v1/devices/my-device/renode/start
 ```
 
-**Deploy RBAC**:
+## Application Deployment
+
+### Compiling Rust to WASM
+
 ```bash
-# Deploy RBAC resources
-kubectl apply -f resources/k8s/rbac/controller-rbac.yaml
-kubectl apply -f resources/k8s/rbac/gateway-rbac.yaml
+# Compile Rust code
+curl -X POST http://localhost:3001/api/v1/compile \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rust_code": "fn main() { println!(\"Hello from WASM!\"); }"
+  }'
 ```
 
-**Deploy Gateway**:
+### Deploying Applications
+
 ```bash
-# Deploy gateway
-kubectl apply -f resources/k8s/gateway-configmap.yaml
-kubectl apply -f resources/k8s/gateway-service.yaml
-kubectl apply -f resources/k8s/111-statefulset-gateway.yaml
+# Deploy application to device
+curl -X POST http://localhost:3001/api/v1/applications \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "hello-app",
+    "name": "Hello Application",
+    "wasm_binary": "base64-encoded-wasm",
+    "target_devices": ["my-device"]
+  }'
 ```
 
-**Deploy Controller**:
+## Monitoring and Management
+
+### System Status
+
 ```bash
-# Deploy controller
-kubectl apply -f resources/k8s/controller-deployment.yaml
+# Check overall system health
+./scripts/03-check-system-status.sh
+
+# Check specific services
+curl http://localhost:3001/health
+curl http://localhost:8080/health
 ```
 
-#### Step 5: Verify Deployment
+### Log Management
 
-**Check Deployment Status**:
 ```bash
+# View service logs
+tail -f logs/gateway.log
+tail -f logs/api-server.log
+tail -f logs/device-controller.log
+tail -f logs/application-controller.log
+tail -f logs/gateway-controller.log
+```
+
+### Kubernetes Resources
+
+```bash
+# Check CRDs
+kubectl get crd
+
+# Check resources
+kubectl get devices,applications,gateways -n wasmbed
+
 # Check pods
 kubectl get pods -n wasmbed
-
-# Check services
-kubectl get services -n wasmbed
-
-# Check CRDs
-kubectl get crds | grep wasmbed
-
-# Check logs
-kubectl logs -f deployment/wasmbed-gateway -n wasmbed
-kubectl logs -f deployment/wasmbed-k8s-controller -n wasmbed
 ```
 
-### Method 3: Helm Deployment
+## Troubleshooting
 
-**Helm Chart Structure**:
-```
-wasmbed-platform/
-├── Chart.yaml
-├── values.yaml
-├── templates/
-│   ├── crds/
-│   ├── rbac/
-│   ├── gateway/
-│   ├── controller/
-│   └── monitoring/
-└── charts/
-```
+### Common Issues
 
-**Deploy with Helm**:
+#### Port Conflicts
+
+If you encounter port conflicts:
+
 ```bash
-# Add Helm repository
-helm repo add wasmbed https://charts.wasmbed.io
-helm repo update
+# Stop all services
+./scripts/05-stop-services.sh
 
-# Install platform
-helm install wasmbed-platform wasmbed/wasmbed-platform \
-  --namespace wasmbed \
-  --create-namespace \
-  --values values.yaml
+# Clean environment
+./scripts/00-cleanup-environment.sh
 
-# Upgrade platform
-helm upgrade wasmbed-platform wasmbed/wasmbed-platform \
-  --namespace wasmbed \
-  --values values.yaml
+# Restart deployment
+./scripts/02-deploy-infrastructure.sh
 ```
 
-## Configuration Management
+#### Certificate Issues
 
-### Environment Configuration
+If TLS handshake fails:
 
-**Gateway Configuration**:
-```yaml
-# Gateway ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: wasmbed-gateway-config
-  namespace: wasmbed
-data:
-  pairing_mode: "false"
-  pairing_timeout_seconds: "300"
-  heartbeat_timeout_seconds: "30"
-  max_devices: "1000"
-  log_level: "info"
-  max_connections: "10000"
-  connection_timeout: "30"
-  read_timeout: "60"
-  write_timeout: "60"
-```
-
-**Controller Configuration**:
-```yaml
-# Controller ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: wasmbed-controller-config
-  namespace: wasmbed
-data:
-  reconciliation_interval: "30s"
-  max_retries: "3"
-  retry_delay: "5s"
-  log_level: "info"
-  metrics_enabled: "true"
-  health_check_interval: "10s"
-```
-
-### Resource Limits and Quotas
-
-**Resource Limits**:
-```yaml
-# Gateway resource limits
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: wasmbed-gateway
-spec:
-  template:
-    spec:
-      containers:
-      - name: wasmbed-gateway
-        resources:
-          requests:
-            cpu: "500m"
-            memory: "1Gi"
-          limits:
-            cpu: "2000m"
-            memory: "4Gi"
-```
-
-**Namespace Quotas**:
-```yaml
-# Resource quota
-apiVersion: v1
-kind: ResourceQuota
-metadata:
-  name: wasmbed-quota
-  namespace: wasmbed
-spec:
-  hard:
-    requests.cpu: "10"
-    requests.memory: "20Gi"
-    limits.cpu: "20"
-    limits.memory: "40Gi"
-    pods: "50"
-    services: "10"
-    persistentvolumeclaims: "10"
-```
-
-### Security Configuration
-
-**Network Policies**:
-```yaml
-# Network policy
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: wasmbed-network-policy
-  namespace: wasmbed
-spec:
-  podSelector: {}
-  policyTypes:
-  - Ingress
-  - Egress
-  ingress:
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          name: wasmbed
-    ports:
-    - protocol: TCP
-      port: 8080
-    - protocol: TCP
-      port: 4423
-  egress:
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          name: kube-system
-    ports:
-    - protocol: TCP
-      port: 443
-```
-
-**Pod Security Policies**:
-```yaml
-# Pod security policy
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
-metadata:
-  name: wasmbed-psp
-spec:
-  privileged: false
-  allowPrivilegeEscalation: false
-  requiredDropCapabilities:
-  - ALL
-  volumes:
-  - 'configMap'
-  - 'emptyDir'
-  - 'projected'
-  - 'secret'
-  - 'downwardAPI'
-  - 'persistentVolumeClaim'
-  runAsUser:
-    rule: 'MustRunAsNonRoot'
-  seLinux:
-    rule: 'RunAsAny'
-  fsGroup:
-    rule: 'RunAsAny'
-```
-
-## Scaling Strategies
-
-### Horizontal Scaling
-
-**Gateway Scaling**:
-```yaml
-# Horizontal Pod Autoscaler
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: wasmbed-gateway-hpa
-  namespace: wasmbed
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: StatefulSet
-    name: wasmbed-gateway
-  minReplicas: 3
-  maxReplicas: 10
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
-```
-
-**Cluster Scaling**:
 ```bash
-# Scale cluster nodes
-eksctl scale nodegroup \
-  --cluster wasmbed-prod \
-  --name workers \
-  --nodes 5 \
-  --nodes-min 3 \
-  --nodes-max 15
+# Regenerate certificates
+rm -rf certs/*
+./scripts/02-deploy-infrastructure.sh
 ```
 
-### Vertical Scaling
+#### Renode Issues
 
-**Resource Optimization**:
-```yaml
-# Vertical Pod Autoscaler
-apiVersion: autoscaling.k8s.io/v1
-kind: VerticalPodAutoscaler
-metadata:
-  name: wasmbed-gateway-vpa
-  namespace: wasmbed
-spec:
-  targetRef:
-    apiVersion: apps/v1
-    kind: StatefulSet
-    name: wasmbed-gateway
-  updatePolicy:
-    updateMode: "Auto"
-  resourcePolicy:
-    containerPolicies:
-    - containerName: wasmbed-gateway
-      minAllowed:
-        cpu: "100m"
-        memory: "256Mi"
-      maxAllowed:
-        cpu: "4000m"
-        memory: "8Gi"
-```
+If Renode devices don't start:
 
-## Monitoring and Observability
-
-### Prometheus Monitoring
-
-**Prometheus Configuration**:
-```yaml
-# Prometheus ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: prometheus-config
-  namespace: monitoring
-data:
-  prometheus.yml: |
-    global:
-      scrape_interval: 15s
-    scrape_configs:
-    - job_name: 'wasmbed-gateway'
-      static_configs:
-      - targets: ['wasmbed-gateway-service:8080']
-      metrics_path: '/metrics'
-    - job_name: 'wasmbed-controller'
-      static_configs:
-      - targets: ['wasmbed-controller-service:8080']
-      metrics_path: '/metrics'
-```
-
-**ServiceMonitor**:
-```yaml
-# ServiceMonitor for Prometheus Operator
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: wasmbed-gateway-monitor
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      app: wasmbed-gateway
-  endpoints:
-  - port: metrics
-    path: /metrics
-    interval: 30s
-```
-
-### Grafana Dashboards
-
-**Dashboard Configuration**:
-```yaml
-# Grafana Dashboard ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: wasmbed-dashboard
-  namespace: monitoring
-data:
-  dashboard.json: |
-    {
-      "dashboard": {
-        "title": "Wasmbed Platform Dashboard",
-        "panels": [
-          {
-            "title": "Gateway CPU Usage",
-            "type": "graph",
-            "targets": [
-              {
-                "expr": "rate(process_cpu_seconds_total{job=\"wasmbed-gateway\"}[5m])",
-                "legendFormat": "CPU Usage"
-              }
-            ]
-          }
-        ]
-      }
-    }
-```
-
-### Logging
-
-**Fluentd Configuration**:
-```yaml
-# Fluentd ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: fluentd-config
-  namespace: logging
-data:
-  fluent.conf: |
-    <source>
-      @type tail
-      path /var/log/containers/*wasmbed*.log
-      pos_file /var/log/fluentd-containers.log.pos
-      tag kubernetes.*
-      format json
-    </source>
-    <match kubernetes.**>
-      @type elasticsearch
-      host elasticsearch.logging.svc.cluster.local
-      port 9200
-      index_name wasmbed-logs
-    </match>
-```
-
-## Backup and Recovery
-
-### Data Backup
-
-**etcd Backup**:
 ```bash
-# Backup etcd
-ETCDCTL_API=3 etcdctl snapshot save backup.db \
-  --endpoints=https://127.0.0.1:2379 \
-  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/server.crt \
-  --key=/etc/kubernetes/pki/etcd/server.key
+# Check Renode installation
+which renode
+
+# Test Renode directly
+renode --console --execute "mach create; mach LoadPlatformDescription @platforms/boards/arduino_nano_33_ble.repl"
 ```
 
-**Application Data Backup**:
+### Service Recovery
+
+#### Restart Services
+
 ```bash
-# Backup application data
-kubectl get applications -n wasmbed -o yaml > applications-backup.yaml
-kubectl get devices -n wasmbed -o yaml > devices-backup.yaml
-kubectl get configmaps -n wasmbed -o yaml > configmaps-backup.yaml
-kubectl get secrets -n wasmbed -o yaml > secrets-backup.yaml
+# Restart all services
+./scripts/06-master-control.sh restart
+
+# Restart specific service
+pkill -f wasmbed-gateway
+nohup cargo run --release -p wasmbed-gateway -- --bind-addr 127.0.0.1:8081 --private-key certs/server-key.pem --certificate certs/server-cert.pem --client-ca certs/ca-cert.pem --namespace wasmbed --pod-namespace wasmbed --pod-name gateway-1 > logs/gateway.log 2>&1 &
 ```
 
-### Disaster Recovery
+## Production Deployment
 
-**Recovery Procedures**:
+### Security Considerations
+
+1. **Certificate Management**: Use proper CA-signed certificates
+2. **Authentication**: Implement JWT or API key authentication
+3. **Network Security**: Use proper firewall rules
+4. **Resource Limits**: Set appropriate Kubernetes resource limits
+
+### Scaling
+
+#### Horizontal Scaling
+
 ```bash
-# Restore etcd
-ETCDCTL_API=3 etcdctl snapshot restore backup.db \
-  --data-dir=/var/lib/etcd-restore \
-  --name=etcd-restore \
-  --initial-cluster=etcd-restore=https://127.0.0.1:2380 \
-  --initial-cluster-token=etcd-cluster-1 \
-  --initial-advertise-peer-urls=https://127.0.0.1:2380
+# Scale gateway replicas
+kubectl scale deployment wasmbed-gateway --replicas=3 -n wasmbed
 
-# Restore application data
-kubectl apply -f applications-backup.yaml
-kubectl apply -f devices-backup.yaml
-kubectl apply -f configmaps-backup.yaml
-kubectl apply -f secrets-backup.yaml
+# Scale API server replicas
+kubectl scale deployment wasmbed-api-server --replicas=2 -n wasmbed
 ```
 
-## Security Hardening
+#### Vertical Scaling
 
-### Network Security
-
-**Ingress Configuration**:
 ```yaml
-# NGINX Ingress
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: wasmbed-ingress
-  namespace: wasmbed
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/rate-limit: "100"
-    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
-spec:
-  tls:
-  - hosts:
-    - wasmbed.example.com
-    secretName: wasmbed-tls-secret
-  rules:
-  - host: wasmbed.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: wasmbed-gateway-service
-            port:
-              number: 8080
-```
-
-### Access Control
-
-**RBAC Configuration**:
-```yaml
-# ClusterRole for admin
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: wasmbed-admin
-rules:
-- apiGroups: ["wasmbed.github.io"]
-  resources: ["applications", "devices"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: [""]
-  resources: ["pods", "services", "configmaps", "secrets"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-```
-
-## Performance Optimization
-
-### Resource Optimization
-
-**CPU Optimization**:
-```yaml
-# CPU limits and requests
+# Update resource limits in deployment manifests
 resources:
   requests:
-    cpu: "500m"
+    memory: "512Mi"
+    cpu: "250m"
   limits:
-    cpu: "2000m"
-```
-
-**Memory Optimization**:
-```yaml
-# Memory limits and requests
-resources:
-  requests:
     memory: "1Gi"
-  limits:
-    memory: "4Gi"
-```
-
-### Network Optimization
-
-**Connection Pooling**:
-```yaml
-# Connection pool configuration
-env:
-- name: MAX_CONNECTIONS
-  value: "10000"
-- name: CONNECTION_TIMEOUT
-  value: "30s"
-- name: READ_TIMEOUT
-  value: "60s"
-- name: WRITE_TIMEOUT
-  value: "60s"
+    cpu: "500m"
 ```
 
 ## Maintenance
 
-### Regular Maintenance
+### Updates
 
-**Update Procedures**:
 ```bash
-# Update platform
-helm upgrade wasmbed-platform wasmbed/wasmbed-platform \
-  --namespace wasmbed \
-  --values values.yaml \
-  --version 1.1.0
+# Pull latest changes
+git pull origin master
 
-# Rollback if needed
-helm rollback wasmbed-platform 1 --namespace wasmbed
+# Rebuild components
+./scripts/01-build-components.sh
+
+# Restart services
+./scripts/06-master-control.sh restart
 ```
 
-**Health Checks**:
-```bash
-# Check platform health
-./scripts/monitor.sh health
+### Backup
 
-# Check component health
-kubectl get pods -n wasmbed
-kubectl get services -n wasmbed
-kubectl get ingress -n wasmbed
+```bash
+# Backup device configurations
+cp qemu_devices.json qemu_devices.json.backup
+
+# Backup certificates
+cp -r certs/ certs.backup/
+
+# Backup Kubernetes resources
+kubectl get devices,applications,gateways -n wasmbed -o yaml > k8s-backup.yaml
 ```
 
-### Troubleshooting
+## Support
 
-**Common Issues**:
-- Pod startup failures
-- Service connectivity issues
-- Resource exhaustion
-- Network policy conflicts
-- Certificate expiration
+For additional support:
 
-**Debugging Commands**:
-```bash
-# Check pod logs
-kubectl logs -f deployment/wasmbed-gateway -n wasmbed
+1. Check the [Troubleshooting Guide](troubleshooting.md)
+2. Review [Known Issues](../problems/known-issues.md)
+3. Consult the [API Reference](../api/api-reference.md)
+4. Check the [Security Overview](../security/security-overview.md)
 
-# Check pod status
-kubectl describe pod <pod-name> -n wasmbed
+---
 
-# Check service endpoints
-kubectl get endpoints -n wasmbed
-
-# Check network policies
-kubectl get networkpolicies -n wasmbed
-```
+**Last Updated**: 2025  
+**Version**: 0.1.0  
+**Status**: Production Ready

@@ -1,573 +1,441 @@
-# Deployment Guide and Troubleshooting
+# Wasmbed Platform Troubleshooting Guide
 
-## Overview
+This guide provides solutions for common issues encountered when deploying and operating the Wasmbed Platform.
 
-This document provides comprehensive deployment instructions and troubleshooting guidance for the Wasmbed platform.
+## Common Issues and Solutions
 
-## Prerequisites
+### Port Conflicts
 
-### System Requirements
+#### Problem
+Services fail to start due to port conflicts.
 
-**Minimum Requirements**:
-- CPU: 4 cores
-- RAM: 8GB
-- Storage: 50GB free space
-- Network: Internet connection for package downloads
+#### Symptoms
+- Error messages about ports already in use
+- Services fail to bind to ports
+- Connection refused errors
 
-**Recommended Requirements**:
-- CPU: 8 cores
-- RAM: 16GB
-- Storage: 100GB free space
-- Network: Stable internet connection
-
-### Software Dependencies
-
-**Required Software**:
-- Docker 20.10+
-- Docker Compose 2.0+
-- Kubernetes cluster (k3d recommended)
-- QEMU system emulators
-- Rust toolchain 1.70+
-
-**QEMU Emulators**:
+#### Solution
 ```bash
-# Install QEMU emulators
-sudo apt-get update
-sudo apt-get install -y \
-    qemu-system-riscv32 \
-    qemu-system-arm \
-    qemu-system-xtensa \
-    qemu-utils
+# Stop all services and free ports
+./scripts/05-stop-services.sh
+
+# Force kill processes using Wasmbed ports
+sudo fuser -k 3000/tcp 3001/tcp 8080/tcp 8081/tcp 30460/tcp 2>/dev/null || true
+
+# Restart deployment
+./scripts/02-deploy-infrastructure.sh
 ```
 
-**Rust Toolchain**:
+### Certificate Issues
+
+#### Problem
+TLS handshake failures or certificate errors.
+
+#### Symptoms
+- `UnsupportedCertVersion` errors
+- TLS handshake failures
+- Certificate validation errors
+
+#### Solution
 ```bash
-# Install Rust toolchain
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
-rustup default stable
+# Remove existing certificates
+rm -rf certs/*
+
+# Regenerate certificates
+./scripts/02-deploy-infrastructure.sh
+
+# Verify certificate versions
+openssl x509 -in certs/ca-cert.pem -text -noout | grep Version
+openssl x509 -in certs/server-cert.pem -text -noout | grep Version
 ```
 
-## Deployment Instructions
-
-### 1. Platform Deployment
-
-**Complete Platform Deployment**:
+#### Manual Certificate Generation
 ```bash
-# Deploy the complete platform
-./scripts/deploy.sh
+# Generate CA certificate (X.509 v3)
+openssl req -x509 -newkey rsa:4096 -keyout certs/ca-key.pem -out certs/ca-cert.pem -days 365 -nodes -subj "/C=IT/ST=Italy/L=Italy/O=Wasmbed/OU=Development/CN=Wasmbed CA" -extensions v3_ca -extfile <(echo -e "[v3_ca]\nbasicConstraints = critical,CA:TRUE\nkeyUsage = critical, keyCertSign, cRLSign\nsubjectKeyIdentifier = hash\nauthorityKeyIdentifier = keyid:always,issuer")
+
+# Generate server certificate (X.509 v3)
+openssl req -newkey rsa:4096 -keyout certs/server-key.pem -out certs/server.csr -nodes -subj "/C=IT/ST=Italy/L=Italy/O=Wasmbed/OU=Development/CN=127.0.0.1"
+
+# Sign server certificate
+openssl x509 -req -in certs/server.csr -CA certs/ca-cert.pem -CAkey certs/ca-key.pem -out certs/server-cert.pem -days 365 -CAcreateserial -extensions v3_req -extfile <(echo -e "[v3_req]\nbasicConstraints = CA:FALSE\nkeyUsage = nonRepudiation, digitalSignature, keyEncipherment\nextendedKeyUsage = serverAuth\nsubjectAltName = @alt_names\n[alt_names]\nDNS.1 = localhost\nIP.1 = 127.0.0.1")
 ```
 
-**Deployment Process**:
-1. Create k3d Kubernetes cluster
-2. Build Docker images for all components
-3. Generate TLS certificates
-4. Deploy Kubernetes resources
-5. Verify deployment status
+### Renode Issues
 
-**Verification**:
+#### Problem
+Renode devices fail to start or stop unexpectedly.
+
+#### Symptoms
+- Renode processes exit immediately
+- Device status shows "Stopped" after starting
+- Renode console errors
+
+#### Solution
 ```bash
-# Check deployment status
-kubectl get pods -n wasmbed
-kubectl get services -n wasmbed
-kubectl get crds | grep wasmbed
+# Check Renode installation
+which renode
+
+# Test Renode directly
+renode --console --execute "mach create; mach LoadPlatformDescription @platforms/boards/arduino_nano_33_ble.repl"
+
+# Check Renode binary path in manager
+cargo run --release -p wasmbed-qemu-manager -- list
 ```
 
-### 2. Application Testing
-
-**Run Complete Tests**:
+#### Renode Configuration Issues
 ```bash
-# Run all application tests
-./scripts/app.sh test
+# Verify Renode platform files exist
+ls /path/to/renode/platforms/boards/
+
+# Check Renode version
+renode --version
+
+# Test specific platform
+renode --console --execute "mach create; mach LoadPlatformDescription @platforms/boards/stm32f4_discovery.repl"
 ```
 
-**Test Components**:
-- Unit tests for all Rust crates
-- Kubernetes deployment tests
-- API endpoint tests
-- CRD functionality tests
-- QEMU emulation tests
+### Kubernetes Issues
 
-### 3. System Monitoring
+#### Problem
+Kubernetes resources fail to create or update.
 
-**Monitor System Status**:
-```bash
-# Check system status
-./scripts/monitor.sh status
-```
+#### Symptoms
+- CRD creation failures
+- Controller errors
+- Resource reconciliation issues
 
-**Monitoring Components**:
-- Kubernetes cluster health
-- Gateway server status
-- Device connections
-- Application deployments
-- Resource utilization
-
-### 4. Cleanup
-
-**Complete System Cleanup**:
-```bash
-# Clean up entire system
-./scripts/cleanup.sh
-```
-
-**Cleanup Process**:
-- Remove Kubernetes resources
-- Delete Docker images
-- Clean up TLS certificates
-- Remove QEMU files
-- Clean build artifacts
-
-## Configuration
-
-### Environment Variables
-
-**Gateway Configuration**:
-```bash
-# Gateway environment variables
-WASMBED_GATEWAY_HOST=0.0.0.0
-WASMBED_GATEWAY_PORT=8080
-WASMBED_GATEWAY_TLS_PORT=4423
-WASMBED_GATEWAY_LOG_LEVEL=info
-WASMBED_GATEWAY_MAX_DEVICES=100
-```
-
-**Kubernetes Configuration**:
-```bash
-# Kubernetes environment variables
-KUBECONFIG=~/.kube/config
-KUBERNETES_NAMESPACE=wasmbed
-KUBERNETES_CONTEXT=k3d-wasmbed
-```
-
-### Configuration Files
-
-**Gateway ConfigMap**:
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: wasmbed-gateway-config
-  namespace: wasmbed
-data:
-  pairing_mode: "false"
-  pairing_timeout_seconds: "300"
-  heartbeat_timeout_seconds: "30"
-  max_devices: "100"
-  log_level: "info"
-```
-
-**TLS Configuration**:
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: wasmbed-tls-secret-rsa
-  namespace: wasmbed
-type: kubernetes.io/tls
-data:
-  tls.key: <base64-encoded-private-key>
-  tls.crt: <base64-encoded-certificate>
-```
-
-## Troubleshooting
-
-### Common Issues
-
-#### 1. Kubernetes Connection Issues
-
-**Symptoms**:
-- Gateway unable to connect to Kubernetes API
-- Controller reconciliation failing
-- Device status updates not working
-
-**Diagnosis**:
+#### Solution
 ```bash
 # Check Kubernetes cluster status
 kubectl cluster-info
-kubectl get nodes
-kubectl get pods -n wasmbed
+
+# Verify CRDs are installed
+kubectl get crd
+
+# Check controller logs
+kubectl logs -n wasmbed deployment/wasmbed-device-controller
+kubectl logs -n wasmbed deployment/wasmbed-application-controller
+kubectl logs -n wasmbed deployment/wasmbed-gateway-controller
+
+# Restart controllers
+kubectl rollout restart deployment/wasmbed-device-controller -n wasmbed
+kubectl rollout restart deployment/wasmbed-application-controller -n wasmbed
+kubectl rollout restart deployment/wasmbed-gateway-controller -n wasmbed
 ```
 
-**Solutions**:
-```bash
-# Restart k3d cluster
-k3d cluster delete wasmbed
-k3d cluster create wasmbed --port "8080:80@loadbalancer" --port "4423:443@loadbalancer"
+### Gateway Issues
 
-# Check service account permissions
-kubectl get serviceaccount wasmbed-gateway -n wasmbed
-kubectl describe clusterrolebinding wasmbed-gateway
-```
+#### Problem
+Gateway fails to start or accept connections.
 
-#### 2. TLS Certificate Issues
-
-**Symptoms**:
+#### Symptoms
+- Gateway process exits
 - TLS handshake failures
-- Certificate validation errors
-- Gateway failing to start
+- Device connection failures
 
-**Diagnosis**:
-```bash
-# Check certificate status
-kubectl get secret wasmbed-tls-secret-rsa -n wasmbed
-kubectl describe secret wasmbed-tls-secret-rsa -n wasmbed
-
-# Test TLS connection
-openssl s_client -connect localhost:4423 -servername wasmbed-gateway
-```
-
-**Solutions**:
-```bash
-# Regenerate certificates
-./scripts/security/generate-certs.sh
-
-# Recreate TLS secret
-kubectl delete secret wasmbed-tls-secret-rsa -n wasmbed
-kubectl create secret tls wasmbed-tls-secret-rsa \
-  --cert=server-cert.pem \
-  --key=server-key.pem \
-  -n wasmbed
-```
-
-#### 3. QEMU Emulation Issues
-
-**Symptoms**:
-- QEMU devices not starting
-- Firmware build failures
-- Serial communication errors
-
-**Diagnosis**:
-```bash
-# Check QEMU installation
-qemu-system-riscv32 --version
-qemu-system-arm --version
-qemu-system-xtensa --version
-
-# Check firmware build
-cargo build --release --target riscv32imac-unknown-none-elf
-```
-
-**Solutions**:
-```bash
-# Install missing QEMU packages
-sudo apt-get install -y qemu-system-riscv32 qemu-system-arm qemu-system-xtensa
-
-# Fix firmware build issues
-cargo clean
-cargo build --release --target riscv32imac-unknown-none-elf
-```
-
-#### 4. Docker Build Issues
-
-**Symptoms**:
-- Docker images failing to build
-- Build timeouts
-- Dependency resolution errors
-
-**Diagnosis**:
-```bash
-# Check Docker status
-docker version
-docker info
-
-# Check build logs
-docker build -t wasmbed-gateway . 2>&1 | tee build.log
-```
-
-**Solutions**:
-```bash
-# Clean Docker cache
-docker system prune -a
-
-# Rebuild with verbose output
-docker build --no-cache -t wasmbed-gateway .
-```
-
-#### 5. API Endpoint Issues
-
-**Symptoms**:
-- 404 errors for API endpoints
-- Authentication failures
-- CORS errors
-
-**Diagnosis**:
-```bash
-# Test API endpoints
-curl -v http://localhost:8080/health
-curl -v http://localhost:8080/api/v1/admin/pairing-mode
-```
-
-**Solutions**:
+#### Solution
 ```bash
 # Check gateway logs
-kubectl logs -f deployment/wasmbed-gateway -n wasmbed
+tail -f logs/gateway.log
+
+# Verify gateway configuration
+cargo run --release -p wasmbed-gateway -- --help
+
+# Restart gateway with correct parameters
+pkill -f wasmbed-gateway
+nohup cargo run --release -p wasmbed-gateway -- --bind-addr 127.0.0.1:8081 --private-key certs/server-key.pem --certificate certs/server-cert.pem --client-ca certs/ca-cert.pem --namespace wasmbed --pod-namespace wasmbed --pod-name gateway-1 > logs/gateway.log 2>&1 &
+```
+
+### API Server Issues
+
+#### Problem
+API server fails to respond or returns errors.
+
+#### Symptoms
+- HTTP 500 errors
+- API endpoints not responding
+- Dashboard connection failures
+
+#### Solution
+```bash
+# Check API server logs
+tail -f logs/api-server.log
+
+# Test API endpoints
+curl http://localhost:3001/health
+curl http://localhost:3001/api/v1/devices
+
+# Restart API server
+pkill -f wasmbed-api-server
+nohup cargo run --release -p wasmbed-api-server -- --port 3001 --gateway-endpoint http://localhost:8080 --infrastructure-endpoint http://localhost:30460 > logs/api-server.log 2>&1 &
+```
+
+### Firmware Issues
+
+#### Problem
+Firmware fails to compile or run.
+
+#### Symptoms
+- Compilation errors
+- Runtime panics
+- TLS connection failures
+
+#### Solution
+```bash
+# Check firmware compilation
+cargo build --release --bin firmware_arduino_nano_33_ble
+
+# Check crypto provider installation
+grep -n "default_provider" firmware/firmware_arduino_nano_33_ble.rs
+
+# Test firmware standalone
+cargo run --release --bin firmware_arduino_nano_33_ble
+```
+
+#### Crypto Provider Issues
+```rust
+// Ensure crypto provider is installed in main()
+fn main() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install default crypto provider");
+    // ... rest of main
+}
+```
+
+### Dashboard Issues
+
+#### Problem
+React dashboard fails to load or display data.
+
+#### Symptoms
+- Blank dashboard page
+- JavaScript errors
+- API connection failures
+
+#### Solution
+```bash
+# Check dashboard logs
+tail -f logs/dashboard.log
+
+# Restart dashboard
+cd dashboard-react
+npm start
+
+# Check API connectivity
+curl http://localhost:3001/health
+```
+
+#### Build Issues
+```bash
+# Clean and rebuild dashboard
+cd dashboard-react
+rm -rf node_modules package-lock.json
+npm install
+npm run build
+```
+
+## Service Recovery Procedures
+
+### Complete System Recovery
+
+```bash
+# Stop all services
+./scripts/05-stop-services.sh
+
+# Clean environment
+./scripts/00-cleanup-environment.sh
+
+# Rebuild components
+./scripts/01-build-components.sh
+
+# Redeploy infrastructure
+./scripts/02-deploy-infrastructure.sh
+
+# Verify deployment
+./scripts/03-check-system-status.sh
+```
+
+### Individual Service Recovery
+
+#### Gateway Recovery
+```bash
+# Stop gateway
+pkill -f wasmbed-gateway
 
 # Restart gateway
-kubectl rollout restart deployment/wasmbed-gateway -n wasmbed
+nohup cargo run --release -p wasmbed-gateway -- --bind-addr 127.0.0.1:8081 --private-key certs/server-key.pem --certificate certs/server-cert.pem --client-ca certs/ca-cert.pem --namespace wasmbed --pod-namespace wasmbed --pod-name gateway-1 > logs/gateway.log 2>&1 &
+
+# Verify gateway
+curl http://localhost:8080/health
 ```
 
-### Advanced Troubleshooting
-
-#### 1. Performance Issues
-
-**Symptoms**:
-- Slow response times
-- High resource utilization
-- Memory leaks
-
-**Diagnosis**:
+#### API Server Recovery
 ```bash
-# Check resource usage
-kubectl top pods -n wasmbed
-kubectl top nodes
+# Stop API server
+pkill -f wasmbed-api-server
 
-# Check memory usage
-kubectl describe pod <pod-name> -n wasmbed
+# Restart API server
+nohup cargo run --release -p wasmbed-api-server -- --port 3001 --gateway-endpoint http://localhost:8080 --infrastructure-endpoint http://localhost:30460 > logs/api-server.log 2>&1 &
+
+# Verify API server
+curl http://localhost:3001/health
 ```
 
-**Solutions**:
+#### Controller Recovery
 ```bash
-# Scale resources
-kubectl scale deployment wasmbed-gateway --replicas=3 -n wasmbed
+# Restart device controller
+pkill -f wasmbed-device-controller
+nohup cargo run --release -p wasmbed-device-controller > logs/device-controller.log 2>&1 &
 
-# Check resource limits
-kubectl get deployment wasmbed-gateway -o yaml -n wasmbed
+# Restart application controller
+pkill -f wasmbed-application-controller
+nohup cargo run --release -p wasmbed-application-controller > logs/application-controller.log 2>&1 &
+
+# Restart gateway controller
+pkill -f wasmbed-gateway-controller
+nohup cargo run --release -p wasmbed-gateway-controller > logs/gateway-controller.log 2>&1 &
 ```
 
-#### 2. Security Issues
+## Diagnostic Commands
 
-**Symptoms**:
-- Authentication failures
-- Certificate errors
-- Permission denied errors
-
-**Diagnosis**:
+### System Health Check
 ```bash
-# Check RBAC permissions
-kubectl auth can-i get pods --as=system:serviceaccount:wasmbed:wasmbed-gateway -n wasmbed
+# Overall system status
+./scripts/03-check-system-status.sh
 
-# Check certificate validity
-openssl x509 -in server-cert.pem -text -noout
-```
-
-**Solutions**:
-```bash
-# Fix RBAC permissions
-kubectl apply -f resources/k8s/rbac/gateway-rbac.yaml
-
-# Regenerate certificates
-./scripts/security/generate-certs.sh
-```
-
-#### 3. Network Issues
-
-**Symptoms**:
-- Connection timeouts
-- Network unreachable errors
-- Port forwarding issues
-
-**Diagnosis**:
-```bash
-# Check network connectivity
-ping <gateway-ip>
-telnet <gateway-ip> 8080
-telnet <gateway-ip> 4423
-
-# Check port forwarding
-kubectl port-forward service/wasmbed-gateway-service 8080:8080 -n wasmbed
-```
-
-**Solutions**:
-```bash
-# Restart network services
-sudo systemctl restart docker
-sudo systemctl restart k3d
-
-# Check firewall rules
-sudo ufw status
-sudo iptables -L
-```
-
-## Monitoring and Logging
-
-### Log Collection
-
-**Gateway Logs**:
-```bash
-# View gateway logs
-kubectl logs -f deployment/wasmbed-gateway -n wasmbed
-
-# View controller logs
-kubectl logs -f deployment/wasmbed-k8s-controller -n wasmbed
-```
-
-**System Logs**:
-```bash
-# View system logs
-journalctl -u docker
-journalctl -u k3d
-```
-
-### Metrics Collection
-
-**Kubernetes Metrics**:
-```bash
-# Check pod metrics
-kubectl top pods -n wasmbed
-
-# Check node metrics
-kubectl top nodes
-```
-
-**Application Metrics**:
-```bash
-# Check application status
-kubectl get applications -n wasmbed
-kubectl get devices -n wasmbed
-```
-
-### Health Checks
-
-**System Health**:
-```bash
-# Check system health
-./scripts/monitor.sh health
-
-# Check component health
-kubectl get pods -n wasmbed
-kubectl get services -n wasmbed
-```
-
-**API Health**:
-```bash
-# Check API health
+# Service health
+curl http://localhost:3001/health
 curl http://localhost:8080/health
 
-# Check TLS health
-curl -k https://localhost:4423/health
+# Port usage
+netstat -tlnp | grep -E "3000|3001|8080|8081|30460"
+
+# Process status
+ps aux | grep wasmbed
 ```
 
-## Backup and Recovery
-
-### Backup Procedures
-
-**Kubernetes Resources**:
+### Log Analysis
 ```bash
-# Backup all resources
-kubectl get all -n wasmbed -o yaml > wasmbed-backup.yaml
+# Recent errors
+grep -i error logs/*.log
 
-# Backup CRDs
-kubectl get crds -o yaml > crds-backup.yaml
+# Gateway issues
+grep -i "tls\|certificate\|handshake" logs/gateway.log
+
+# API issues
+grep -i "error\|panic\|failed" logs/api-server.log
+
+# Device issues
+grep -i "renode\|device" logs/device-controller.log
 ```
 
-**Configuration Backup**:
+### Network Diagnostics
 ```bash
-# Backup configuration
-kubectl get configmaps -n wasmbed -o yaml > configmaps-backup.yaml
-kubectl get secrets -n wasmbed -o yaml > secrets-backup.yaml
+# Test API connectivity
+curl -v http://localhost:3001/api/v1/devices
+
+# Test gateway connectivity
+curl -v http://localhost:8080/health
+
+# Test TLS connectivity
+openssl s_client -connect 127.0.0.1:8081 -cert certs/device-cert.pem -key certs/device-key.pem -CAfile certs/ca-cert.pem
 ```
 
-### Recovery Procedures
+## Performance Issues
 
-**Resource Recovery**:
-```bash
-# Restore resources
-kubectl apply -f wasmbed-backup.yaml
-
-# Restore CRDs
-kubectl apply -f crds-backup.yaml
-```
-
-**Configuration Recovery**:
-```bash
-# Restore configuration
-kubectl apply -f configmaps-backup.yaml
-kubectl apply -f secrets-backup.yaml
-```
-
-## Security Considerations
-
-### Certificate Management
-
-**Certificate Renewal**:
-```bash
-# Renew certificates
-./scripts/security/generate-certs.sh
-
-# Update secrets
-kubectl delete secret wasmbed-tls-secret-rsa -n wasmbed
-kubectl create secret tls wasmbed-tls-secret-rsa \
-  --cert=server-cert.pem \
-  --key=server-key.pem \
-  -n wasmbed
-```
-
-**Certificate Validation**:
-```bash
-# Validate certificates
-openssl x509 -in server-cert.pem -text -noout
-openssl verify -CAfile ca-cert.pem server-cert.pem
-```
-
-### Access Control
-
-**RBAC Management**:
-```bash
-# Check permissions
-kubectl auth can-i get pods --as=system:serviceaccount:wasmbed:wasmbed-gateway -n wasmbed
-
-# Update permissions
-kubectl apply -f resources/k8s/rbac/gateway-rbac.yaml
-```
-
-**Network Security**:
-```bash
-# Check network policies
-kubectl get networkpolicies -n wasmbed
-
-# Apply network policies
-kubectl apply -f resources/k8s/network-policies/
-```
-
-## Performance Optimization
-
-### Resource Optimization
-
-**CPU Optimization**:
+### High CPU Usage
 ```bash
 # Check CPU usage
-kubectl top pods -n wasmbed
+top -p $(pgrep wasmbed)
 
-# Adjust CPU limits
-kubectl patch deployment wasmbed-gateway -p '{"spec":{"template":{"spec":{"containers":[{"name":"wasmbed-gateway","resources":{"limits":{"cpu":"1000m"}}}]}}}}' -n wasmbed
+# Check for infinite loops
+grep -i "loop\|while\|for" logs/*.log
+
+# Monitor resource usage
+kubectl top pods -n wasmbed
 ```
 
-**Memory Optimization**:
+### Memory Issues
 ```bash
 # Check memory usage
-kubectl top pods -n wasmbed
+ps aux | grep wasmbed | awk '{print $4, $6, $11}'
 
-# Adjust memory limits
-kubectl patch deployment wasmbed-gateway -p '{"spec":{"template":{"spec":{"containers":[{"name":"wasmbed-gateway","resources":{"limits":{"memory":"1Gi"}}}]}}}}' -n wasmbed
+# Check for memory leaks
+valgrind --tool=memcheck cargo run --release -p wasmbed-gateway
+
+# Monitor memory growth
+watch -n 1 'ps aux | grep wasmbed'
 ```
 
-### Network Optimization
-
-**Connection Pooling**:
+### Network Performance
 ```bash
-# Check connection settings
-kubectl describe deployment wasmbed-gateway -n wasmbed
+# Check network connections
+netstat -an | grep -E "3000|3001|8080|8081"
 
-# Update connection settings
-kubectl patch deployment wasmbed-gateway -p '{"spec":{"template":{"spec":{"containers":[{"name":"wasmbed-gateway","env":[{"name":"MAX_CONNECTIONS","value":"1000"}]}]}}}}' -n wasmbed
+# Monitor network traffic
+tcpdump -i lo port 8081
+
+# Test network latency
+ping -c 10 127.0.0.1
 ```
 
-**Load Balancing**:
+## Prevention and Best Practices
+
+### Regular Maintenance
 ```bash
-# Check service configuration
-kubectl get service wasmbed-gateway-service -n wasmbed
+# Daily health checks
+./scripts/03-check-system-status.sh
 
-# Update service configuration
-kubectl patch service wasmbed-gateway-service -p '{"spec":{"type":"LoadBalancer"}}' -n wasmbed
+# Weekly log rotation
+logrotate /etc/logrotate.d/wasmbed
+
+# Monthly certificate renewal
+openssl x509 -in certs/server-cert.pem -noout -dates
 ```
+
+### Monitoring Setup
+```bash
+# Set up monitoring alerts
+curl -X POST http://localhost:3001/api/v1/monitoring/alerts \
+  -H "Content-Type: application/json" \
+  -d '{"service": "gateway", "threshold": 90, "metric": "cpu"}'
+```
+
+### Backup Procedures
+```bash
+# Backup configurations
+cp qemu_devices.json qemu_devices.json.backup.$(date +%Y%m%d)
+
+# Backup certificates
+tar -czf certs-backup-$(date +%Y%m%d).tar.gz certs/
+
+# Backup Kubernetes resources
+kubectl get devices,applications,gateways -n wasmbed -o yaml > k8s-backup-$(date +%Y%m%d).yaml
+```
+
+## Getting Help
+
+### Log Collection
+```bash
+# Collect all logs for analysis
+tar -czf wasmbed-logs-$(date +%Y%m%d).tar.gz logs/
+
+# Collect system information
+uname -a > system-info.txt
+rustc --version >> system-info.txt
+kubectl version >> system-info.txt
+```
+
+### Support Resources
+1. Check [Known Issues](../problems/known-issues.md)
+2. Review [API Reference](../api/api-reference.md)
+3. Consult [Security Overview](../security/security-overview.md)
+4. Check [Complete Implementation](../implementation/complete-implementation.md)
+
+---
+
+**Last Updated**: 2025  
+**Version**: 0.1.0  
+**Status**: Production Ready
