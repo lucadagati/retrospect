@@ -172,12 +172,61 @@ if [ ! -d "certs" ] || [ ! -f "certs/ca-cert.pem" ] || [ ! -f "certs/server-cert
     
     # Generate CA certificate
     openssl genrsa -out certs/ca-key.pem 2048
-    openssl req -new -x509 -key certs/ca-key.pem -out certs/ca-cert.pem -days 365 -subj "/C=IT/ST=Italy/L=Italy/O=Wasmbed/OU=Development/CN=Wasmbed CA"
+    cat > certs/ca.conf << 'EOF'
+[ ca ]
+default_ca = CA_default
+
+[ CA_default ]
+dir = ./certs
+certs = $dir
+crl_dir = $dir/crl
+database = $dir/index.txt
+new_certs_dir = $dir/newcerts
+serial = $dir/serial
+crlnumber = $dir/crlnumber
+crl = $dir/crl.pem
+private_key = $dir/ca-key.pem
+certificate = $dir/ca-cert.pem
+RANDFILE = $dir/.rand
+x509_extensions = v3_ca
+name_opt = ca_default
+cert_opt = ca_default
+default_days = 365
+default_crl_days = 30
+default_md = sha256
+preserve = no
+policy = policy_strict
+
+[ policy_strict ]
+countryName = match
+stateOrProvinceName = match
+organizationName = match
+organizationalUnitName = optional
+commonName = supplied
+emailAddress = optional
+
+[ usr_cert ]
+basicConstraints = CA:FALSE
+nsCertType = client, email
+nsComment = "OpenSSL Generated Certificate"
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid,issuer
+keyUsage = critical, nonRepudiation, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth, clientAuth
+
+[ v3_ca ]
+basicConstraints = critical,CA:TRUE
+keyUsage = critical, keyCertSign, cRLSign
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always,issuer
+EOF
+    openssl req -new -x509 -key certs/ca-key.pem -out certs/ca-cert.pem -days 365 -subj "/C=IT/ST=Italy/L=Italy/O=Wasmbed/OU=Development/CN=Wasmbed CA" -extensions v3_ca -config certs/ca.conf
     
     # Generate server certificate
     openssl genrsa -out certs/server-key.pem 2048
     openssl req -new -key certs/server-key.pem -out certs/server.csr -subj "/C=IT/ST=Italy/L=Italy/O=Wasmbed/OU=Development/CN=localhost"
-    openssl x509 -req -in certs/server.csr -CA certs/ca-cert.pem -CAkey certs/ca-key.pem -CAcreateserial -out certs/server-cert.pem -days 365
+    touch certs/index.txt && echo 1000 > certs/serial && mkdir -p certs/newcerts
+    openssl ca -config certs/ca.conf -in certs/server.csr -out certs/server-cert.pem -days 365 -extensions usr_cert -batch
     rm certs/server.csr
     
     print_status "SUCCESS" "TLS certificates generated successfully"
