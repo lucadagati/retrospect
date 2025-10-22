@@ -82,7 +82,71 @@ This directory contains comprehensive UML diagrams for the Wasmbed Platform arch
 
 ### Sequence Diagrams
 
-#### 1. Device Enrollment - Simple (`../sequence-diagrams/device-enrollment-simple.puml`)
+#### Device Enrollment Workflow (Divided)
+
+##### 1. Device Enrollment - Connection (`../sequence-diagrams/device-enrollment-connection.puml`)
+- **Purpose**: Device initialization and TLS connection establishment
+- **Scope**: TLS client setup, certificate loading, TCP connection, TLS handshake
+- **Key Components**: Arduino Nano 33 BLE, TLS Client, Gateway Server
+- **Implementation**: Real TLS 1.3 handshake and X.509 v3 certificate validation
+- **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **LOW** - Focused on connection establishment
+
+##### 2. Device Enrollment - Process (`../sequence-diagrams/device-enrollment-process.puml`)
+- **Purpose**: Device enrollment and Kubernetes registration
+- **Scope**: Enrollment request, device validation, CRD creation, enrollment response
+- **Key Components**: Arduino Nano 33 BLE, TLS Client, Gateway, Renode Manager, Kubernetes API
+- **Implementation**: Real device registration and Kubernetes CRD creation
+- **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **LOW** - Focused on enrollment process
+
+##### 3. Device Enrollment - Heartbeat (`../sequence-diagrams/device-enrollment-heartbeat.puml`)
+- **Purpose**: Device heartbeat and continuous monitoring
+- **Scope**: Heartbeat setup, periodic monitoring, status updates
+- **Key Components**: Arduino Nano 33 BLE, TLS Client, Gateway, Renode Manager, Kubernetes API
+- **Implementation**: Real heartbeat monitoring and status updates
+- **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **LOW** - Focused on monitoring
+
+#### Application Deployment Workflow (Divided)
+
+##### 4. Application Deployment - Compilation (`../sequence-diagrams/application-deployment-compilation.puml`)
+- **Purpose**: Application creation and Rust compilation
+- **Scope**: User input, Rust compilation, WASM generation, application registration
+- **Key Components**: User, React Dashboard, API Server, Kubernetes API
+- **Implementation**: Real Rust compilation and WASM generation
+- **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **LOW** - Focused on compilation process
+
+##### 5. Application Deployment - Execution (`../sequence-diagrams/application-deployment-execution.puml`)
+- **Purpose**: Application deployment and execution on device
+- **Scope**: Gateway preparation, WASM loading, device communication, execution
+- **Key Components**: API Server, Gateway Server, WASM Runtime, Arduino Device
+- **Implementation**: Real WASM deployment and execution
+- **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **LOW** - Focused on execution process
+
+##### 6. Application Deployment - Monitoring (`../sequence-diagrams/application-deployment-monitoring.puml`)
+- **Purpose**: Application monitoring and management
+- **Scope**: Status updates, real-time monitoring, user management interface
+- **Key Components**: User, React Dashboard, API Server, Gateway, Arduino Device, Kubernetes API
+- **Implementation**: Real-time monitoring and status management
+- **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **LOW** - Focused on monitoring
+
+#### Error Handling
+
+##### 7. Error Handling (`../sequence-diagrams/error-handling.puml`)
+- **Purpose**: Comprehensive error handling for all workflows
+- **Scope**: Enrollment errors, connection errors, compilation errors, deployment errors, runtime errors
+- **Key Components**: All system components with error scenarios
+- **Implementation**: Real error handling and recovery procedures
+- **Layout**: Vertical orientation optimized for A4 format
+- **Complexity**: **MEDIUM** - Comprehensive error scenarios
+
+#### Simplified Workflows (Complete)
+
+##### 8. Device Enrollment - Simple (`../sequence-diagrams/device-enrollment-simple.puml`)
 - **Purpose**: Simplified device enrollment workflow with Renode integration
 - **Scope**: Device initialization, TLS handshake, enrollment, heartbeat setup
 - **Key Components**: Arduino Nano 33 BLE, TLS client, Gateway, Renode Manager, Kubernetes
@@ -90,7 +154,7 @@ This directory contains comprehensive UML diagrams for the Wasmbed Platform arch
 - **Layout**: Vertical orientation optimized for A4 format
 - **Complexity**: **MEDIUM** - Focused on enrollment flow
 
-#### 2. Application Deployment - Simple (`../sequence-diagrams/application-deployment-simple.puml`)
+##### 9. Application Deployment - Simple (`../sequence-diagrams/application-deployment-simple.puml`)
 - **Purpose**: Simplified application deployment workflow from compilation to execution
 - **Scope**: Rust compilation, WASM deployment, device execution, monitoring
 - **Key Components**: User, Dashboard, API Server, Gateway, WASM Runtime, Arduino devices
@@ -98,7 +162,9 @@ This directory contains comprehensive UML diagrams for the Wasmbed Platform arch
 - **Layout**: Vertical orientation optimized for A4 format
 - **Complexity**: **MEDIUM** - Focused on deployment flow
 
-#### 3. Device Enrollment - Detailed (`../sequence-diagrams/device-enrollment-detailed.puml`)
+#### Detailed Workflows (Complete)
+
+##### 10. Device Enrollment - Detailed (`../sequence-diagrams/device-enrollment-detailed.puml`)
 - **Purpose**: Complete device enrollment workflow with Renode integration
 - **Scope**: Device initialization, TLS handshake, enrollment, heartbeat setup
 - **Key Components**: Arduino Nano 33 BLE, TLS client, Gateway, Renode Manager, Kubernetes
@@ -106,7 +172,7 @@ This directory contains comprehensive UML diagrams for the Wasmbed Platform arch
 - **Layout**: Vertical orientation optimized for A4 format
 - **Complexity**: **HIGH** - Complete enrollment flow
 
-#### 4. Application Deployment - Detailed (`../sequence-diagrams/application-deployment-detailed.puml`)
+##### 11. Application Deployment - Detailed (`../sequence-diagrams/application-deployment-detailed.puml`)
 - **Purpose**: Complete application deployment workflow from compilation to execution
 - **Scope**: Rust compilation, WASM deployment, device execution, monitoring
 - **Key Components**: User, Dashboard, API Server, Gateway, WASM Runtime, Arduino devices
@@ -194,8 +260,12 @@ All diagrams are optimized for A4 format with:
 - **Reference**: `application-deployment-architecture.puml` - Complete deployment view
 
 #### For Workflow Documentation
+- **Step-by-step flows**: 
+  - `device-enrollment-connection.puml`, `device-enrollment-process.puml`, `device-enrollment-heartbeat.puml`
+  - `application-deployment-compilation.puml`, `application-deployment-execution.puml`, `application-deployment-monitoring.puml`
 - **Simple flows**: `device-enrollment-simple.puml` and `application-deployment-simple.puml`
 - **Complete flows**: `device-enrollment-detailed.puml` and `application-deployment-detailed.puml`
+- **Error scenarios**: `error-handling.puml`
 
 ### Editing Diagrams
 

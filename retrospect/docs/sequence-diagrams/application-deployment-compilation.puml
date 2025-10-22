@@ -1,0 +1,56 @@
+' SPDX-License-Identifier: CC-BY-4.0
+' Copyright © 2025 Wasmbed contributors
+
+@startuml
+title Application Deployment - Compilation & Creation
+
+skinparam wrapMessageWidth 200
+skinparam sequenceMessageAlign center
+skinparam sequenceArrowThickness 2
+skinparam sequenceLifeLineBackgroundColor #E8F4FD
+skinparam sequenceActorBackgroundColor #D4E6F1
+skinparam sequenceParticipantBackgroundColor #F8F9FA
+skinparam direction top to bottom
+
+actor "User" as USER #LightBlue
+participant "React Dashboard" as DASHBOARD #LightGreen
+participant "API Server" as API_SERVER #LightCoral
+participant "Kubernetes API" as K8S_API #LightSalmon
+
+== Application Creation ==
+
+USER -> DASHBOARD : **Create Application**
+note right : Enter Rust source code\nSelect target devices\nSpecify application name\nConfigure deployment options
+
+DASHBOARD -> API_SERVER : **POST /api/v1/compile**
+note right : Send Rust source code\nRequest WASM compilation\nSpecify ARM Cortex-M4 target\nInclude dependencies
+
+== Rust Compilation ==
+
+API_SERVER -> API_SERVER : **Compile Rust to WASM**
+note right : Use rustc with wasm32-unknown-unknown\nCompile with no_std for ARM Cortex-M4\nOptimize for size and performance\nGenerate WASM binary
+
+API_SERVER -> DASHBOARD : **Compilation Success**
+note right : WASM binary ready\nBinary metadata\nSize and performance info\nReady for deployment
+
+== Application Registration ==
+
+DASHBOARD -> API_SERVER : **POST /api/v1/applications**
+note right : Application metadata\nWASM binary (base64)\nTarget devices: [arduino-nano-33-ble]\nDeployment configuration
+
+API_SERVER -> K8S_API : **Create Application CRD**
+note right : POST /apis/wasmbed.io/v1/namespaces/wasmbed/applications\nApplication spec with WASM binary\nTarget device references\nStatus: Pending
+
+K8S_API -> API_SERVER : **Application Created**
+note right : HTTP 201 Created\nResource metadata\nLocation header\nResource version
+
+API_SERVER -> DASHBOARD : **Application Registered**
+note right : Application successfully created\nApplication ID generated\nReady for deployment\nStatus: Pending
+
+note over USER, K8S_API
+  **Compilation Phase Complete**
+  Application is compiled and registered
+  in Kubernetes, ready for deployment
+end note
+
+@enduml

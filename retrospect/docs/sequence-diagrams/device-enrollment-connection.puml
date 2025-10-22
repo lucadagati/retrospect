@@ -1,0 +1,52 @@
+' SPDX-License-Identifier: CC-BY-4.0
+' Copyright © 2025 Wasmbed contributors
+
+@startuml
+title Device Enrollment - Initialization & Connection
+
+skinparam wrapMessageWidth 200
+skinparam sequenceMessageAlign center
+skinparam sequenceArrowThickness 2
+skinparam sequenceLifeLineBackgroundColor #E8F4FD
+skinparam sequenceActorBackgroundColor #D4E6F1
+skinparam sequenceParticipantBackgroundColor #F8F9FA
+skinparam direction top to bottom
+
+actor "Arduino Nano 33 BLE" as MCU #LightBlue
+participant "TLS Client" as TLS_CLIENT #LightGreen
+participant "Gateway Server" as GATEWAY #LightCoral
+
+== Device Initialization ==
+
+MCU -> TLS_CLIENT : **Initialize TLS Client**
+note right : Load certificates\nInitialize TLS context\nPrepare for connection
+
+TLS_CLIENT -> TLS_CLIENT : **Load Device Certificates**
+note right : Load ca-cert.der\nLoad device-cert.der\nLoad device-key.der\nVerify certificate chain
+
+== Connection Establishment ==
+
+TLS_CLIENT -> GATEWAY : **TCP Connection Request**
+note right : Connect to gateway:8081\nEstablish TCP socket\nPrepare TLS 1.3 handshake
+
+GATEWAY -> GATEWAY : **Accept Connection**
+note right : Accept incoming connection\nCreate rustls server context\nLoad X.509 v3 server certificates
+
+TLS_CLIENT -> GATEWAY : **TLS 1.3 Handshake**
+note right : Client Hello with cipher suites\nServer Hello with X.509 v3 certificate\nMutual TLS authentication\nKey exchange and verification
+
+GATEWAY -> TLS_CLIENT : **TLS Handshake Complete**
+note right : Mutual TLS established\nEncrypted channel ready\nSession keys exchanged\nCertificate validation passed
+
+== Connection Ready ==
+
+TLS_CLIENT -> MCU : **Connection Established**
+note right : TLS 1.3 connection ready\nEncrypted channel active\nReady for enrollment
+
+note over MCU, GATEWAY
+  **Connection Phase Complete**
+  Device is now connected to Gateway
+  with secure TLS 1.3 channel
+end note
+
+@enduml
