@@ -14,6 +14,28 @@ use uuid::Uuid;
 
 use log::{info, error, warn};
 
+fn main() {
+    // Install the default crypto provider for rustls
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install default crypto provider");
+    
+    env_logger::init();
+    
+    info!("Starting Wasmbed Arduino Nano 33 BLE firmware...");
+    
+    // Load keypair
+    let keypair = load_keypair().expect("Failed to load keypair");
+    
+    // Create device runtime
+    let mut runtime = CommonDeviceRuntime::new("127.0.0.1:8081".to_string(), keypair);
+    
+    // Run the device
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        runtime.run().await.expect("Device runtime failed");
+    });
+}
+
 /// Real TLS Client for secure communication with gateway
 pub struct TlsClient {
     connection: Option<ClientConnection>,
@@ -536,53 +558,6 @@ impl CommonDeviceRuntime {
         info!("Stopping device runtime...");
         self.running = false;
     }
-}
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logging
-    env_logger::init();
-    
-    info!("Starting Arduino Nano 33 BLE device runtime...");
-    
-    // Load keypair and certificates
-    info!("Loading keypair and certificates...");
-    let keypair = load_keypair()
-        .map_err(|e| {
-            error!("Failed to load keypair: {:?}", e);
-            e
-        })?;
-    
-    info!("Keypair loaded successfully");
-    
-    // Create device runtime
-    info!("Creating device runtime...");
-    let mut runtime = CommonDeviceRuntime::new(
-        "127.0.0.1:8081".to_string(), // Use TLS port
-        keypair
-    );
-    
-    info!("Device runtime created");
-    
-    // Initialize device
-    info!("Initializing device...");
-    runtime.initialize().await
-        .map_err(|e| {
-            error!("Failed to initialize device: {:?}", e);
-            e
-        })?;
-    
-    info!("Device initialized successfully");
-    
-    // Run device
-    info!("Starting device runtime...");
-    runtime.run().await
-        .map_err(|e| {
-            error!("Device runtime failed: {:?}", e);
-            e
-        })?;
-    
-    Ok(())
 }
 
 fn load_keypair() -> Result<Keypair, Box<dyn std::error::Error>> {

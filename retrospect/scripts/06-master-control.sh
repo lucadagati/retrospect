@@ -59,7 +59,7 @@ show_help() {
     echo "Quick Start:"
     echo "  1. $0 deploy    # Deploy the platform"
     echo "  2. $0 status    # Verify deployment"
-    echo "  3. Open http://localhost:30453 in browser"
+    echo "  3. Open http://localhost:8080 in browser"
     echo ""
 }
 

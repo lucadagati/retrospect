@@ -52,7 +52,7 @@ interface Device {
   architecture: string;
   mcuType?: string;
   lastHeartbeat: string;
-  qemuInstance?: string;
+  renodeInstance?: string;
   emulationStatus?: string;
 }
 
@@ -111,10 +111,10 @@ const App: React.FC = () => {
         name: device.device_id,
         status: device.status,
         type: device.device_type || 'MCU', // Default to MCU
-        architecture: 'ARM_CORTEX_M', // Fixed architecture for QEMU emulation
-        mcuType: device.mcu_type || 'Mps2An385', // Default MCU type
+        architecture: 'ARM_CORTEX_M', // Fixed architecture for Renode emulation
+        mcuType: device.mcu_type || 'RenodeArduinoNano33Ble', // Default MCU type
         lastHeartbeat: device.last_heartbeat ? new Date(device.last_heartbeat.secs_since_epoch * 1000).toISOString() : null,
-        qemuInstance: device.qemu_instance || null,
+        renodeInstance: device.renode_instance || null,
         emulationStatus: device.emulation_status || 'Not Started'
       }));
 
@@ -188,7 +188,7 @@ const App: React.FC = () => {
           dataIndex: 'architecture',
           key: 'architecture',
           render: (arch: string) => (
-            <Tag color="blue">ARM Cortex-M (QEMU)</Tag>
+            <Tag color="blue">ARM Cortex-M (Renode)</Tag>
           ),
         },
         {
@@ -212,7 +212,7 @@ const App: React.FC = () => {
           },
         },
     {
-      title: 'QEMU Status',
+      title: 'Renode Status',
       dataIndex: 'emulationStatus',
       key: 'emulationStatus',
       render: (status: string) => {

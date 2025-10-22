@@ -88,7 +88,7 @@ print_status "SUCCESS" "All prerequisites are available"
 # Clean up any existing processes
 print_status "INFO" "Cleaning up existing processes..."
 pkill -f "wasmbed-" 2>/dev/null || true
-sudo fuser -k 30460/tcp 30470/tcp 30450/tcp 30451/tcp 30453/tcp 2>/dev/null || true
+sudo fuser -k 30460/tcp 30470/tcp 30450/tcp 30451/tcp 8080/tcp 8081/tcp 2>/dev/null || true
 sleep 2
 
 # Create logs directory
@@ -248,8 +248,8 @@ kubectl create secret generic gateway-certificates \
 # Start Gateway (non-blocking)
 print_status "INFO" "Starting Gateway..."
 nohup ./target/release/wasmbed-gateway \
-    --bind-addr 127.0.0.1:30452 \
-    --http-addr 127.0.0.1:30453 \
+    --bind-addr 127.0.0.1:8081 \
+    --http-addr 127.0.0.1:8080 \
     --private-key certs/server-key.pem \
     --certificate certs/server-cert.pem \
     --client-ca certs/ca-cert.pem \
@@ -291,7 +291,7 @@ print_status "SUCCESS" "Controllers started successfully"
 print_status "INFO" "Starting API Server..."
 nohup ./target/release/wasmbed-api-server \
             --port 3001 \
-            --gateway-endpoint http://localhost:30453 \
+            --gateway-endpoint http://localhost:8080 \
             --infrastructure-endpoint http://localhost:30460 > api-server.log 2>&1 &
 API_SERVER_PID=$!
 echo $API_SERVER_PID > .api-server.pid
@@ -362,7 +362,7 @@ fi
 
 # Test Gateway
 print_status "INFO" "Testing Gateway..."
-if curl -4 -s http://localhost:30453/health >/dev/null 2>&1; then
+if curl -4 -s http://localhost:8080/health >/dev/null 2>&1; then
     print_status "SUCCESS" "Gateway is responding"
 else
     print_status "WARNING" "Gateway is not responding"
@@ -395,8 +395,8 @@ print_status "INFO" "=== DEPLOYMENT SUMMARY ==="
 print_status "INFO" "Infrastructure API: http://localhost:30460"
 print_status "INFO" "API Server: http://localhost:3001"
 print_status "INFO" "Dashboard UI: http://localhost:3000 (React frontend)"
-print_status "INFO" "Gateway HTTP API: http://localhost:30453"
-print_status "INFO" "Gateway TLS: 127.0.0.1:30452 (Device communication)"
+print_status "INFO" "Gateway HTTP API: http://localhost:8080"
+print_status "INFO" "Gateway TLS: 127.0.0.1:8081 (Device communication)"
 print_status "INFO" "Controllers: Running (Device, Application, Gateway)"
 print_status "INFO" "TLS Certificates: Generated and configured"
 print_status "INFO" "Next Steps: Use dashboard to deploy WASM applications to devices"

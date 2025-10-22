@@ -65,7 +65,7 @@ else
 fi
 
 # Check Gateway
-if curl -4 -s http://localhost:30453/health >/dev/null 2>&1; then
+if curl -4 -s http://localhost:8080/health >/dev/null 2>&1; then
     print_status "SUCCESS" "Gateway is responding"
 else
     print_status "ERROR" "Gateway is not responding. Please run deployment first."

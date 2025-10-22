@@ -117,9 +117,9 @@ graph LR
     end
     
     subgraph "Backend Services"
-        DASH_API[Dashboard API<br/>Port 30453]
-        INFRA_API[Infrastructure API<br/>Port 30461]
-        GW_API[Gateway API<br/>Port 30451]
+        DASH_API[Dashboard API<br/>Port 3001]
+        INFRA_API[Infrastructure API<br/>Port 30460]
+        GW_API[Gateway API<br/>Port 8080]
     end
     
     subgraph "Kubernetes Layer"
@@ -267,15 +267,15 @@ sequenceDiagram
 
 ```bash
 # Main management script
-./scripts/wasmbed.sh deploy    # Deploy complete platform
-./scripts/wasmbed.sh status    # Check system status
-./scripts/wasmbed.sh stop      # Stop all services
-./scripts/wasmbed.sh clean     # Clean up resources
-./scripts/wasmbed.sh build     # Build all components
-./scripts/wasmbed.sh test      # Run comprehensive tests
-./scripts/wasmbed.sh restart   # Restart all services
-./scripts/wasmbed.sh logs      # View system logs
-./scripts/wasmbed.sh monitor   # Real-time monitoring
+./scripts/06-master-control.sh deploy    # Deploy complete platform
+./scripts/06-master-control.sh status    # Check system status
+./scripts/06-master-control.sh stop      # Stop all services
+./scripts/06-master-control.sh clean     # Clean up resources
+./scripts/06-master-control.sh build     # Build all components
+./scripts/06-master-control.sh test      # Run comprehensive tests
+./scripts/06-master-control.sh restart   # Restart all services
+./scripts/06-master-control.sh logs      # View system logs
+./scripts/06-master-control.sh monitor   # Real-time monitoring
 ```
 
 ## 🔧 Development
@@ -304,7 +304,7 @@ graph TD
 ### Build Commands
 ```bash
 # Build all components
-./scripts/wasmbed.sh build
+./scripts/06-master-control.sh build
 
 # Build specific component
 cargo build --package wasmbed-dashboard
@@ -328,7 +328,7 @@ graph LR
 ### Run Tests
 ```bash
 # Run all tests
-./scripts/wasmbed.sh test
+./scripts/06-master-control.sh test
 
 # Run specific test suites
 cargo test --package wasmbed-dashboard
@@ -453,7 +453,7 @@ graph LR
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
 3. Make your changes
-4. Run tests: `./scripts/wasmbed.sh test`
+4. Run tests: `./scripts/06-master-control.sh test`
 5. Commit changes: `git commit -m 'Add amazing feature'`
 6. Push to branch: `git push origin feature/amazing-feature`
 7. Submit a pull request

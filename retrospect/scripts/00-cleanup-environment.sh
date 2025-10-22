@@ -43,7 +43,7 @@ pkill -f "wasmbed_" 2>/dev/null || true
 
 # Force kill processes using Wasmbed ports
 print_status "INFO" "Force killing processes using Wasmbed ports..."
-sudo fuser -k 30460/tcp 3001/tcp 3000/tcp 30450/tcp 30451/tcp 30452/tcp 30453/tcp 2>/dev/null || true
+sudo fuser -k 30460/tcp 3001/tcp 3000/tcp 30450/tcp 30451/tcp 8080/tcp 8081/tcp 2>/dev/null || true
 sleep 2
 
 # Clean up Kind clusters (optional - comment out to keep cluster)

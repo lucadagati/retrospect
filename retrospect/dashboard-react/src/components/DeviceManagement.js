@@ -37,7 +37,7 @@ const { Option } = Select;
 
 const DeviceManagement = () => {
   const [devices, setDevices] = useState([]);
-  const [qemuDevices, setQemuDevices] = useState([]);
+  const [renodeDevices, setRenodeDevices] = useState([]);
   const [gateways, setGateways] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -47,11 +47,11 @@ const DeviceManagement = () => {
   useEffect(() => {
     fetchDevices();
     fetchGateways();
-    fetchQemuDevices();
+    fetchRenodeDevices();
     
-    // Set up auto-refresh for QEMU devices every 5 seconds
+    // Set up auto-refresh for Renode devices every 5 seconds
     const interval = setInterval(() => {
-      fetchQemuDevices();
+      fetchRenodeDevices();
     }, 5000);
     
     return () => clearInterval(interval);
@@ -72,12 +72,12 @@ const DeviceManagement = () => {
     }
   };
 
-  const fetchQemuDevices = async () => {
+  const fetchRenodeDevices = async () => {
     try {
-      const data = await apiGet('/api/v1/qemu/devices', 10000);
-      setQemuDevices(data.devices || []);
+      const data = await apiGet('/api/v1/renode/devices', 10000);
+      setRenodeDevices(data.devices || []);
     } catch (error) {
-      console.error('Error fetching QEMU devices:', error);
+      console.error('Error fetching Renode devices:', error);
     }
   };
 
@@ -195,37 +195,37 @@ const DeviceManagement = () => {
     }
   };
 
-  const handleStartQEMU = async (deviceId) => {
+  const handleStartRenode = async (deviceId) => {
     try {
-      const data = await apiPost(`/api/v1/devices/${deviceId}/qemu/start`, {}, 20000);
+      const data = await apiPost(`/api/v1/devices/${deviceId}/renode/start`, {}, 20000);
       
       setDevices(prevDevices => 
         prevDevices.map(device => 
           device.id === deviceId 
-            ? { ...device, emulationStatus: 'Running', qemuInstance: data.qemuInstance }
+            ? { ...device, emulationStatus: 'Running', renodeInstance: data.renodeInstance }
             : device
         )
       );
-      console.log(`QEMU emulation started for device ${deviceId}`);
+      console.log(`Renode emulation started for device ${deviceId}`);
     } catch (error) {
-      console.error('Error starting QEMU emulation:', error);
+      console.error('Error starting Renode emulation:', error);
     }
   };
 
-  const handleStopQEMU = async (deviceId) => {
+  const handleStopRenode = async (deviceId) => {
     try {
-      await apiPost(`/api/v1/devices/${deviceId}/qemu/stop`, {}, 15000);
+      await apiPost(`/api/v1/devices/${deviceId}/renode/stop`, {}, 15000);
       
       setDevices(prevDevices => 
         prevDevices.map(device => 
           device.id === deviceId 
-            ? { ...device, emulationStatus: 'Stopped', qemuInstance: null }
+            ? { ...device, emulationStatus: 'Stopped', renodeInstance: null }
             : device
         )
       );
-      console.log(`QEMU emulation stopped for device ${deviceId}`);
+      console.log(`Renode emulation stopped for device ${deviceId}`);
     } catch (error) {
-      console.error('Error stopping QEMU emulation:', error);
+      console.error('Error stopping Renode emulation:', error);
     }
   };
 
@@ -274,7 +274,7 @@ const DeviceManagement = () => {
       dataIndex: 'architecture',
       key: 'architecture',
       render: (arch) => (
-        <Tag color="blue">ARM Cortex-M (QEMU)</Tag>
+        <Tag color="blue">ARM Cortex-M (Renode)</Tag>
       ),
     },
     {
@@ -365,25 +365,25 @@ const DeviceManagement = () => {
             </Tooltip>
           )}
           {record.emulationStatus === 'Not Started' || record.emulationStatus === 'Stopped' ? (
-            <Tooltip key="start-qemu" title="Start QEMU emulation">
+            <Tooltip key="start-renode" title="Start Renode emulation">
               <Button 
                 type="link" 
                 icon={<PlayCircleOutlined />}
                 size="small"
-                onClick={() => handleStartQEMU(record.id)}
+                onClick={() => handleStartRenode(record.id)}
               >
-                Start QEMU
+                Start Renode
               </Button>
             </Tooltip>
           ) : (
-            <Tooltip key="stop-qemu" title="Stop QEMU emulation">
+            <Tooltip key="stop-renode" title="Stop Renode emulation">
               <Button 
                 type="link" 
                 icon={<PauseCircleOutlined />}
                 size="small"
-                onClick={() => handleStopQEMU(record.id)}
+                onClick={() => handleStopRenode(record.id)}
               >
-                Stop QEMU
+                Stop Renode
               </Button>
             </Tooltip>
           )}
@@ -507,23 +507,23 @@ const DeviceManagement = () => {
           </Space>
         </div>
 
-        {/* QEMU Devices Section */}
+        {/* Renode Devices Section */}
         <Card 
-          title="QEMU Devices" 
+          title="Renode Devices" 
           size="small" 
           style={{ marginBottom: 16 }}
           extra={
             <Button 
               icon={<ReloadOutlined />} 
               size="small"
-              onClick={fetchQemuDevices}
+              onClick={fetchRenodeDevices}
             >
-              Refresh QEMU
+              Refresh Renode
             </Button>
           }
         >
           <Row gutter={[16, 16]}>
-            {qemuDevices.map((device, index) => (
+            {renodeDevices.map((device, index) => (
               <Col xs={24} sm={12} md={8} lg={6} key={device.id || index}>
                 <Card size="small" hoverable>
                   <div style={{ textAlign: 'center' }}>
@@ -543,10 +543,10 @@ const DeviceManagement = () => {
                 </Card>
               </Col>
             ))}
-            {qemuDevices.length === 0 && (
+            {renodeDevices.length === 0 && (
               <Col span={24}>
                 <div style={{ textAlign: 'center', color: '#999', padding: '20px 0' }}>
-                  No QEMU devices available
+                  No Renode devices available
                 </div>
               </Col>
             )}
@@ -595,10 +595,10 @@ const DeviceManagement = () => {
           <Form.Item
             name="architecture"
             label="Architecture"
-            help="Fixed to ARM Cortex-M for QEMU emulation"
+            help="Fixed to ARM Cortex-M for Renode emulation"
           >
-            <Select placeholder="ARM Cortex-M (QEMU)" disabled>
-              <Option value="ARM_CORTEX_M">ARM Cortex-M (QEMU)</Option>
+            <Select placeholder="ARM Cortex-M (Renode)" disabled>
+              <Option value="ARM_CORTEX_M">ARM Cortex-M (Renode)</Option>
             </Select>
           </Form.Item>
 
@@ -615,7 +615,7 @@ const DeviceManagement = () => {
           <Form.Item
             name="mcuType"
             label="MCU Type"
-            help="Select the specific MCU for QEMU emulation"
+            help="Select the specific MCU for Renode emulation"
             rules={[{ required: true, message: 'Please select an MCU type!' }]}
           >
             <Select placeholder="Select MCU Type">

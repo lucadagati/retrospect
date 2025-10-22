@@ -1,4 +1,15 @@
 {
+  "test-device-001": {
+    "id": "test-device-001",
+    "name": "Test Device",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "RenodeArduinoNano33Ble",
+    "status": "Stopped",
+    "process_id": null,
+    "endpoint": "127.0.0.1:30004",
+    "wasm_runtime": null
+  },
   "test-workflow-1": {
     "id": "test-workflow-1",
     "name": "Test Workflow 1",
@@ -21,17 +32,6 @@
     "endpoint": "127.0.0.1:30003",
     "wasm_runtime": null
   },
-  "test-final": {
-    "id": "test-final",
-    "name": "Test Final",
-    "architecture": "ARM_CORTEX_M",
-    "device_type": "MCU",
-    "mcu_type": "RenodeArduinoNano33Ble",
-    "status": "Stopped",
-    "process_id": null,
-    "endpoint": "127.0.0.1:30001",
-    "wasm_runtime": null
-  },
   "test-enrollment": {
     "id": "test-enrollment",
     "name": "Test Enrollment",
@@ -41,6 +41,17 @@
     "status": "Stopped",
     "process_id": null,
     "endpoint": "127.0.0.1:30002",
+    "wasm_runtime": null
+  },
+  "test-final": {
+    "id": "test-final",
+    "name": "Test Final",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "RenodeArduinoNano33Ble",
+    "status": "Stopped",
+    "process_id": null,
+    "endpoint": "127.0.0.1:30001",
     "wasm_runtime": null
   }
 }

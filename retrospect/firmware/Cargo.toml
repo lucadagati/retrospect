@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# TLS and networking
-rustls = "0.23"
-rustls-pemfile = "2.0"
-tokio = { version = "1.0", features = ["full"] }
+        # TLS and networking
+        rustls = { version = "0.23", features = ["ring"] }
+        rustls-pemfile = "2.0"
+        tokio = { version = "1.0", features = ["full"] }
 
 # Serialization
 ciborium = "0.2"

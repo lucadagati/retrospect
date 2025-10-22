@@ -67,7 +67,7 @@ sudo fuser -k 30460/tcp 2>/dev/null || true
 sudo fuser -k 30470/tcp 2>/dev/null || true
 sudo fuser -k 30450/tcp 2>/dev/null || true
 sudo fuser -k 30451/tcp 2>/dev/null || true
-sudo fuser -k 30453/tcp 2>/dev/null || true
+sudo fuser -k 8080/tcp 8081/tcp 2>/dev/null || true
 sleep 2
 
 # Stop k3d cluster
@@ -80,9 +80,9 @@ rm -f .*.pid .wasmbed-pids 2>/dev/null || true
 
 # Verify ports are free
 print_status "INFO" "Verifying ports are free..."
-if netstat -tlnp 2>/dev/null | grep -E "30460|30470|30450|30451|30453" >/dev/null; then
+if netstat -tlnp 2>/dev/null | grep -E "30460|30470|30450|30451|8080|8081" >/dev/null; then
     print_status "WARNING" "Some Wasmbed ports are still in use"
-    netstat -tlnp 2>/dev/null | grep -E "30460|30470|30450|30451|30453" || true
+    netstat -tlnp 2>/dev/null | grep -E "30460|30470|30450|30451|8080|8081" || true
 else
     print_status "SUCCESS" "All Wasmbed ports are free"
 fi
