@@ -1,0 +1,147 @@
+' SPDX-License-Identifier: CC-BY-4.0
+' Copyright © 2025 Wasmbed contributors
+
+@startuml
+title Wasmbed Platform - Security Architecture (TLS Implementation)
+
+skinparam backgroundColor #FFFFFF
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam noteBackgroundColor #F8F9FA
+skinparam noteBorderColor #6C757D
+
+package "Certificate Authority" as CA #LightBlue {
+    component [Root CA] as RootCA
+    component [Certificate Generator] as CertGen
+    component [Certificate Validator] as CertValidator
+    component [Key Store] as KeyStore
+}
+
+package "Gateway Security" as GatewaySec #LightGreen {
+    component [TLS Server] as TLSServer
+    component [Certificate Manager] as CertManager
+    component [Client Authentication] as ClientAuth
+    component [Session Manager] as SessionMgr
+}
+
+package "Device Security" as DeviceSec #LightCoral {
+    component [TLS Client] as TLSClient
+    component [Device Certificate] as DeviceCert
+    component [Certificate Store] as DeviceCertStore
+    component [Key Manager] as DeviceKeyMgr
+}
+
+package "Communication Security" as CommSec #LightYellow {
+    component [TLS 1.3 Protocol] as TLS13
+    component [CBOR Encryption] as CBOREnc
+    component [Message Authentication] as MsgAuth
+    component [Session Encryption] as SessionEnc
+}
+
+package "Infrastructure Security" as InfraSec #LightPink {
+    component [Kubernetes RBAC] as K8SRBAC
+    component [Network Policies] as NetPolicies
+    component [Secret Management] as SecretMgr
+    component [Audit Logging] as AuditLog
+}
+
+package "Application Security" as AppSec #LightGray {
+    component [WASM Sandbox] as WASMSandbox
+    component [Memory Protection] as MemProt
+    component [Resource Limits] as ResLimits
+    component [Code Signing] as CodeSign
+}
+
+' Certificate Authority Connections
+RootCA --> CertGen : Generate Certificates
+CertGen --> CertValidator : Validate Certificates
+CertValidator --> KeyStore : Store Keys
+KeyStore --> RootCA : Key Management
+
+' Gateway Security Connections
+TLSServer --> CertManager : Certificate Management
+CertManager --> ClientAuth : Client Authentication
+ClientAuth --> SessionMgr : Session Management
+SessionMgr --> TLSServer : Session Control
+
+' Device Security Connections
+TLSClient --> DeviceCert : Certificate Usage
+DeviceCert --> DeviceCertStore : Certificate Storage
+DeviceCertStore --> DeviceKeyMgr : Key Management
+DeviceKeyMgr --> TLSClient : Key Operations
+
+' Communication Security Connections
+TLSServer --> TLS13 : TLS Protocol
+TLSClient --> TLS13 : TLS Protocol
+TLS13 --> CBOREnc : Encrypted Communication
+CBOREnc --> MsgAuth : Message Authentication
+MsgAuth --> SessionEnc : Session Encryption
+
+' Infrastructure Security Connections
+K8SRBAC --> NetPolicies : Access Control
+NetPolicies --> SecretMgr : Secret Access
+SecretMgr --> AuditLog : Audit Trail
+AuditLog --> K8SRBAC : Security Events
+
+' Application Security Connections
+WASMSandbox --> MemProt : Memory Isolation
+MemProt --> ResLimits : Resource Control
+ResLimits --> CodeSign : Code Validation
+CodeSign --> WASMSandbox : Execution Control
+
+' Cross-Layer Security Connections
+CertManager --> RootCA : Certificate Validation
+DeviceCertStore --> RootCA : Certificate Chain
+TLSServer --> K8SRBAC : Access Control
+TLSClient --> WASMSandbox : Secure Execution
+SessionMgr --> AuditLog : Session Logging
+
+note right of RootCA
+  **Certificate Authority**
+  - X.509 v3 certificates
+  - RSA 4096-bit keys
+  - Certificate chain validation
+  - CRL support ready
+end note
+
+note right of TLSServer
+  **TLS Server (Port 8081)**
+  - TLS 1.3 protocol
+  - Mutual authentication
+  - rustls implementation
+  - Ring crypto provider
+end note
+
+note right of TLSClient
+  **TLS Client**
+  - Device authentication
+  - Certificate validation
+  - Encrypted communication
+  - Session management
+end note
+
+note right of TLS13
+  **TLS 1.3 Protocol**
+  - Perfect Forward Secrecy
+  - Mutual authentication
+  - Certificate validation
+  - Session resumption
+end note
+
+note right of WASMSandbox
+  **WASM Sandbox**
+  - Memory isolation
+  - Resource limits
+  - Code validation
+  - Secure execution
+end note
+
+note right of K8SRBAC
+  **Kubernetes RBAC**
+  - Role-based access control
+  - Service accounts
+  - Permission management
+  - Security policies
+end note
+
+@enduml

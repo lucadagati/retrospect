@@ -2,7 +2,7 @@
 ' Copyright © 2025 Wasmbed contributors
 
 @startuml
-title Application Deployment - Complete Workflow
+title Application Deployment - Complete Workflow (Renode Implementation)
 
 skinparam wrapMessageWidth 200
 skinparam sequenceMessageAlign center
@@ -12,178 +12,180 @@ skinparam sequenceActorBackgroundColor #D4E6F1
 skinparam sequenceParticipantBackgroundColor #F8F9FA
 
 actor "User" as USER #LightBlue
-participant "kubectl" as KUBECTL #LightGreen
-participant "Kubernetes API" as K8S_API #LightGray
-participant "Controller" as CONTROLLER #LightCyan
-participant "Gateway Server" as GATEWAY #LightCoral
-participant "Device Manager" as DEV_MGR #LightYellow
-participant "Application Manager" as APP_MGR #LightPink
-participant "WASM Runtime" as WASM_RT #LightSteelBlue
-participant "MCU Device" as MCU #LightBlue
-database "etcd" as ETCD #LightSteelBlue
+participant "React Dashboard" as DASHBOARD #LightGreen
+participant "API Server" as API_SERVER #LightCoral
+participant "Rust Compiler" as COMPILER #LightYellow
+participant "Gateway Server" as GATEWAY #LightPink
+participant "Renode Manager" as RENODE_MGR #LightGray
+participant "WASM Runtime" as WASM_RT #LightCyan
+participant "Arduino Device" as DEVICE #LightSteelBlue
+participant "Kubernetes API" as K8S_API #LightSalmon
+participant "Application Controller" as APP_CTRL #LightSeaGreen
+database "etcd" as ETCD #LightSlateGray
 
 == Application Creation Phase ==
 
-USER -> KUBECTL : **Apply Application Manifest**
-note right : kubectl apply -f app.yaml\nApplication CRD manifest\nWASM bytecode (base64)\nTarget device selection
+USER -> DASHBOARD : **Create Application**
+note right : Enter Rust source code\nSelect target devices\nSpecify application name\nConfigure deployment options
 
-KUBECTL -> K8S_API : **POST Application Resource**
-note right : POST /apis/wasmbed.github.io/v1alpha1/namespaces/wasmbed/applications\nValidate manifest\nCheck device availability\nStore resource
+DASHBOARD -> API_SERVER : **POST /api/v1/compile**
+note right : Send Rust source code\nRequest WASM compilation\nSpecify target architecture\nInclude dependencies
+
+API_SERVER -> COMPILER : **Compile Rust to WASM**
+note right : Use rustc with wasm32-unknown-unknown target\nCompile with no_std for ARM Cortex-M4\nOptimize for size and performance\nGenerate WASM binary
+
+COMPILER -> COMPILER : **Rust Compilation Process**
+note right : Parse Rust source code\nResolve dependencies\nGenerate LLVM IR\nCompile to WebAssembly\nOptimize binary size
+
+COMPILER -> API_SERVER : **WASM Binary Generated**
+note right : Base64 encoded WASM binary\nCompilation successful\nBinary size and metadata\nTarget architecture: ARM Cortex-M4
+
+API_SERVER -> DASHBOARD : **Compilation Success**
+note right : WASM binary ready\nBinary metadata\nSize and performance info\nReady for deployment
+
+== Application Deployment Phase ==
+
+DASHBOARD -> API_SERVER : **POST /api/v1/applications**
+note right : Application metadata\nWASM binary (base64)\nTarget devices: ["arduino-nano-33-ble"]\nDeployment configuration
+
+API_SERVER -> K8S_API : **Create Application CRD**
+note right : POST /apis/wasmbed.io/v1/namespaces/wasmbed/applications\nApplication spec with WASM binary\nTarget device references\nStatus: Pending
 
 K8S_API -> ETCD : **Store Application Resource**
-note right : Persist application resource\nGenerate resource version\nCreate watch events\nSet status: Pending
+note right : Persist application resource\nGenerate resource version\nCreate watch events\nStore WASM binary metadata
 
 ETCD -> K8S_API : **Application Created**
-note right : Resource stored successfully\nVersion: 1\nUID generated\nStatus: Pending
+note right : Resource stored successfully\nVersion: 1\nUID generated\nNamespace: wasmbed
 
-K8S_API -> KUBECTL : **HTTP 201 Created**
-note right : Application resource created\nLocation header\nResource metadata
+K8S_API -> API_SERVER : **Application CRD Created**
+note right : HTTP 201 Created\nResource metadata\nLocation header\nResource version
 
 == Controller Notification ==
 
-K8S_API -> CONTROLLER : **Watch Event: Application Added**
-note right : Event type: ADDED\nObject: Application resource\nNamespace: wasmbed\nResource version
+K8S_API -> APP_CTRL : **Watch Event: Application Added**
+note right : Event type: ADDED\nObject: Application resource\nNamespace: wasmbed\nResource version\nWASM binary ready
 
-CONTROLLER -> CONTROLLER : **Reconcile Application**
-note right : Parse application resource\nValidate application spec\nCheck WASM bytecode\nFind target devices
+APP_CTRL -> APP_CTRL : **Reconcile Application**
+note right : Parse application resource\nValidate WASM binary\nCheck target devices\nUpdate application phase
 
-CONTROLLER -> K8S_API : **Query Target Devices**
-note right : GET /apis/wasmbed.github.io/v0/namespaces/wasmbed/devices\nFilter by device names\nCheck device status\nVerify device capabilities
+APP_CTRL -> RENODE_MGR : **Get Target Devices**
+note right : Query connected Renode devices\nCheck ARM Cortex-M4 status\nVerify device capabilities\nValidate target device list
 
-K8S_API -> ETCD : **Query Devices**
-note right : Search device resources\nFilter by labels/names\nCheck device status\nReturn matching devices
+RENODE_MGR -> APP_CTRL : **Target Devices Available**
+note right : Arduino Nano 33 BLE devices\nARM Cortex-M4 status: Connected\nWASM runtime: Ready\nDevice capabilities confirmed
 
-ETCD -> K8S_API : **Return Device List**
-note right : List of matching devices\nDevice status: Connected\nDevice capabilities\nGateway assignments
+== Gateway Deployment ==
 
-K8S_API -> CONTROLLER : **Device List Response**
-note right : HTTP 200 OK\nDevice resources\nStatus information\nGateway references
+APP_CTRL -> GATEWAY : **Deploy Application**
+note right : Application metadata\nWASM binary (base64)\nTarget device IDs\nDeployment configuration\nTLS encrypted request
 
-== Device Selection and Validation ==
+GATEWAY -> GATEWAY : **Prepare WASM Runtime**
+note right : Initialize wasmtime engine\nPrepare WASM module\nValidate binary format\nSet up execution context
 
-CONTROLLER -> CONTROLLER : **Select Target Device**
-note right : Choose best available device\nCheck device capabilities\nVerify device status\nAssign gateway
+GATEWAY -> WASM_RT : **Load WASM Module**
+note right : Parse WASM binary\nValidate module structure\nInitialize memory\nPrepare function exports\nSet up execution environment
 
-CONTROLLER -> K8S_API : **Update Application Status**
-note right : PATCH application resource\nStatus.phase: "Deploying"\nStatus.target_device: device-name\nStatus.gateway: gateway-pod-name
+WASM_RT -> WASM_RT : **WASM Module Validation**
+note right : Validate WASM magic number\nCheck module structure\nVerify function signatures\nValidate memory layout\nCheck import/export compatibility
 
-K8S_API -> ETCD : **Update Application Status**
-note right : Update resource in etcd\nIncrement resource version\nGenerate watch events
-
-== Gateway Communication ==
-
-CONTROLLER -> GATEWAY : **Deployment Request**
-note right : HTTP POST /deploy\nDevice ID\nApplication ID\nWASM bytecode\nConfiguration parameters
-
-GATEWAY -> DEV_MGR : **Validate Device**
-note right : Check device connection\nVerify device capabilities\nValidate device status\nCheck resource limits
-
-DEV_MGR -> GATEWAY : **Device Valid**
-note right : Device is available\nCapabilities match\nResources sufficient\nReady for deployment
-
-GATEWAY -> APP_MGR : **Prepare Application**
-note right : Decode WASM bytecode\nValidate WASM format\nCheck memory requirements\nPrepare deployment package
-
-APP_MGR -> APP_MGR : **Validate WASM Module**
-note right : Parse WASM binary\nCheck function exports\nValidate memory layout\nVerify security constraints
-
-APP_MGR -> GATEWAY : **WASM Valid**
-note right : WASM module valid\nMemory requirements calculated\nSecurity checks passed\nReady for deployment
+WASM_RT -> GATEWAY : **Module Loaded Successfully**
+note right : WASM module ready\nFunction exports available\nMemory initialized\nExecution context prepared
 
 == Device Communication ==
 
-GATEWAY -> MCU : **TLS Encrypted Deployment**
-note right : Encrypted deployment message\nDevice ID\nApplication ID\nWASM bytecode\nConfiguration
+GATEWAY -> DEVICE : **TLS Connection**
+note right : Connect to Arduino Nano 33 BLE\nEstablish TLS 1.3 connection\nMutual authentication\nEncrypted channel ready
 
-MCU -> MCU : **Receive Deployment**
-note right : Decrypt deployment message\nValidate device ID\nCheck application ID\nPrepare WASM runtime
+DEVICE -> DEVICE : **Prepare for Deployment**
+note right : Initialize WASM runtime\nPrepare memory allocation\nSet up execution environment\nReady for binary transfer
 
-MCU -> WASM_RT : **Load WASM Module**
-note right : Parse WASM binary\nInitialize module\nAllocate memory\nSet up execution context
+GATEWAY -> DEVICE : **Send WASM Binary**
+note right : CBOR encoded message\nWASM binary transfer\nApplication metadata\nDeployment instructions\nTLS encrypted transmission
 
-WASM_RT -> WASM_RT : **Initialize WASM Instance**
-note right : Create WASM instance\nSet up memory\nInitialize globals\nPrepare function table
+DEVICE -> DEVICE : **Load WASM Application**
+note right : Receive WASM binary\nParse CBOR message\nLoad into wasmtime runtime\nInitialize application context\nPrepare for execution
 
-WASM_RT -> MCU : **WASM Loaded**
-note right : Module loaded successfully\nInstance created\nMemory allocated\nReady for execution
+DEVICE -> DEVICE : **Execute WASM Application**
+note right : Start WASM execution\nInitialize application state\nBegin main function\nMonitor execution status\nHandle runtime events
 
-MCU -> GATEWAY : **Deployment Success**
-note right : Encrypted success response\nApplication ID\nInstance ID\nStatus: Running\nMemory usage
+DEVICE -> GATEWAY : **Deployment Confirmation**
+note right : CBOR encoded response\nStatus: Success\nApplication ID\nExecution status\nPerformance metrics
 
 == Status Updates ==
 
-GATEWAY -> CONTROLLER : **Deployment Complete**
-note right : HTTP 200 OK\nDeployment successful\nApplication running\nDevice status updated
+GATEWAY -> APP_CTRL : **Deployment Status Update**
+note right : Application deployed successfully\nTarget device: Arduino Nano 33 BLE\nWASM runtime: Active\nPerformance metrics available
 
-CONTROLLER -> K8S_API : **Update Application Status**
-note right : PATCH application resource\nStatus.phase: "Running"\nStatus.instance_id: instance-id\nStatus.memory_usage: bytes\nStatus.started_at: timestamp
+APP_CTRL -> K8S_API : **Update Application Status**
+note right : PATCH application resource\nStatus.phase: "Deployed"\nStatus.deployed_devices: ["arduino-nano-33-ble"]\nStatus.deployment_progress: 100%\nStatus.metrics: performance_data
 
 K8S_API -> ETCD : **Update Application Status**
-note right : Update resource in etcd\nIncrement resource version\nGenerate watch events
+note right : Update resource in etcd\nIncrement resource version\nGenerate watch events\nPersist deployment status
 
-ETCD -> K8S_API : **Status Updated**
-note right : Resource updated successfully\nNew version generated\nWatch events created
+== Real-time Monitoring ==
 
-K8S_API -> CONTROLLER : **Update Confirmed**
-note right : HTTP 200 OK\nResource updated\nNew version\nStatus confirmed
+DEVICE -> DEVICE : **Application Execution**
+note right : WASM application running\nMonitor performance\nCollect metrics\nHandle events\nMaintain execution state
 
-== Application Execution ==
+DEVICE -> GATEWAY : **Periodic Status Updates**
+note right : CBOR encoded heartbeat\nApplication status\nPerformance metrics\nError counts\nResource usage
 
-MCU -> WASM_RT : **Execute Application**
-note right : Call main function\nInitialize application\nStart execution loop\nMonitor performance
+GATEWAY -> APP_CTRL : **Process Status Updates**
+note right : Aggregate device metrics\nUpdate application status\nMonitor performance\nDetect issues\nGenerate alerts
 
-WASM_RT -> WASM_RT : **Run Application Logic**
-note right : Execute WASM functions\nProcess input data\nGenerate output\nUpdate state
-
-WASM_RT -> MCU : **Application Running**
-note right : Application executing\nFunctions called\nMemory accessed\nPerformance metrics
-
-MCU -> GATEWAY : **Status Updates**
-note right : Periodic status reports\nPerformance metrics\nMemory usage\nError counts\nHealth status
-
-GATEWAY -> CONTROLLER : **Forward Status**
-note right : Relay status updates\nApplication metrics\nDevice health\nPerformance data
-
-CONTROLLER -> K8S_API : **Update Application Metrics**
-note right : PATCH application resource\nStatus.metrics: performance-data\nStatus.health: "healthy"\nStatus.last_activity: timestamp
+APP_CTRL -> K8S_API : **Update Application Metrics**
+note right : PATCH application resource\nStatus.metrics: updated_data\nStatus.last_update: timestamp\nStatus.performance: metrics\nStatus.health: "healthy"
 
 == Error Handling ==
 
+alt **Compilation Failure**
+    COMPILER -> API_SERVER : **Compilation Error**
+    note right : Rust compilation failed\nSyntax errors detected\nDependency issues\nTarget architecture incompatible
+    
+    API_SERVER -> DASHBOARD : **Compilation Failed**
+    note right : Error response\nError details\nSuggestions for fixes\nRetry options
+end
+
 alt **Deployment Failure**
-    WASM_RT -> MCU : **Load Error**
-    note right : Invalid WASM format\nMemory allocation failed\nSecurity violation\nFunction not found
+    DEVICE -> GATEWAY : **Deployment Error**
+    note right : WASM binary invalid\nMemory allocation failed\nRuntime initialization error\nDevice capability mismatch
     
-    MCU -> GATEWAY : **Deployment Error**
-    note right : Encrypted error response\nError code\nError message\nRetry information
+    GATEWAY -> APP_CTRL : **Deployment Failed**
+    note right : Error details\nDevice status\nFailure reason\nRetry information
     
-    GATEWAY -> CONTROLLER : **Deployment Failed**
-    note right : HTTP 400 Bad Request\nError details\nFailure reason\nSuggested actions
-    
-    CONTROLLER -> K8S_API : **Update Application Status**
-    note right : PATCH application resource\nStatus.phase: "Failed"\nStatus.error: error-message\nStatus.retry_count: count
+    APP_CTRL -> K8S_API : **Update Application Status**
+    note right : PATCH application resource\nStatus.phase: "Failed"\nStatus.error: error_details\nStatus.retry_count: incremented
 end
 
-alt **Device Unavailable**
-    CONTROLLER -> CONTROLLER : **No Available Devices**
-    note right : No matching devices found\nAll devices busy\nDevice capabilities insufficient\nDevice offline
+alt **Runtime Error**
+    DEVICE -> GATEWAY : **Runtime Error**
+    note right : WASM execution failed\nMemory access violation\nFunction call error\nResource exhaustion
     
-    CONTROLLER -> K8S_API : **Update Application Status**
-    note right : PATCH application resource\nStatus.phase: "Failed"\nStatus.error: "No available devices"\nStatus.retry_after: timestamp
+    GATEWAY -> APP_CTRL : **Runtime Error Report**
+    note right : Error details\nStack trace\nResource usage\nRecovery options
+    
+    APP_CTRL -> K8S_API : **Update Application Status**
+    note right : PATCH application resource\nStatus.phase: "Error"\nStatus.error: runtime_error\nStatus.health: "unhealthy"
 end
 
-alt **Application Crash**
-    WASM_RT -> MCU : **Application Error**
-    note right : Runtime error\nMemory access violation\nFunction call failed\nStack overflow
-    
-    MCU -> GATEWAY : **Error Report**
-    note right : Encrypted error report\nError details\nStack trace\nMemory state
-    
-    GATEWAY -> CONTROLLER : **Forward Error**
-    note right : Relay error report\nApplication crashed\nError details\nRecovery options
-    
-    CONTROLLER -> K8S_API : **Update Application Status**
-    note right : PATCH application resource\nStatus.phase: "Failed"\nStatus.error: error-details\nStatus.crash_count: count
-end
+== Application Management ==
+
+USER -> DASHBOARD : **Monitor Application**
+note right : View real-time status\nCheck performance metrics\nMonitor device health\nView execution logs
+
+DASHBOARD -> API_SERVER : **GET /api/v1/applications/{id}**
+note right : Request application details\nCurrent status\nPerformance metrics\nDevice information
+
+API_SERVER -> K8S_API : **Get Application Resource**
+note right : GET application resource\nCurrent status\nDeployment information\nPerformance data
+
+K8S_API -> API_SERVER : **Application Resource**
+note right : Application details\nCurrent status\nMetrics data\nDevice information
+
+API_SERVER -> DASHBOARD : **Application Status**
+note right : Real-time status\nPerformance metrics\nDevice health\nExecution information
+
+DASHBOARD -> USER : **Display Application Status**
+note right : Real-time dashboard\nPerformance graphs\nDevice status\nExecution logs\nHealth indicators
 
 @enduml
-

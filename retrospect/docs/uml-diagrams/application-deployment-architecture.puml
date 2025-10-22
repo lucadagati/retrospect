@@ -1,0 +1,137 @@
+' SPDX-License-Identifier: CC-BY-4.0
+' Copyright © 2025 Wasmbed contributors
+
+@startuml
+title Wasmbed Platform - Application Deployment Architecture
+
+skinparam backgroundColor #FFFFFF
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam noteBackgroundColor #F8F9FA
+skinparam noteBorderColor #6C757D
+
+package "Application Development" as AppDev #LightBlue {
+    component [Rust Source Code] as RustCode
+    component [Rust Compiler] as RustCompiler
+    component [WASM Binary] as WASMBinary
+    component [Application Metadata] as AppMetadata
+}
+
+package "Deployment Pipeline" as DeployPipe #LightGreen {
+    component [Compilation Service] as CompileService
+    component [Binary Validator] as BinaryValidator
+    component [Deployment Manager] as DeployManager
+    component [Target Selector] as TargetSelector
+}
+
+package "Gateway Runtime" as GatewayRT #LightCoral {
+    component [WASM Engine] as WASMEngine
+    component [Module Loader] as ModuleLoader
+    component [Execution Context] as ExecContext
+    component [Resource Manager] as ResourceMgr
+}
+
+package "Device Runtime" as DeviceRT #LightYellow {
+    component [WASM Runtime Client] as WASMClient
+    component [Memory Manager] as MemManager
+    component [Function Executor] as FuncExecutor
+    component [Event Handler] as EventHandler
+}
+
+package "Monitoring & Management" as MonitorMgmt #LightPink {
+    component [Performance Monitor] as PerfMonitor
+    component [Health Checker] as HealthChecker
+    component [Metrics Collector] as MetricsCollector
+    component [Status Reporter] as StatusReporter
+}
+
+package "Kubernetes Integration" as K8SInt #LightGray {
+    component [Application CRD] as AppCRD
+    component [Application Controller] as AppController
+    component [Status Reconciler] as StatusReconciler
+    component [Event Watcher] as EventWatcher
+}
+
+' Application Development Connections
+RustCode --> RustCompiler : Compilation
+RustCompiler --> WASMBinary : Binary Generation
+WASMBinary --> AppMetadata : Metadata Extraction
+AppMetadata --> CompileService : Deployment Request
+
+' Deployment Pipeline Connections
+CompileService --> BinaryValidator : Validation
+BinaryValidator --> DeployManager : Validated Binary
+DeployManager --> TargetSelector : Target Selection
+TargetSelector --> GatewayRT : Deployment Request
+
+' Gateway Runtime Connections
+GatewayRT --> WASMEngine : Engine Initialization
+WASMEngine --> ModuleLoader : Module Loading
+ModuleLoader --> ExecContext : Context Creation
+ExecContext --> ResourceMgr : Resource Allocation
+
+' Device Runtime Connections
+GatewayRT --> WASMClient : Binary Transfer
+WASMClient --> MemManager : Memory Allocation
+MemManager --> FuncExecutor : Function Execution
+FuncExecutor --> EventHandler : Event Processing
+
+' Monitoring & Management Connections
+DeviceRT --> PerfMonitor : Performance Data
+PerfMonitor --> HealthChecker : Health Assessment
+HealthChecker --> MetricsCollector : Metrics Collection
+MetricsCollector --> StatusReporter : Status Reporting
+
+' Kubernetes Integration Connections
+DeployManager --> AppCRD : Resource Creation
+AppCRD --> AppController : Event Notification
+AppController --> StatusReconciler : Status Reconciliation
+StatusReconciler --> EventWatcher : Event Monitoring
+
+' Cross-Layer Connections
+StatusReporter --> AppController : Status Updates
+AppController --> DeployManager : Deployment Control
+ResourceMgr --> PerfMonitor : Resource Metrics
+EventHandler --> MetricsCollector : Event Metrics
+
+note right of RustCode
+  **Rust Source Code**
+  - no_std compatible
+  - ARM Cortex-M4 target
+  - WebAssembly output
+  - Embedded optimizations
+end note
+
+note right of WASMEngine
+  **WASM Engine (wasmtime)**
+  - WebAssembly runtime
+  - Module validation
+  - Function execution
+  - Memory management
+end note
+
+note right of WASMClient
+  **WASM Runtime Client**
+  - Device-side execution
+  - Memory constraints
+  - Real-time execution
+  - Resource monitoring
+end note
+
+note right of AppCRD
+  **Application CRD**
+  - Kubernetes resource
+  - WASM binary storage
+  - Deployment status
+  - Target device references
+end note
+
+note right of PerfMonitor
+  **Performance Monitor**
+  - Real-time metrics
+  - Resource usage
+  - Execution statistics
+  - Health indicators
+end note
+
+@enduml

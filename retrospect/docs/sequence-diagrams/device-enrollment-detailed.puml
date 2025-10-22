@@ -2,7 +2,7 @@
 ' Copyright © 2025 Wasmbed contributors
 
 @startuml
-title Device Enrollment - Complete Workflow
+title Device Enrollment - Complete Workflow (Renode Implementation)
 
 skinparam wrapMessageWidth 200
 skinparam sequenceMessageAlign center
@@ -11,131 +11,141 @@ skinparam sequenceLifeLineBackgroundColor #E8F4FD
 skinparam sequenceActorBackgroundColor #D4E6F1
 skinparam sequenceParticipantBackgroundColor #F8F9FA
 
-actor "MCU Device" as MCU #LightBlue
+actor "Arduino Nano 33 BLE" as MCU #LightBlue
 participant "TLS Client" as TLS_CLIENT #LightGreen
 participant "Gateway Server" as GATEWAY #LightCoral
-participant "Device Manager" as DEV_MGR #LightYellow
+participant "Renode Manager" as RENODE_MGR #LightYellow
 participant "Certificate Manager" as CERT_MGR #LightPink
 participant "Kubernetes API" as K8S_API #LightGray
-participant "Controller" as CONTROLLER #LightCyan
+participant "Device Controller" as CONTROLLER #LightCyan
 database "etcd" as ETCD #LightSteelBlue
 
 == Initialization Phase ==
 
-MCU -> MCU : **Initialize MCU Firmware**
-note right : Load WASM runtime\nInitialize network stack\nGenerate device keypair
+MCU -> MCU : **Initialize Renode Device**
+note right : Start Renode emulation\nLoad Arduino Nano 33 BLE platform\nInitialize ARM Cortex-M4 firmware
 
 MCU -> TLS_CLIENT : **Create TLS Client**
-note right : Load device private key\nInitialize TLS context\nSet cipher suites
+note right : Install rustls crypto provider\nLoad device certificates (DER format)\nInitialize TLS context with X.509 v3
 
-TLS_CLIENT -> TLS_CLIENT : **Generate Device Certificate**
-note right : Create CSR with device info\nSign with device private key\nInclude capabilities
+TLS_CLIENT -> TLS_CLIENT : **Load Device Certificates**
+note right : Load ca-cert.der\nLoad device-cert.der\nLoad device-key.der\nVerify certificate chain
 
 == Connection Establishment ==
 
 TLS_CLIENT -> GATEWAY : **TCP Connection Request**
-note right : Connect to gateway:4423\nEstablish TCP socket\nPrepare TLS handshake
+note right : Connect to gateway:8081\nEstablish TCP socket\nPrepare TLS 1.3 handshake
 
 GATEWAY -> GATEWAY : **Accept Connection**
-note right : Accept incoming connection\nCreate TLS server context\nLoad server certificates
+note right : Accept incoming connection\nCreate rustls server context\nLoad X.509 v3 server certificates
 
-TLS_CLIENT -> GATEWAY : **TLS Handshake**
-note right : Client Hello with cipher suites\nServer Hello with certificate\nKey exchange and verification
+TLS_CLIENT -> GATEWAY : **TLS 1.3 Handshake**
+note right : Client Hello with cipher suites\nServer Hello with X.509 v3 certificate\nMutual TLS authentication\nKey exchange and verification
 
 GATEWAY -> TLS_CLIENT : **TLS Handshake Complete**
-note right : Mutual TLS established\nEncrypted channel ready\nSession keys exchanged
+note right : Mutual TLS established\nEncrypted channel ready\nSession keys exchanged\nCertificate validation passed
 
 == Enrollment Request ==
 
 TLS_CLIENT -> GATEWAY : **Enrollment Request**
-note right : CBOR encoded message\nDevice type: "hifive1"\nCapabilities: ["wasm", "tls"]\nPublic key: base64 encoded
+note right : CBOR encoded message\nDevice type: "RenodeArduinoNano33Ble"\nArchitecture: "ARM_CORTEX_M"\nCapabilities: ["wasm", "tls", "cbor"]\nPublic key: DER encoded
 
-GATEWAY -> DEV_MGR : **Process Enrollment**
-note right : Validate device type\nCheck capabilities\nVerify public key format\nGenerate device ID
+GATEWAY -> RENODE_MGR : **Process Enrollment**
+note right : Validate Renode device type\nCheck ARM Cortex-M4 capabilities\nVerify public key format\nGenerate unique device ID
 
-DEV_MGR -> CERT_MGR : **Validate Certificate**
-note right : Verify device certificate\nCheck certificate chain\nValidate signature\nCheck expiration
+RENODE_MGR -> CERT_MGR : **Validate Device Certificate**
+note right : Verify X.509 v3 device certificate\nCheck certificate chain against CA\nValidate signature with rustls\nCheck certificate expiration
 
-CERT_MGR -> DEV_MGR : **Certificate Valid**
-note right : Certificate verification passed\nDevice authenticated\nReady for registration
+CERT_MGR -> RENODE_MGR : **Certificate Valid**
+note right : X.509 v3 certificate verification passed\nDevice authenticated via mTLS\nReady for Kubernetes registration
 
-DEV_MGR -> K8S_API : **Create Device CRD**
-note right : POST /apis/wasmbed.github.io/v0/namespaces/wasmbed/devices\nDevice metadata\nPublic key\nStatus: Pending
+RENODE_MGR -> K8S_API : **Create Device CRD**
+note right : POST /apis/wasmbed.io/v1/namespaces/wasmbed/devices\nDevice metadata with Renode info\nARM Cortex-M4 specifications\nStatus: Pending
 
 K8S_API -> ETCD : **Store Device Resource**
-note right : Persist device resource\nGenerate resource version\nCreate watch events
+note right : Persist device resource\nGenerate resource version\nCreate watch events for controllers
 
 ETCD -> K8S_API : **Device Created**
-note right : Resource stored successfully\nVersion: 1\nUID generated
+note right : Resource stored successfully\nVersion: 1\nUID generated\nNamespace: wasmbed
 
-K8S_API -> DEV_MGR : **Device CRD Created**
-note right : HTTP 201 Created\nResource metadata\nLocation header
+K8S_API -> RENODE_MGR : **Device CRD Created**
+note right : HTTP 201 Created\nResource metadata\nLocation header\nResource version
 
 == Controller Notification ==
 
 K8S_API -> CONTROLLER : **Watch Event: Device Added**
-note right : Event type: ADDED\nObject: Device resource\nNamespace: wasmbed\nResource version
+note right : Event type: ADDED\nObject: Device resource\nNamespace: wasmbed\nResource version\nRenode device detected
 
 CONTROLLER -> CONTROLLER : **Reconcile Device**
-note right : Parse device resource\nValidate device spec\nCheck device status\nUpdate device phase
+note right : Parse device resource\nValidate Renode device spec\nCheck ARM Cortex-M4 status\nUpdate device phase to Connected
 
 CONTROLLER -> K8S_API : **Update Device Status**
-note right : PATCH device resource\nStatus.phase: "Connected"\nStatus.gateway: gateway-pod-name\nStatus.connected_since: timestamp
+note right : PATCH device resource\nStatus.phase: "Connected"\nStatus.gateway: gateway-pod-name\nStatus.renode_status: "Running"\nStatus.connected_since: timestamp
 
 K8S_API -> ETCD : **Update Device Status**
-note right : Update resource in etcd\nIncrement resource version\nGenerate watch events
+note right : Update resource in etcd\nIncrement resource version\nGenerate watch events\nPersist Renode status
 
 == Enrollment Response ==
 
-DEV_MGR -> GATEWAY : **Enrollment Success**
-note right : Device registered successfully\nDevice ID generated\nGateway assigned\nStatus updated
+RENODE_MGR -> GATEWAY : **Enrollment Success**
+note right : Renode device registered successfully\nDevice ID generated\nGateway assigned\nARM Cortex-M4 status updated
 
 GATEWAY -> TLS_CLIENT : **Enrollment Response**
-note right : CBOR encoded response\nStatus: Success\nDevice ID: uuid\nGateway info\nHeartbeat interval
+note right : CBOR encoded response\nStatus: Success\nDevice ID: uuid\nGateway info: 127.0.0.1:8081\nHeartbeat interval: 30s\nWASM runtime ready
 
 TLS_CLIENT -> MCU : **Enrollment Complete**
-note right : Device successfully enrolled\nReady for application deployment\nStart heartbeat timer
+note right : Renode device successfully enrolled\nARM Cortex-M4 ready for WASM deployment\nStart heartbeat timer\nInitialize WASM runtime
 
 == Heartbeat Setup ==
 
 MCU -> MCU : **Start Heartbeat Timer**
-note right : Set interval: 30 seconds\nPrepare heartbeat message\nInitialize counters
+note right : Set interval: 30 seconds\nPrepare CBOR heartbeat message\nInitialize ARM Cortex-M4 metrics\nMonitor Renode status
 
 MCU -> TLS_CLIENT : **Send Heartbeat**
-note right : CBOR encoded heartbeat\nDevice ID\nTimestamp\nStatus: Active\nMetrics data
+note right : CBOR encoded heartbeat\nDevice ID\nTimestamp\nRenode status: Active\nARM Cortex-M4 metrics\nWASM runtime status
 
 TLS_CLIENT -> GATEWAY : **Heartbeat Message**
-note right : Encrypted heartbeat\nDevice status\nPerformance metrics\nError counts
+note right : Encrypted heartbeat via TLS 1.3\nDevice status\nRenode performance metrics\nARM Cortex-M4 error counts\nWASM runtime health
 
-GATEWAY -> DEV_MGR : **Process Heartbeat**
-note right : Validate device ID\nUpdate last heartbeat time\nCheck device health\nProcess metrics
+GATEWAY -> RENODE_MGR : **Process Heartbeat**
+note right : Validate device ID\nUpdate last heartbeat time\nCheck Renode device health\nProcess ARM Cortex-M4 metrics\nMonitor WASM runtime
 
-DEV_MGR -> K8S_API : **Update Device Heartbeat**
-note right : PATCH device resource\nStatus.last_heartbeat: timestamp\nStatus.health: "healthy"\nStatus.metrics: data
+RENODE_MGR -> K8S_API : **Update Device Heartbeat**
+note right : PATCH device resource\nStatus.last_heartbeat: timestamp\nStatus.health: "healthy"\nStatus.renode_metrics: data\nStatus.wasm_runtime: "ready"
 
 == Error Handling ==
 
 alt **Enrollment Failure**
-    DEV_MGR -> GATEWAY : **Enrollment Failed**
-    note right : Invalid device type\nUnsupported capabilities\nCertificate validation failed\nDuplicate device
+    RENODE_MGR -> GATEWAY : **Enrollment Failed**
+    note right : Invalid Renode device type\nUnsupported ARM Cortex-M4 capabilities\nX.509 v3 certificate validation failed\nDuplicate device ID
     
     GATEWAY -> TLS_CLIENT : **Error Response**
-    note right : CBOR encoded error\nError code: ENROLLMENT_FAILED\nError message\nRetry information
+    note right : CBOR encoded error\nError code: ENROLLMENT_FAILED\nError message\nRetry information\nCertificate issues
     
     TLS_CLIENT -> MCU : **Enrollment Error**
-    note right : Log error message\nWait before retry\nUpdate device status
+    note right : Log error message\nWait before retry\nUpdate Renode device status\nCheck certificate validity
 end
 
 alt **Connection Lost**
-    GATEWAY -> DEV_MGR : **Connection Lost**
-    note right : TCP connection closed\nTLS session terminated\nDevice unreachable
+    GATEWAY -> RENODE_MGR : **Connection Lost**
+    note right : TCP connection closed\nTLS 1.3 session terminated\nRenode device unreachable\nARM Cortex-M4 offline
     
-    DEV_MGR -> K8S_API : **Update Device Status**
-    note right : PATCH device resource\nStatus.phase: "Disconnected"\nStatus.last_heartbeat: null\nStatus.error: "Connection lost"
+    RENODE_MGR -> K8S_API : **Update Device Status**
+    note right : PATCH device resource\nStatus.phase: "Disconnected"\nStatus.last_heartbeat: null\nStatus.renode_status: "Stopped"\nStatus.error: "Connection lost"
     
     K8S_API -> CONTROLLER : **Watch Event: Device Updated**
-    note right : Event type: MODIFIED\nObject: Device resource\nStatus change detected
+    note right : Event type: MODIFIED\nObject: Device resource\nStatus change detected\nRenode device offline
+end
+
+alt **Certificate Issues**
+    CERT_MGR -> RENODE_MGR : **Certificate Validation Failed**
+    note right : X.509 v3 certificate invalid\nCertificate chain broken\nSignature verification failed\nCertificate expired
+    
+    RENODE_MGR -> GATEWAY : **Certificate Error**
+    note right : Device certificate invalid\nCannot authenticate device\nReject enrollment request\nRequest certificate renewal
+    
+    GATEWAY -> TLS_CLIENT : **Certificate Error Response**
+    note right : CBOR encoded error\nError code: CERTIFICATE_INVALID\nError message: Certificate validation failed\nAction: Renew device certificate
 end
 
 @enduml
-
