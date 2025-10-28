@@ -1580,9 +1580,9 @@ pub fn greet() {{
             "curl -s http://localhost:30461/health",
             "curl -s http://localhost:30461/logs",
             "curl -s http://localhost:30453/api/v1/status",
-            "cd /home/lucadag/27_9_25_retrospect/retrospect && ./target/release/wasmbed-gateway-controller --kubeconfig ~/.kube/config &",
-            "cd /home/lucadag/27_9_25_retrospect/retrospect && ./target/release/wasmbed-device-controller --kubeconfig ~/.kube/config &",
-            "cd /home/lucadag/27_9_25_retrospect/retrospect && ./target/release/wasmbed-application-controller --kubeconfig ~/.kube/config &",
+            "./target/release/wasmbed-gateway-controller --kubeconfig ~/.kube/config &",
+            "./target/release/wasmbed-device-controller --kubeconfig ~/.kube/config &",
+            "./target/release/wasmbed-application-controller --kubeconfig ~/.kube/config &",
         ];
 
         if !allowed_commands.contains(&request.command.as_str()) {

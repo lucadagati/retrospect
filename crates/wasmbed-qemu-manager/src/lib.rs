@@ -331,8 +331,17 @@ impl RenodeManager {
     }
 
     fn build_renode_args(&self, device: &QemuDevice) -> Vec<String> {
+        // Use RENODE_PATH environment variable or default to relative path
+        let renode_binary = std::env::var("RENODE_PATH")
+            .unwrap_or_else(|_| {
+                // Try to find renode relative to current executable or project root
+                let current_dir = std::env::current_dir().unwrap_or_default();
+                let renode_path = current_dir.join("renode_1.15.0_portable/renode");
+                renode_path.to_string_lossy().to_string()
+            });
+        
         let mut args = vec![
-            "/home/lucadag/18_10_23_retrospect/renode_1.15.0_portable/renode".to_string(),
+            renode_binary,
             "--console".to_string(),
             "--port".to_string(),
             device.endpoint.split(':').nth(1).unwrap_or("3000").to_string(),

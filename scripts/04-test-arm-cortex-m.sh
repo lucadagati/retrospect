@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # Test configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-RENODE_BINARY="$PROJECT_ROOT/experiments/renode_1.15.0_portable/renode"
+RENODE_BINARY="$PROJECT_ROOT/renode_1.15.0_portable/renode"
 BASE_PORT=30000
 DEVICE_ID="arm-cortex-m-test-001"
 DEVICE_NAME="ARM Cortex-M Test Device"
