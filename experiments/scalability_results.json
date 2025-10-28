@@ -1,0 +1,71 @@
+{
+  "test_start": "2025-10-25T20:13:15+00:00",
+  "baseline": {
+    "devices": 3,
+    "applications": 2,
+    "gateways": 1
+  },
+  "tests": {
+    "sequential_device_creation": {
+      "count": 10,
+      "results": [
+        {"device":"scale-test-device-seq-1", "latency_ms":86, "status":"error"},
+        {"device":"scale-test-device-seq-2", "latency_ms":89, "status":"error"},
+        {"device":"scale-test-device-seq-3", "latency_ms":167, "status":"error"},
+        {"device":"scale-test-device-seq-4", "latency_ms":164, "status":"error"},
+        {"device":"scale-test-device-seq-5", "latency_ms":89, "status":"error"},
+        {"device":"scale-test-device-seq-6", "latency_ms":96, "status":"error"},
+        {"device":"scale-test-device-seq-7", "latency_ms":86, "status":"error"},
+        {"device":"scale-test-device-seq-8", "latency_ms":87, "status":"error"},
+        {"device":"scale-test-device-seq-9", "latency_ms":89, "status":"error"},
+        {"device":"scale-test-device-seq-10", "latency_ms":93, "status":"error"}
+      ],
+      "total_time_ms": 6118
+    },
+    "parallel_device_creation": {
+      "count": 10,
+      "results": [
+{"device":"scale-test-device-par-1", "latency_ms":105, "status":"error"},
+{"device":"scale-test-device-par-2", "latency_ms":137, "status":"error"},
+{"device":"scale-test-device-par-3", "latency_ms":126, "status":"error"},
+{"device":"scale-test-device-par-4", "latency_ms":131, "status":"error"},
+{"device":"scale-test-device-par-5", "latency_ms":116, "status":"error"},
+{"device":"scale-test-device-par-6", "latency_ms":104, "status":"error"},
+{"device":"scale-test-device-par-7", "latency_ms":148, "status":"error"},
+{"device":"scale-test-device-par-8", "latency_ms":162, "status":"error"},
+{"device":"scale-test-device-par-9", "latency_ms":138, "status":"error"},
+{"device":"scale-test-device-par-10", "latency_ms":138, "status":"error"}
+      ],
+      "total_time_ms": 177
+    },
+    "application_deployment": {
+      "count": 5,
+      "results": [
+        {"app":"scale-test-app-1", "latency_ms":158, "status":"error"},
+        {"app":"scale-test-app-2", "latency_ms":196, "status":"error"},
+        {"app":"scale-test-app-3", "latency_ms":337, "status":"error"},
+        {"app":"scale-test-app-4", "latency_ms":106, "status":"error"},
+        {"app":"scale-test-app-5", "latency_ms":104, "status":"error"}
+      ],
+      "total_time_ms": 3463
+    },
+    "read_operations_load": {
+      "device_list_requests": 50,
+      "results": [
+        {"request":1, "latency_ms":83},
+        {"request":25, "latency_ms":77},
+        {"request":50, "latency_ms":92}
+      ],
+      "total_time_ms": 4480,
+      "min_latency_ms": 77,
+      "max_latency_ms": 140,
+      "avg_latency_ms": 88
+    }
+  },
+  "final_state": {
+    "devices": 23,
+    "applications": 7,
+    "gateways": 1
+  },
+  "test_end": "2025-10-25T20:13:29+00:00"
+}

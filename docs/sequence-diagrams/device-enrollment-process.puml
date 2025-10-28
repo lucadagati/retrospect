@@ -1,0 +1,52 @@
+' SPDX-License-Identifier: CC-BY-4.0
+' Copyright © 2025 Wasmbed contributors
+
+@startuml
+title Device Enrollment - Enrollment Process
+
+skinparam wrapMessageWidth 200
+skinparam sequenceMessageAlign center
+skinparam sequenceArrowThickness 2
+skinparam sequenceLifeLineBackgroundColor #E8F4FD
+skinparam sequenceActorBackgroundColor #D4E6F1
+skinparam sequenceParticipantBackgroundColor #F8F9FA
+skinparam direction top to bottom
+
+actor "IoT Device" as MCU #LightBlue
+participant "TLS Client" as TLS_CLIENT #LightGreen
+participant "Gateway Server" as GATEWAY #LightCoral
+participant "Device Manager" as DEVICE_MGR #LightYellow
+participant "Kubernetes API" as K8S_API #LightGray
+
+== Enrollment Request ==
+
+TLS_CLIENT -> GATEWAY : **Enrollment Request**
+note right : CBOR encoded message\nDevice type\nArchitecture\nCapabilities: [wasm, tls, cbor]\nPublic key: DER encoded
+
+GATEWAY -> DEVICE_MGR : **Process Enrollment**
+note right : Validate device type\nCheck device capabilities\nVerify public key format\nGenerate unique device ID
+
+DEVICE_MGR -> K8S_API : **Create Device CRD**
+note right : POST /apis/wasmbed.io/v1/namespaces/wasmbed/devices\nDevice metadata\nDevice specifications\nStatus: Pending
+
+K8S_API -> DEVICE_MGR : **Device CRD Created**
+note right : HTTP 201 Created\nResource metadata\nLocation header\nResource version
+
+== Enrollment Response ==
+
+DEVICE_MGR -> GATEWAY : **Enrollment Success**
+note right : Device registered successfully\nDevice ID generated\nGateway assigned\nDevice status updated
+
+GATEWAY -> TLS_CLIENT : **Enrollment Response**
+note right : CBOR encoded response\nStatus: Success\nDevice ID: uuid\nGateway info: 127.0.0.1:8081\nHeartbeat interval: 30s\nWASM runtime ready
+
+TLS_CLIENT -> MCU : **Enrollment Complete**
+note right : Device successfully enrolled\nReady for WASM deployment\nStart heartbeat timer\nInitialize WASM runtime
+
+note over MCU, K8S_API
+  **Enrollment Phase Complete**
+  Device is now registered in Kubernetes
+  and ready for application deployment
+end note
+
+@enduml

@@ -1,0 +1,74 @@
+' SPDX-License-Identifier: CC-BY-4.0
+' Copyright © 2025 Wasmbed contributors
+
+@startuml
+title Application Deployment - Monitoring & Management
+
+skinparam wrapMessageWidth 200
+skinparam sequenceMessageAlign center
+skinparam sequenceArrowThickness 2
+skinparam sequenceLifeLineBackgroundColor #E8F4FD
+skinparam sequenceActorBackgroundColor #D4E6F1
+skinparam sequenceParticipantBackgroundColor #F8F9FA
+skinparam direction top to bottom
+
+actor "User" as USER #LightBlue
+participant "React Dashboard" as DASHBOARD #LightGreen
+participant "API Server" as API_SERVER #LightCoral
+participant "Gateway Server" as GATEWAY #LightPink
+participant "IoT Device" as DEVICE #LightSteelBlue
+participant "Kubernetes API" as K8S_API #LightSalmon
+
+== Status Updates ==
+
+GATEWAY -> K8S_API : **Update Application Status**
+note right : PATCH application resource\nStatus.phase: Deployed\nStatus.deployed_devices\nStatus.deployment_progress: 100%\nStatus.metrics: performance_data
+
+== Real-time Monitoring ==
+
+DEVICE -> DEVICE : **Application Execution**
+note right : WASM application running\nMonitor performance\nCollect metrics\nHandle events\nMaintain execution state
+
+DEVICE -> GATEWAY : **Periodic Status Updates**
+note right : CBOR encoded heartbeat\nApplication status\nPerformance metrics\nError counts\nResource usage
+
+GATEWAY -> K8S_API : **Update Application Metrics**
+note right : PATCH application resource\nStatus.metrics: updated_data\nStatus.last_update: timestamp\nStatus.performance: metrics\nStatus.health: healthy
+
+== Application Management ==
+
+USER -> DASHBOARD : **Monitor Application**
+note right : View real-time status\nCheck performance metrics\nMonitor device health\nView execution logs
+
+DASHBOARD -> API_SERVER : **GET /api/v1/applications/{id}**
+note right : Request application details\nCurrent status\nPerformance metrics\nDevice information
+
+API_SERVER -> K8S_API : **Get Application Resource**
+note right : GET application resource\nCurrent status\nDeployment information\nPerformance data
+
+K8S_API -> API_SERVER : **Application Resource**
+note right : Application details\nCurrent status\nMetrics data\nDevice information
+
+API_SERVER -> DASHBOARD : **Application Status**
+note right : Real-time status\nPerformance metrics\nDevice health\nExecution information
+
+DASHBOARD -> USER : **Display Application Status**
+note right : Real-time dashboard\nPerformance graphs\nDevice status\nExecution logs\nHealth indicators
+
+== Continuous Monitoring Loop ==
+
+loop **Every 30 seconds**
+    DEVICE -> GATEWAY : **Status Update**
+    note right : CBOR encoded status\nApplication health\nPerformance metrics\nResource usage
+    
+    GATEWAY -> K8S_API : **Update Metrics**
+    note right : PATCH application resource\nStatus.metrics: updated\nStatus.last_update: timestamp\nStatus.health: healthy
+end
+
+note over USER, K8S_API
+  **Monitoring Phase Active**
+  Application is continuously monitored
+  with real-time status updates
+end note
+
+@enduml

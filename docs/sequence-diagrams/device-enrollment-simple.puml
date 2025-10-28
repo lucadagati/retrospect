@@ -1,0 +1,92 @@
+' SPDX-License-Identifier: CC-BY-4.0
+' Copyright © 2025 Wasmbed contributors
+
+@startuml
+title Device Enrollment - Simplified Workflow
+
+skinparam wrapMessageWidth 200
+skinparam sequenceMessageAlign center
+skinparam sequenceArrowThickness 2
+skinparam sequenceLifeLineBackgroundColor #E8F4FD
+skinparam sequenceActorBackgroundColor #D4E6F1
+skinparam sequenceParticipantBackgroundColor #F8F9FA
+skinparam direction top to bottom
+
+actor "IoT Device" as MCU #LightBlue
+participant "TLS Client" as TLS_CLIENT #LightGreen
+participant "Gateway Server" as GATEWAY #LightCoral
+participant "Device Manager" as DEVICE_MGR #LightYellow
+participant "Kubernetes API" as K8S_API #LightGray
+
+== Device Initialization ==
+
+MCU -> TLS_CLIENT : **Initialize TLS Client**
+note right : Load certificates\nInitialize TLS context\nPrepare for connection
+
+TLS_CLIENT -> GATEWAY : **TCP Connection**
+note right : Connect to gateway:8081\nEstablish TCP socket
+
+GATEWAY -> TLS_CLIENT : **TLS Handshake**
+note right : TLS 1.3 handshake\nMutual authentication\nEncrypted channel ready
+
+== Enrollment Process ==
+
+TLS_CLIENT -> GATEWAY : **Enrollment Request**
+note right : CBOR encoded message\nDevice type\nArchitecture\nCapabilities: [wasm, tls, cbor]
+
+GATEWAY -> DEVICE_MGR : **Process Enrollment**
+note right : Validate device type\nCheck device capabilities\nGenerate device ID
+
+DEVICE_MGR -> K8S_API : **Create Device CRD**
+note right : POST device resource\nDevice metadata\nStatus: Pending
+
+K8S_API -> DEVICE_MGR : **Device Created**
+note right : HTTP 201 Created\nResource metadata\nDevice ID generated
+
+== Enrollment Response ==
+
+DEVICE_MGR -> GATEWAY : **Enrollment Success**
+note right : Device registered\nGateway assigned\nStatus updated
+
+GATEWAY -> TLS_CLIENT : **Enrollment Response**
+note right : CBOR encoded response\nStatus: Success\nDevice ID: uuid\nGateway info\nHeartbeat interval: 30s
+
+TLS_CLIENT -> MCU : **Enrollment Complete**
+note right : Device successfully enrolled\nReady for deployment\nStart heartbeat timer
+
+== Heartbeat Setup ==
+
+MCU -> TLS_CLIENT : **Send Heartbeat**
+note right : CBOR encoded heartbeat\nDevice ID\nTimestamp\nStatus: Active
+
+TLS_CLIENT -> GATEWAY : **Heartbeat Message**
+note right : Encrypted heartbeat\nDevice status\nPerformance metrics
+
+GATEWAY -> DEVICE_MGR : **Process Heartbeat**
+note right : Validate device ID\nUpdate heartbeat time\nCheck device health
+
+DEVICE_MGR -> K8S_API : **Update Device Status**
+note right : PATCH device resource\nStatus.last_heartbeat: timestamp\nStatus.health: healthy
+
+== Error Handling ==
+
+alt **Enrollment Failure**
+    DEVICE_MGR -> GATEWAY : **Enrollment Failed**
+    note right : Invalid device type\nUnsupported capabilities\nCertificate validation failed
+    
+    GATEWAY -> TLS_CLIENT : **Error Response**
+    note right : CBOR encoded error\nError code: ENROLLMENT_FAILED\nError message
+    
+    TLS_CLIENT -> MCU : **Enrollment Error**
+    note right : Log error message\nWait before retry\nCheck certificate validity
+end
+
+alt **Connection Lost**
+    GATEWAY -> DEVICE_MGR : **Connection Lost**
+    note right : TCP connection closed\nTLS session terminated\nDevice unreachable
+    
+    DEVICE_MGR -> K8S_API : **Update Device Status**
+    note right : PATCH device resource\nStatus.phase: Disconnected\nStatus.error: Connection lost
+end
+
+@enduml
