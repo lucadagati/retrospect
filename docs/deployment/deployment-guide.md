@@ -34,7 +34,9 @@ git clone https://github.com/lucadagati/retrospect.git
 cd retrospect
 
 # Run complete deployment
-./scripts/99-full-deployment.sh
+```bash
+# Option 1: Full automated deployment with all tests (recommended for first-time setup)
+./scripts/99-ci-cd-pipeline.sh
 ```
 
 This script will:

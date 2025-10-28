@@ -4,10 +4,16 @@ This directory contains all the scripts needed to deploy, manage, and test the W
 
 ## 🚀 Quick Start
 
-### Full Deployment (Recommended)
+### Full CI/CD Pipeline (Recommended for first-time setup)
 ```bash
-# Complete deployment with all tests
-./scripts/99-full-deployment.sh
+# Complete deployment with all tests (ideal for CI/CD)
+./scripts/99-ci-cd-pipeline.sh
+```
+
+### Quick Deployment (Recommended for development)
+```bash
+# Fast deployment without extensive testing
+./scripts/06-master-control.sh deploy
 ```
 
 ### Manual Step-by-Step Deployment
@@ -24,10 +30,13 @@ This directory contains all the scripts needed to deploy, manage, and test the W
 # 4. Check system status
 ./scripts/03-check-system-status.sh
 
-# 5. Test ARM Cortex-M
+# 5. Setup demo environment
+./scripts/11-setup-complete-demo.sh
+
+# 6. Test ARM Cortex-M
 ./scripts/04-test-arm-cortex-m.sh
 
-# 6. Test all workflows
+# 7. Test all workflows
 ./scripts/07-test-workflows.sh
 ```
 
@@ -38,10 +47,12 @@ This directory contains all the scripts needed to deploy, manage, and test the W
 | Script | Description | Usage |
 |--------|-------------|-------|
 | `00-cleanup-environment.sh` | Complete environment cleanup | `./scripts/00-cleanup-environment.sh` |
+| `00-fix-kubectl-config.sh` | Fix kubectl configuration | `./scripts/00-fix-kubectl-config.sh` |
 | `01-build-components.sh` | Build all Rust and React components | `./scripts/01-build-components.sh` |
 | `02-deploy-infrastructure.sh` | Deploy all services and Kubernetes | `./scripts/02-deploy-infrastructure.sh` |
 | `03-check-system-status.sh` | Check system health and status | `./scripts/03-check-system-status.sh` |
 | `05-stop-services.sh` | Stop all running services | `./scripts/05-stop-services.sh` |
+| `06-master-control.sh` | Master control script (clean/build/deploy/status/stop) | `./scripts/06-master-control.sh [command]` |
 
 ### Testing Scripts
 
@@ -49,15 +60,20 @@ This directory contains all the scripts needed to deploy, manage, and test the W
 |--------|-------------|-------|
 | `04-test-arm-cortex-m.sh` | Test Renode ARM Cortex-M emulation | `./scripts/04-test-arm-cortex-m.sh` |
 | `07-test-workflows.sh` | Test all workflows comprehensively | `./scripts/07-test-workflows.sh` |
-| `08-test-3-workflows.sh` | Test the 3 main workflows only | `./scripts/08-test-3-workflows.sh` |
 | `09-test-dashboard.sh` | Test complete dashboard functionality | `./scripts/09-test-dashboard.sh` |
 | `10-test-renode-dashboard.sh` | Test Renode-Dashboard integration | `./scripts/10-test-renode-dashboard.sh` |
+
+### Demo & Utility Scripts
+
+| Script | Description | Usage |
+|--------|-------------|-------|
+| `11-setup-complete-demo.sh` | Setup complete demo with Renode devices and WASM apps | `./scripts/11-setup-complete-demo.sh` |
 
 ### Master Scripts
 
 | Script | Description | Usage |
 |--------|-------------|-------|
-| `99-full-deployment.sh` | Complete deployment sequence | `./scripts/99-full-deployment.sh` |
+| `99-ci-cd-pipeline.sh` | Complete CI/CD pipeline (clean→build→deploy→test) | `./scripts/99-ci-cd-pipeline.sh` |
 
 ## 🔄 Workflow Testing
 
@@ -85,16 +101,19 @@ This directory contains all the scripts needed to deploy, manage, and test the W
 ### Testing Commands
 
 ```bash
-# Test all workflows
+# Test all workflows (comprehensive)
 ./scripts/07-test-workflows.sh
 
-# Test only the 3 main workflows
-./scripts/08-test-3-workflows.sh
+# Test Renode ARM Cortex-M emulation
+./scripts/04-test-arm-cortex-m.sh
 
 # Test complete dashboard functionality
 ./scripts/09-test-dashboard.sh
 
-# Manual verification
+# Test Renode-Dashboard integration
+./scripts/10-test-renode-dashboard.sh
+
+# Manual API verification
 curl -s http://localhost:3001/api/v1/devices | jq
 curl -s http://localhost:3001/api/v1/applications | jq
 curl -s http://localhost:3001/api/v1/gateways | jq
