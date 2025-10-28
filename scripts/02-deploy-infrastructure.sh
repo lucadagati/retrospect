@@ -56,15 +56,6 @@ else
     print_status "WARNING" "Dockerfile.gateway-controller not found, skipping gateway-controller image build"
 fi
 
-# Import images to Kind cluster
-print_status "INFO" "Importing Docker images to Kind cluster..."
-kind load docker-image wasmbed/gateway:latest --name wasmbed 2>/dev/null || {
-    print_status "WARNING" "Failed to import wasmbed/gateway:latest to Kind"
-}
-kind load docker-image wasmbed/gateway-controller:latest --name wasmbed 2>/dev/null || {
-    print_status "WARNING" "Failed to import wasmbed/gateway-controller:latest to Kind"
-}
-
 # Check prerequisites
 print_status "INFO" "Checking deployment prerequisites..."
 
@@ -88,7 +79,7 @@ print_status "SUCCESS" "All prerequisites are available"
 # Clean up any existing processes
 print_status "INFO" "Cleaning up existing processes..."
 pkill -f "wasmbed-" 2>/dev/null || true
-sudo fuser -k 30460/tcp 30470/tcp 30450/tcp 30451/tcp 8080/tcp 8081/tcp 2>/dev/null || true
+# Port cleanup already done by cleanup script
 sleep 2
 
 # Create logs directory
@@ -116,6 +107,15 @@ else
     print_status "SUCCESS" "Kind cluster 'wasmbed' already exists"
 fi
 
+# Import images to Kind cluster (AFTER cluster creation)
+print_status "INFO" "Importing Docker images to Kind cluster..."
+kind load docker-image wasmbed/gateway:latest --name wasmbed 2>/dev/null || {
+    print_status "WARNING" "Failed to import wasmbed/gateway:latest to Kind"
+}
+kind load docker-image wasmbed/gateway-controller:latest --name wasmbed 2>/dev/null || {
+    print_status "WARNING" "Failed to import wasmbed/gateway-controller:latest to Kind"
+}
+
 # Configure kubectl context
 print_status "INFO" "Configuring kubectl context..."
 kubectl config use-context kind-wasmbed
@@ -123,7 +123,9 @@ print_status "SUCCESS" "kubectl context configured"
 
 # Setup Kubernetes resources
 print_status "INFO" "Setting up Kubernetes resources..."
-kubectl create namespace wasmbed
+kubectl create namespace wasmbed 2>/dev/null || {
+    print_status "INFO" "Namespace wasmbed already exists, continuing..."
+}
 kubectl apply -f k8s/crds/
 kubectl apply -f k8s/rbac/
 

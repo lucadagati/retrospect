@@ -108,13 +108,20 @@ if [ ! -d "certs" ]; then
     print_status "INFO" "Generating certificates..."
     mkdir -p certs
     
-    # Generate CA certificate
+    # Generate CA certificate (v3)
     openssl req -x509 -newkey rsa:4096 -keyout certs/ca-key.pem -out certs/ca-cert.pem -days 365 -nodes -subj "/C=US/ST=State/L=City/O=Wasmbed/CN=Wasmbed-CA"
     
-    # Generate server certificate
+    # Generate server certificate (v3)
     openssl req -newkey rsa:4096 -keyout certs/server-key.pem -out certs/server.csr -nodes -subj "/C=US/ST=State/L=City/O=Wasmbed/CN=localhost"
-    openssl x509 -req -in certs/server.csr -CA certs/ca-cert.pem -CAkey certs/ca-key.pem -out certs/server-cert.pem -days 365 -CAcreateserial
-    rm certs/server.csr
+    # Create a config file for v3 extensions
+    cat > certs/server-ext.cnf <<EOF
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=DNS:localhost,IP:127.0.0.1
+EOF
+    openssl x509 -req -in certs/server.csr -CA certs/ca-cert.pem -CAkey certs/ca-key.pem -out certs/server-cert.pem -days 365 -CAcreateserial -extfile certs/server-ext.cnf
+    rm certs/server.csr certs/server-ext.cnf
     
     print_status "SUCCESS" "Certificates generated"
 else
