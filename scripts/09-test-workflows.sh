@@ -259,7 +259,7 @@ print_status "INFO" "✅ QEMU ARM Cortex-M Emulation: Working"
 print_status "INFO" "✅ Dashboard Integration: Working"
 
 print_status "INFO" "=== VERIFICATION COMMANDS ==="
-print_status "INFO" "Check system status: ./scripts/03-check-system-status.sh"
+print_status "INFO" "Check system status: ./scripts/04-check-system-status.sh"
 print_status "INFO" "View device logs: tail -f device-controller.log"
 print_status "INFO" "View application logs: tail -f application-controller.log"
 print_status "INFO" "View gateway logs: tail -f gateway-controller.log"
