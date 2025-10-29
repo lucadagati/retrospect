@@ -63,47 +63,47 @@ cd "$PROJECT_ROOT"
 
 # Step 0: Cleanup Environment
 print_header "STEP 0: CLEANUP ENVIRONMENT"
-./scripts/00-cleanup-environment.sh
+./scripts/01-cleanup-environment.sh
 print_status "SUCCESS" "Environment cleanup completed"
 
 # Step 0.5: Fix kubectl configuration
 print_header "STEP 0.5: FIX KUBECTL CONFIGURATION"
-./scripts/00-fix-kubectl-config.sh
+./scripts/02-fix-kubectl-config.sh
 print_status "SUCCESS" "kubectl configuration fixed"
 
 # Step 1: Build Components
 print_header "STEP 1: BUILD COMPONENTS"
-./scripts/01-build-components.sh
+./scripts/03-build-components.sh
 print_status "SUCCESS" "Components build completed"
 
 # Step 2: Deploy Infrastructure
 print_header "STEP 2: DEPLOY INFRASTRUCTURE"
-./scripts/02-deploy-infrastructure.sh
+./scripts/04-deploy-infrastructure.sh
 print_status "SUCCESS" "Infrastructure deployment completed"
 
 # Step 3: Check System Status
 print_header "STEP 3: CHECK SYSTEM STATUS"
-./scripts/03-check-system-status.sh
+./scripts/05-check-system-status.sh
 print_status "SUCCESS" "System status check completed"
 
 # Step 4: Test ARM Cortex-M
 print_header "STEP 4: TEST ARM CORTEX-M"
-./scripts/04-test-arm-cortex-m.sh
+./scripts/09-test-arm-cortex-m.sh
 print_status "SUCCESS" "ARM Cortex-M test completed"
 
 # Step 5: Test All Workflows
 print_header "STEP 5: TEST ALL WORKFLOWS"
-./scripts/07-test-workflows.sh
+./scripts/10-test-workflows.sh
 print_status "SUCCESS" "Workflow testing completed"
 
 # Step 6: Test Dashboard
 print_header "STEP 6: TEST DASHBOARD"
-./scripts/09-test-dashboard.sh
+./scripts/11-test-dashboard.sh
 print_status "SUCCESS" "Dashboard testing completed"
 
 # Step 7: Test QEMU Integration
 print_header "STEP 7: TEST QEMU INTEGRATION"
-./scripts/10-test-qemu-dashboard.sh
+./scripts/12-test-renode-dashboard.sh
 print_status "SUCCESS" "QEMU integration testing completed"
 
 # Step 8: Test Device Connection Workflow
@@ -130,14 +130,14 @@ print_status "INFO" "API Server (Backend): http://localhost:3001"
 print_status "INFO" "Dashboard UI (Frontend): http://localhost:3000"
 print_status "INFO" "Kubernetes API: Available via kubectl"
 print_status "INFO" "=== MANAGEMENT COMMANDS ==="
-print_status "INFO" "Stop all services: ./scripts/05-stop-services.sh"
-print_status "INFO" "Check status: ./scripts/03-check-system-status.sh"
-print_status "INFO" "Test workflows: ./scripts/07-test-workflows.sh"
-print_status "INFO" "Full cleanup: ./scripts/00-cleanup-environment.sh"
+print_status "INFO" "Stop all services: ./scripts/06-stop-services.sh"
+print_status "INFO" "Check status: ./scripts/05-check-system-status.sh"
+print_status "INFO" "Test workflows: ./scripts/10-test-workflows.sh"
+print_status "INFO" "Full cleanup: ./scripts/01-cleanup-environment.sh"
 print_status "INFO" "=== NEXT STEPS ==="
 print_status "INFO" "1. Access Dashboard UI at http://localhost:3000"
 print_status "INFO" "2. Configure gateways and devices via dashboard"
 print_status "INFO" "3. Deploy applications using the dashboard interface"
-print_status "INFO" "4. Test workflows manually: ./scripts/07-test-workflows.sh"
+print_status "INFO" "4. Test workflows manually: ./scripts/10-test-workflows.sh"
 
 print_status "SUCCESS" "🎉 Wasmbed Platform is ready for use!"

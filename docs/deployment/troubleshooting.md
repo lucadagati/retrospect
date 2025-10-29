@@ -17,13 +17,13 @@ Services fail to start due to port conflicts.
 #### Solution
 ```bash
 # Stop all services and free ports
-./scripts/05-stop-services.sh
+./scripts/06-stop-services.sh
 
 # Force kill processes using Wasmbed ports
 sudo fuser -k 3000/tcp 3001/tcp 8080/tcp 8081/tcp 30460/tcp 2>/dev/null || true
 
 # Restart deployment
-./scripts/02-deploy-infrastructure.sh
+./scripts/04-deploy-infrastructure.sh
 ```
 
 ### Certificate Issues
@@ -42,7 +42,7 @@ TLS handshake failures or certificate errors.
 rm -rf certs/*
 
 # Regenerate certificates
-./scripts/02-deploy-infrastructure.sh
+./scripts/04-deploy-infrastructure.sh
 
 # Verify certificate versions
 openssl x509 -in certs/ca-cert.pem -text -noout | grep Version
@@ -242,19 +242,19 @@ npm run build
 
 ```bash
 # Stop all services
-./scripts/05-stop-services.sh
+./scripts/06-stop-services.sh
 
 # Clean environment
-./scripts/00-cleanup-environment.sh
+./scripts/01-cleanup-environment.sh
 
 # Rebuild components
-./scripts/01-build-components.sh
+./scripts/03-build-components.sh
 
 # Redeploy infrastructure
-./scripts/02-deploy-infrastructure.sh
+./scripts/04-deploy-infrastructure.sh
 
 # Verify deployment
-./scripts/03-check-system-status.sh
+./scripts/05-check-system-status.sh
 ```
 
 ### Individual Service Recovery
@@ -303,7 +303,7 @@ nohup cargo run --release -p wasmbed-gateway-controller > logs/gateway-controlle
 ### System Health Check
 ```bash
 # Overall system status
-./scripts/03-check-system-status.sh
+./scripts/05-check-system-status.sh
 
 # Service health
 curl http://localhost:3001/health
@@ -386,7 +386,7 @@ ping -c 10 127.0.0.1
 ### Regular Maintenance
 ```bash
 # Daily health checks
-./scripts/03-check-system-status.sh
+./scripts/05-check-system-status.sh
 
 # Weekly log rotation
 logrotate /etc/logrotate.d/wasmbed

@@ -19,25 +19,25 @@ This directory contains all the scripts needed to deploy, manage, and test the W
 ### Manual Step-by-Step Deployment
 ```bash
 # 1. Clean environment
-./scripts/00-cleanup-environment.sh
+./scripts/01-cleanup-environment.sh
 
 # 2. Build components
-./scripts/01-build-components.sh
+./scripts/03-build-components.sh
 
 # 3. Deploy infrastructure
-./scripts/02-deploy-infrastructure.sh
+./scripts/04-deploy-infrastructure.sh
 
 # 4. Check system status
-./scripts/03-check-system-status.sh
+./scripts/05-check-system-status.sh
 
 # 5. Setup demo environment
-./scripts/11-setup-complete-demo.sh
+./scripts/08-setup-complete-demo.sh
 
 # 6. Test ARM Cortex-M
-./scripts/04-test-arm-cortex-m.sh
+./scripts/09-test-arm-cortex-m.sh
 
 # 7. Test all workflows
-./scripts/07-test-workflows.sh
+./scripts/10-test-workflows.sh
 ```
 
 ## 📋 Script Descriptions
@@ -46,28 +46,23 @@ This directory contains all the scripts needed to deploy, manage, and test the W
 
 | Script | Description | Usage |
 |--------|-------------|-------|
-| `00-cleanup-environment.sh` | Complete environment cleanup | `./scripts/00-cleanup-environment.sh` |
-| `00-fix-kubectl-config.sh` | Fix kubectl configuration | `./scripts/00-fix-kubectl-config.sh` |
-| `01-build-components.sh` | Build all Rust and React components | `./scripts/01-build-components.sh` |
-| `02-deploy-infrastructure.sh` | Deploy all services and Kubernetes | `./scripts/02-deploy-infrastructure.sh` |
-| `03-check-system-status.sh` | Check system health and status | `./scripts/03-check-system-status.sh` |
-| `05-stop-services.sh` | Stop all running services | `./scripts/05-stop-services.sh` |
-| `06-master-control.sh` | Master control script (clean/build/deploy/status/stop) | `./scripts/06-master-control.sh [command]` |
+| `01-cleanup-environment.sh` | Complete environment cleanup | `./scripts/01-cleanup-environment.sh` |
+| `02-fix-kubectl-config.sh` | Fix kubectl configuration | `./scripts/02-fix-kubectl-config.sh` |
+| `03-build-components.sh` | Build all Rust and React components | `./scripts/03-build-components.sh` |
+| `04-deploy-infrastructure.sh` | Deploy all services and Kubernetes | `./scripts/04-deploy-infrastructure.sh` |
+| `05-check-system-status.sh` | Check system health and status | `./scripts/05-check-system-status.sh` |
+| `06-stop-services.sh` | Stop all running services | `./scripts/06-stop-services.sh` |
+| `07-master-control.sh` | Master control script (clean/build/deploy/status/stop) | `./scripts/07-master-control.sh [command]` |
 
 ### Testing Scripts
 
 | Script | Description | Usage |
 |--------|-------------|-------|
-| `04-test-arm-cortex-m.sh` | Test Renode ARM Cortex-M emulation | `./scripts/04-test-arm-cortex-m.sh` |
-| `07-test-workflows.sh` | Test all workflows comprehensively | `./scripts/07-test-workflows.sh` |
-| `09-test-dashboard.sh` | Test complete dashboard functionality | `./scripts/09-test-dashboard.sh` |
-| `10-test-renode-dashboard.sh` | Test Renode-Dashboard integration | `./scripts/10-test-renode-dashboard.sh` |
-
-### Demo & Utility Scripts
-
-| Script | Description | Usage |
-|--------|-------------|-------|
-| `11-setup-complete-demo.sh` | Setup complete demo with Renode devices and WASM apps | `./scripts/11-setup-complete-demo.sh` |
+| `08-setup-complete-demo.sh` | Setup complete demo with Renode devices and WASM apps | `./scripts/08-setup-complete-demo.sh` |
+| `09-test-arm-cortex-m.sh` | Test Renode ARM Cortex-M emulation | `./scripts/09-test-arm-cortex-m.sh` |
+| `10-test-workflows.sh` | Test all workflows comprehensively | `./scripts/10-test-workflows.sh` |
+| `11-test-dashboard.sh` | Test complete dashboard functionality | `./scripts/11-test-dashboard.sh` |
+| `12-test-renode-dashboard.sh` | Test Renode-Dashboard integration | `./scripts/12-test-renode-dashboard.sh` |
 
 ### Master Scripts
 
@@ -102,16 +97,16 @@ This directory contains all the scripts needed to deploy, manage, and test the W
 
 ```bash
 # Test all workflows (comprehensive)
-./scripts/07-test-workflows.sh
+./scripts/10-test-workflows.sh
 
 # Test Renode ARM Cortex-M emulation
-./scripts/04-test-arm-cortex-m.sh
+./scripts/09-test-arm-cortex-m.sh
 
 # Test complete dashboard functionality
-./scripts/09-test-dashboard.sh
+./scripts/11-test-dashboard.sh
 
 # Test Renode-Dashboard integration
-./scripts/10-test-renode-dashboard.sh
+./scripts/12-test-renode-dashboard.sh
 
 # Manual API verification
 curl -s http://localhost:3001/api/v1/devices | jq

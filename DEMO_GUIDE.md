@@ -43,7 +43,7 @@ The demo creates:
 Run the automated setup script:
 
 ```bash
-./scripts/11-setup-complete-demo.sh
+./scripts/08-setup-complete-demo.sh
 ```
 
 This script will:

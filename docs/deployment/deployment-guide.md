@@ -54,17 +54,17 @@ For more control over the deployment process, follow these manual steps:
 
 ```bash
 # Clean any existing environment
-./scripts/00-cleanup-environment.sh
+./scripts/01-cleanup-environment.sh
 
 # Build all components
-./scripts/01-build-components.sh
+./scripts/03-build-components.sh
 ```
 
 #### Step 2: Infrastructure Deployment
 
 ```bash
 # Deploy core infrastructure
-./scripts/02-deploy-infrastructure.sh
+./scripts/04-deploy-infrastructure.sh
 ```
 
 This step will:
@@ -77,10 +77,10 @@ This step will:
 
 ```bash
 # Check system status
-./scripts/03-check-system-status.sh
+./scripts/05-check-system-status.sh
 
 # Test constrained device emulation
-./scripts/04-test-arm-cortex-m.sh
+./scripts/09-test-arm-cortex-m.sh
 ```
 
 #### Step 4: Dashboard Access
@@ -229,7 +229,7 @@ curl -X POST http://localhost:3001/api/v1/applications \
 
 ```bash
 # Check overall system health
-./scripts/03-check-system-status.sh
+./scripts/05-check-system-status.sh
 
 # Check specific services
 curl http://localhost:3001/health
@@ -270,13 +270,13 @@ If you encounter port conflicts:
 
 ```bash
 # Stop all services
-./scripts/05-stop-services.sh
+./scripts/06-stop-services.sh
 
 # Clean environment
-./scripts/00-cleanup-environment.sh
+./scripts/01-cleanup-environment.sh
 
 # Restart deployment
-./scripts/02-deploy-infrastructure.sh
+./scripts/04-deploy-infrastructure.sh
 ```
 
 #### Certificate Issues
@@ -286,7 +286,7 @@ If TLS handshake fails:
 ```bash
 # Regenerate certificates
 rm -rf certs/*
-./scripts/02-deploy-infrastructure.sh
+./scripts/04-deploy-infrastructure.sh
 ```
 
 #### Renode Issues
@@ -357,10 +357,10 @@ resources:
 git pull origin master
 
 # Rebuild components
-./scripts/01-build-components.sh
+./scripts/03-build-components.sh
 
 # Restart services
-./scripts/06-master-control.sh restart
+./scripts/07-master-control.sh restart
 ```
 
 ### Backup
