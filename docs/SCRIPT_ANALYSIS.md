@@ -10,14 +10,14 @@ Analyzed all 14 scripts in the `scripts/` directory. Found **2 redundant scripts
 
 | Script | Purpose | Status | Keep? |
 |--------|---------|--------|-------|
-| `00-cleanup-environment.sh` | Clean all resources | Essential | ✅ YES |
-| `00-fix-kubectl-config.sh` | Fix kubectl configuration | Essential | ✅ YES |
-| `01-build-components.sh` | Build Rust + React + certs | Essential | ✅ YES |
-| `02-deploy-infrastructure.sh` | Deploy K8s + services | Essential | ✅ YES |
-| `03-check-system-status.sh` | System health check | Essential | ✅ YES |
-| `05-stop-services.sh` | Stop all services | Essential | ✅ YES |
-| `06-master-control.sh` | Master controller | Essential | ✅ YES |
-| `11-setup-complete-demo.sh` | Complete demo setup | Essential | ✅ YES |
+| `01-cleanup-environment.sh` | Clean all resources | Essential | ✅ YES |
+| `02-fix-kubectl-config.sh` | Fix kubectl configuration | Essential | ✅ YES |
+| `03-build-components.sh` | Build Rust + React + certs | Essential | ✅ YES |
+| `04-deploy-infrastructure.sh` | Deploy K8s + services | Essential | ✅ YES |
+| `05-check-system-status.sh` | System health check | Essential | ✅ YES |
+| `06-stop-services.sh` | Stop all services | Essential | ✅ YES |
+| `07-master-control.sh` | Master controller | Essential | ✅ YES |
+| `08-setup-complete-demo.sh` | Complete demo setup | Essential | ✅ YES |
 
 **Recommendation:** Keep all 8 core scripts.
 
@@ -27,11 +27,11 @@ Analyzed all 14 scripts in the `scripts/` directory. Found **2 redundant scripts
 
 | Script | Purpose | Lines | Overlap | Keep? |
 |--------|---------|-------|---------|-------|
-| `04-test-arm-cortex-m.sh` | Test Renode ARM | 127 | Unique | ✅ YES |
-| `07-test-workflows.sh` | Test all workflows | 270 | Full suite | ✅ YES |
-| `08-test-3-workflows.sh` | Test 3 main workflows | 182 | Subset of 07 | ❌ REMOVE |
-| `09-test-dashboard.sh` | Test dashboard | 283 | Unique | ✅ YES |
-| `10-test-renode-dashboard.sh` | Test Renode+Dashboard | 298 | Unique | ✅ YES |
+| `09-test-arm-cortex-m.sh` | Test Renode ARM | 127 | Unique | ✅ YES |
+| `10-test-workflows.sh` | Test all workflows | 270 | Full suite | ✅ YES |
+| `08-test-3-workflows.sh` | Test 3 main workflows | 182 | Subset of 10 | ❌ REMOVE |
+| `11-test-dashboard.sh` | Test dashboard | 283 | Unique | ✅ YES |
+| `12-test-renode-dashboard.sh` | Test Renode+Dashboard | 298 | Unique | ✅ YES |
 
 **Recommendation:** Remove `08-test-3-workflows.sh` (redundant with 07).
 
@@ -57,10 +57,10 @@ Analyzed all 14 scripts in the `scripts/` directory. Found **2 redundant scripts
 ### 1. Redundant Script: `08-test-3-workflows.sh`
 
 **Why it's redundant:**
-- `07-test-workflows.sh` tests ALL workflows (complete test suite)
+- `10-test-workflows.sh` tests ALL workflows (complete test suite)
 - `08-test-3-workflows.sh` tests only 3 workflows (subset)
-- If you need quick testing, `06-master-control.sh status` is faster
-- If you need comprehensive testing, `07-test-workflows.sh` is better
+- If you need quick testing, `07-master-control.sh status` is faster
+- If you need comprehensive testing, `10-test-workflows.sh` is better
 
 **Action:** DELETE `08-test-3-workflows.sh`
 
@@ -123,11 +123,11 @@ Create a single unified test script:
 ```
 
 Then remove:
-- `04-test-arm-cortex-m.sh`
-- `07-test-workflows.sh`
+- `09-test-arm-cortex-m.sh`
+- `10-test-workflows.sh`
 - `08-test-3-workflows.sh`
-- `09-test-dashboard.sh`
-- `10-test-renode-dashboard.sh`
+- `11-test-dashboard.sh`
+- `12-test-renode-dashboard.sh`
 
 **Result:** 9 scripts total (from 14)
 
@@ -156,8 +156,8 @@ All tested scripts are functional.
 ### Immediate Actions (Low Risk):
 
 1. **DELETE:** `scripts/08-test-3-workflows.sh`
-   - Reason: Complete subset of `07-test-workflows.sh`
-   - Impact: None (functionality covered by 07)
+   - Reason: Complete subset of `10-test-workflows.sh`
+   - Impact: None (functionality covered by 10)
 
 2. **RENAME:** `scripts/99-full-deployment.sh` → `scripts/99-ci-cd-pipeline.sh`
    - Reason: Clarifies purpose (full pipeline with tests)
@@ -203,13 +203,13 @@ All tested scripts are functional.
 ./scripts/06-master-control.sh status
 
 # Run specific tests
-./scripts/04-test-arm-cortex-m.sh        # Renode test
-./scripts/07-test-workflows.sh           # All workflows
-./scripts/09-test-dashboard.sh           # Dashboard
-./scripts/10-test-renode-dashboard.sh    # Integration
+./scripts/09-test-arm-cortex-m.sh        # Renode test
+./scripts/10-test-workflows.sh           # All workflows
+./scripts/11-test-dashboard.sh           # Dashboard
+./scripts/12-test-renode-dashboard.sh    # Integration
 
 # Setup demo
-./scripts/11-setup-complete-demo.sh
+./scripts/08-setup-complete-demo.sh
 
 # Stop when done
 ./scripts/06-master-control.sh stop

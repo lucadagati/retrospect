@@ -409,4 +409,4 @@ print_status "SUCCESS" "Wasmbed Platform deployed successfully!"
 echo "$INFRASTRUCTURE_PID $GATEWAY_PID $DEVICE_CONTROLLER_PID $APPLICATION_CONTROLLER_PID $GATEWAY_CONTROLLER_PID $API_SERVER_PID $DASHBOARD_PID" > .wasmbed-pids
 
 print_status "INFO" "Use './scripts/05-stop-services.sh' to stop all services"
-print_status "INFO" "Use './scripts/00-cleanup-environment.sh' for complete cleanup"
+print_status "INFO" "Use './scripts/01-cleanup-environment.sh' for complete cleanup"

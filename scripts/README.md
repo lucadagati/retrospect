@@ -137,7 +137,7 @@ After deployment, these endpoints will be available:
 ./scripts/05-stop-services.sh
 
 # Complete cleanup
-./scripts/00-cleanup-environment.sh
+./scripts/01-cleanup-environment.sh
 
 # View logs
 tail -f device-controller.log
@@ -182,7 +182,7 @@ open http://localhost:3000
 
 ### Common Issues
 
-1. **Port conflicts**: Run `./scripts/00-cleanup-environment.sh`
+1. **Port conflicts**: Run `./scripts/01-cleanup-environment.sh`
 2. **Build failures**: Ensure Rust toolchain is installed
 3. **Kubernetes issues**: Check k3d installation
 4. **API not responding**: Check service logs

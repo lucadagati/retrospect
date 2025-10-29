@@ -33,7 +33,7 @@ This document describes the fixes applied to resolve gateway deployment issues a
 - Generated CA certificate and server certificate using OpenSSL
 
 **Files Modified**:
-- `scripts/02-deploy-infrastructure.sh` - Added certificate generation
+- `scripts/04-deploy-infrastructure.sh` - Added certificate generation
 - `crates/wasmbed-gateway-controller/src/main.rs` - Added certificate mount
 
 **Certificate Generation Commands**:

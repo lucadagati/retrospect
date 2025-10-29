@@ -67,29 +67,29 @@ show_help() {
 case "${1:-help}" in
     "clean")
         print_status "INFO" "Cleaning Wasmbed platform..."
-        "$SCRIPT_DIR/00-cleanup-environment.sh"
+        "$SCRIPT_DIR/01-cleanup-environment.sh"
         ;;
     "build")
         print_status "INFO" "Building Wasmbed platform..."
-        "$SCRIPT_DIR/01-build-components.sh"
+        "$SCRIPT_DIR/03-build-components.sh"
         ;;
     "deploy")
         print_status "INFO" "Deploying Wasmbed platform..."
-        "$SCRIPT_DIR/02-deploy-infrastructure.sh"
+        "$SCRIPT_DIR/04-deploy-infrastructure.sh"
         ;;
     "stop")
         print_status "INFO" "Stopping Wasmbed platform..."
-        "$SCRIPT_DIR/05-stop-services.sh"
+        "$SCRIPT_DIR/06-stop-services.sh"
         ;;
     "status")
         print_status "INFO" "Checking Wasmbed platform status..."
-        "$SCRIPT_DIR/03-check-system-status.sh"
+        "$SCRIPT_DIR/05-check-system-status.sh"
         ;;
     "restart")
         print_status "INFO" "Restarting Wasmbed platform..."
-        "$SCRIPT_DIR/05-stop-services.sh"
+        "$SCRIPT_DIR/06-stop-services.sh"
         sleep 2
-        "$SCRIPT_DIR/02-deploy-infrastructure.sh"
+        "$SCRIPT_DIR/04-deploy-infrastructure.sh"
         ;;
     "help"|"-h"|"--help")
         show_help
