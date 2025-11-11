@@ -52,10 +52,16 @@ impl DeviceManager {
                         .unwrap_or("unknown")
                         .to_string();
                     
-                    let status = item["status"]["phase"]
+                    // Get status phase, defaulting to "Pending" if not available
+                    // This handles the case where a device is newly created and status hasn't been initialized yet
+                    let status = if let Some(status_obj) = item.get("status") {
+                        status_obj["phase"]
                         .as_str()
-                        .unwrap_or("unknown")
-                        .to_string();
+                            .unwrap_or("Pending")
+                            .to_string()
+                    } else {
+                        "Pending".to_string()
+                    };
                     
                     let device_type = item["spec"]["deviceType"]
                         .as_str()
@@ -104,6 +110,48 @@ impl DeviceManager {
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| "Mps2An385".to_string());
                     
+                    // Get public key from spec (try both camelCase and snake_case)
+                    // Also handle case where it might be null or empty string
+                    // The public key might contain newlines, so we need to handle it as a string
+                    let public_key = item["spec"]["publicKey"]
+                        .as_str()
+                        .or_else(|| {
+                            // Try public_key (snake_case)
+                            item["spec"]["public_key"].as_str()
+                        })
+                        .or_else(|| {
+                            // Try to get as string even if it's not directly a string
+                            // Sometimes Kubernetes returns it in a different format
+                            item["spec"]["publicKey"].as_str()
+                        })
+                        .and_then(|s| {
+                            let trimmed = s.trim();
+                            if trimmed.is_empty() { None } else { Some(trimmed) }
+                        })
+                        .map(|s| s.to_string());
+                    
+                    // Debug: log detailed information about public key parsing
+                    if public_key.is_none() {
+                        let spec_obj = item["spec"].as_object();
+                        let spec_keys: Vec<String> = spec_obj
+                            .map(|o| o.keys().map(|k| k.to_string()).collect())
+                            .unwrap_or_default();
+                        
+                        let pk_value = &item["spec"]["publicKey"];
+                        let pk_type = if pk_value.is_string() { "string" } 
+                                     else if pk_value.is_null() { "null" }
+                                     else { "other" };
+                        
+                        let pk_preview = pk_value.as_str()
+                            .map(|s| s.chars().take(50).collect::<String>())
+                            .unwrap_or_else(|| format!("{:?}", pk_value));
+                        
+                        warn!("Device {} has no public key in spec. Spec keys: {:?}, publicKey type: {}, publicKey value: {}", 
+                            device_id, spec_keys, pk_type, pk_preview);
+                    } else {
+                        info!("Device {} has public key (length: {})", device_id, public_key.as_ref().map(|s| s.len()).unwrap_or(0));
+                    }
+                    
                     devices.push(DeviceInfo {
                         device_id,
                         device_type,
@@ -112,6 +160,7 @@ impl DeviceManager {
                         last_heartbeat: Some(SystemTime::now()),
                         gateway_id,
                         mcu_type: Some(mcu_type),
+                        public_key,
                     });
                 }
             }

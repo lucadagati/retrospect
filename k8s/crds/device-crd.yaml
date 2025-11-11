@@ -31,6 +31,8 @@ spec:
                 type: string
                 enum: ["ARM_CORTEX_M", "ARM_CORTEX_A", "X86"]
                 default: "ARM_CORTEX_M"
+              preferredGateway:
+                type: string
             required: ["publicKey"]
           status:
             type: object

@@ -146,6 +146,9 @@ impl DeviceController {
     async fn handle_enrollment(&self, device: &Device) -> Result<(), ControllerError> {
         info!("Handling enrollment for device: {}", device.name_any());
         
+        info!("Device {} - Preferred gateway in spec: {:?}", 
+            device.name_any(), device.spec.preferred_gateway);
+        
         // Check if there are any active gateways
         let gateways_api = Api::<Gateway>::namespaced(self.client.clone(), "wasmbed");
         let gateways = gateways_api.list(&ListParams::default()).await?;
@@ -159,16 +162,62 @@ impl DeviceController {
             .collect();
         
         if active_gateways.is_empty() {
-            info!("No active gateways found for device {}, keeping in enrolling state", device.name_any());
+            let total_gateways = gateways.items.len();
+            let pending_gateways: Vec<_> = gateways
+                .items
+                .iter()
+                .filter(|g| g.status.as_ref()
+                    .map(|s| matches!(s.phase, GatewayPhase::Pending))
+                    .unwrap_or(true))
+                .collect();
+            
+            if total_gateways > 0 {
+                info!("No active gateways found for device {} ({} total, {} pending). Waiting for gateway to become active...", 
+                    device.name_any(), total_gateways, pending_gateways.len());
+            } else {
+                info!("No gateways found for device {}, keeping in enrolling state", device.name_any());
+            }
             // Keep device in enrolling state until a gateway becomes available
             return Ok(());
         }
         
-        // Select the first available gateway
-        let gateway = active_gateways[0];
+        // Check if device has a preferred gateway specified in spec
+        let gateway = if let Some(preferred_gateway_name) = device.spec.preferred_gateway.as_ref() {
+            info!("Device {} has preferred gateway: {}", device.name_any(), preferred_gateway_name);
+            // Try to find the preferred gateway
+            if let Some(preferred) = active_gateways.iter().find(|g| g.name_any() == preferred_gateway_name.as_str()) {
+                info!("Using preferred gateway {} for device {}", preferred_gateway_name, device.name_any());
+                preferred
+            } else {
+                warn!("Preferred gateway {} not found or not active for device {}, falling back to round-robin", 
+                    preferred_gateway_name, device.name_any());
+                // Fall back to round-robin
+                use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
+                let mut hasher = DefaultHasher::new();
+                device.name_any().hash(&mut hasher);
+                let device_hash = hasher.finish() as usize;
+                let gateway_index = device_hash % active_gateways.len();
+                active_gateways[gateway_index]
+            }
+        } else {
+            info!("Device {} has no preferred gateway, using round-robin", device.name_any());
+            // No preferred gateway - use round-robin
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            device.name_any().hash(&mut hasher);
+            let device_hash = hasher.finish() as usize;
+            let gateway_index = device_hash % active_gateways.len();
+            active_gateways[gateway_index]
+        };
+        
         let gateway_name = gateway.name_any();
         
-        info!("Found active gateway {} for device {}", gateway_name, device.name_any());
+        info!("Selected gateway {} for device {} (preferred: {})", 
+            gateway_name, 
+            device.name_any(),
+            device.spec.preferred_gateway.as_ref().map(|s| s.as_str()).unwrap_or("none"));
         
         // Simulate enrollment process with gateway
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -182,7 +231,13 @@ impl DeviceController {
         });
 
         status.phase = DevicePhase::Enrolled;
-        status.gateway = Some(GatewayReference::new("wasmbed", &gateway_name));
+        // Get gateway endpoint from gateway spec
+        let gateway_endpoint = gateway.spec.endpoint.clone();
+        status.gateway = Some(GatewayReference {
+            name: gateway_name.clone(),
+            endpoint: gateway_endpoint,
+            connected_at: None,
+        });
         status.pairing_mode = true;
 
         self.update_device_status(device, status).await?;
@@ -191,16 +246,203 @@ impl DeviceController {
     }
 
     async fn handle_enrolled(&self, device: &Device) -> Result<(), ControllerError> {
-        info!("Device {} is enrolled, creating device pod", device.name_any());
+        info!("Device {} is enrolled", device.name_any());
         
-        // Create Pod for the device
-        self.create_device_pod(device).await?;
+        // If device doesn't have a gateway assigned, assign one now
+        let mut status = device.status.clone().unwrap_or_else(|| DeviceStatus {
+            phase: DevicePhase::Enrolled,
+            gateway: None,
+            connected_since: None,
+            last_heartbeat: None,
+            pairing_mode: false,
+        });
+        
+        // Check if gateway is missing, incomplete, or doesn't match preferred gateway
+        let current_gateway_name = status.gateway.as_ref().map(|g| g.name.as_str());
+        let preferred_gateway_name = device.spec.preferred_gateway.as_ref().map(|s| s.as_str());
+        
+        info!("Device {} - Current gateway: {:?}, Preferred gateway: {:?}", 
+            device.name_any(), current_gateway_name, preferred_gateway_name);
+        
+        // Check if we need to assign/change gateway:
+        // 1. No gateway assigned
+        // 2. Gateway endpoint is empty
+        // 3. Preferred gateway is specified and different from current gateway
+        let endpoint_empty = status.gateway.as_ref()
+            .map(|g| g.endpoint.is_empty())
+            .unwrap_or(true);
+        let preferred_mismatch = preferred_gateway_name.is_some() && 
+            current_gateway_name != preferred_gateway_name;
+        
+        let needs_gateway = status.gateway.is_none() || 
+            endpoint_empty ||
+            preferred_mismatch;
+        
+        info!("Device {} - Needs gateway: {} (gateway.is_none: {}, endpoint_empty: {}, preferred_mismatch: {})", 
+            device.name_any(), 
+            needs_gateway,
+            status.gateway.is_none(),
+            endpoint_empty,
+            preferred_mismatch);
+        
+        if needs_gateway {
+            // Check if there are any active gateways
+            let gateways_api = Api::<Gateway>::namespaced(self.client.clone(), "wasmbed");
+            let gateways = gateways_api.list(&ListParams::default()).await?;
+            
+            let active_gateways: Vec<_> = gateways
+                .items
+                .iter()
+                .filter(|g| g.status.as_ref()
+                    .map(|s| matches!(s.phase, GatewayPhase::Running))
+                    .unwrap_or(false))
+                .collect();
+            
+            if !active_gateways.is_empty() {
+                // Check if device has a preferred gateway specified in spec
+                let gateway = if let Some(preferred_gateway_name) = device.spec.preferred_gateway.as_ref() {
+                    // Try to find the preferred gateway
+                    if let Some(preferred) = active_gateways.iter().find(|g| g.name_any() == preferred_gateway_name.as_str()) {
+                        info!("Using preferred gateway {} for enrolled device {}", preferred_gateway_name, device.name_any());
+                        preferred
+                    } else {
+                        warn!("Preferred gateway {} not found or not active for device {}, falling back to round-robin", 
+                            preferred_gateway_name, device.name_any());
+                        // Fall back to round-robin
+                        use std::collections::hash_map::DefaultHasher;
+                        use std::hash::{Hash, Hasher};
+                        let mut hasher = DefaultHasher::new();
+                        device.name_any().hash(&mut hasher);
+                        let device_hash = hasher.finish() as usize;
+                        let gateway_index = device_hash % active_gateways.len();
+                        active_gateways[gateway_index]
+                    }
+                } else {
+                    // No preferred gateway - use round-robin
+                    use std::collections::hash_map::DefaultHasher;
+                    use std::hash::{Hash, Hasher};
+                    let mut hasher = DefaultHasher::new();
+                    device.name_any().hash(&mut hasher);
+                    let device_hash = hasher.finish() as usize;
+                    let gateway_index = device_hash % active_gateways.len();
+                    active_gateways[gateway_index]
+                };
+                
+                let gateway_name = gateway.name_any();
+                let gateway_endpoint = gateway.spec.endpoint.clone();
+                
+                info!("Assigning gateway {} to enrolled device {} (preferred: {})", 
+                    gateway_name, 
+                    device.name_any(),
+                    device.spec.preferred_gateway.as_ref().map(|s| s.as_str()).unwrap_or("none"));
+                status.gateway = Some(GatewayReference {
+                    name: gateway_name,
+                    endpoint: gateway_endpoint,
+                    connected_at: None,
+                });
+                status.pairing_mode = true;
+                self.update_device_status(device, status).await?;
+            } else {
+                warn!("Device {} is enrolled but no active gateways available", device.name_any());
+            }
+        }
+        
+        // Start Renode automatically for the device
+        // Renode is managed as a standalone process by RenodeManager, not as a Docker container
+        // The RenodeManager will spawn Renode as a process (not a pod)
+        self.start_renode_device(device).await?;
+        
+        Ok(())
+    }
+    
+    async fn start_renode_device(&self, device: &Device) -> Result<(), ControllerError> {
+        let device_id = device.name_any();
+        info!("Starting Renode for device: {}", device_id);
+        
+        // Call the API server's endpoint to start Renode
+        // The API server has access to RenodeManager
+        // Default to port 3001 (API server) not 3000 (dashboard frontend)
+        // In Kubernetes/Kind, use 172.18.0.1 (Docker gateway IP) to reach host services
+        let api_server_url = std::env::var("WASMBED_API_SERVER_URL")
+            .unwrap_or_else(|_| "http://172.18.0.1:3001".to_string());
+        
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .map_err(|e| ControllerError::DeviceError(format!("Failed to create HTTP client: {}", e)))?;
+        
+        let url = format!("{}/api/v1/devices/{}/renode/start", api_server_url, device_id);
+        info!("Calling API server to start Renode: {}", url);
+        
+        let response = client
+            .post(&url)
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+            .map_err(|e| ControllerError::DeviceError(format!("Failed to call API server: {} (URL: {})", e, url)))?;
+        
+        let status = response.status();
+        if status.is_success() {
+            let response_text = response.text().await.unwrap_or_else(|_| "".to_string());
+            info!("Renode started successfully for device {}: {}", device_id, response_text);
+        } else {
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            warn!("Failed to start Renode for device {}: HTTP {} - {}", device_id, status, error_text);
+            return Err(ControllerError::DeviceError(format!("API server returned error: HTTP {} - {}", status, error_text)));
+        }
         
         Ok(())
     }
 
     async fn handle_connected(&self, device: &Device) -> Result<(), ControllerError> {
         info!("Device {} is connected", device.name_any());
+        
+        // Check if the gateway referenced by this device still exists
+        if let Some(gateway_ref) = &device.status.as_ref().and_then(|s| s.gateway.as_ref()) {
+            info!("Device {} has gateway reference: name={}, endpoint={}", 
+                device.name_any(), gateway_ref.name, gateway_ref.endpoint);
+            // GatewayReference now has fields: name, endpoint, connected_at
+            let gateways_api = Api::<Gateway>::namespaced(self.client.clone(), "wasmbed");
+            match gateways_api.get(&gateway_ref.name).await {
+                Ok(gateway) => {
+                    // Gateway exists, check if it's running
+                    if let Some(gateway_status) = &gateway.status {
+                        if !matches!(gateway_status.phase, GatewayPhase::Running) {
+                            warn!("Device {} is connected to gateway {} which is not running (phase: {:?}). Disconnecting device.", 
+                                device.name_any(), &gateway_ref.name, gateway_status.phase);
+                            let mut status = device.status.clone().unwrap();
+                            status.phase = DevicePhase::Disconnected;
+                            status.gateway = None;
+                            self.update_device_status(device, status).await?;
+                            return Ok(());
+                        }
+                    }
+                }
+                Err(kube::Error::Api(kube::error::ErrorResponse { code: 404, .. })) => {
+                    // Gateway doesn't exist anymore, disconnect the device
+                    warn!("Device {} is connected to gateway {} which no longer exists. Disconnecting device.", 
+                        device.name_any(), &gateway_ref.name);
+                    let mut status = device.status.clone().unwrap();
+                    status.phase = DevicePhase::Disconnected;
+                    status.gateway = None;
+                    self.update_device_status(device, status).await?;
+                    return Ok(());
+                }
+                Err(e) => {
+                    warn!("Failed to check gateway {} for device {}: {}. Continuing...", 
+                        &gateway_ref.name, device.name_any(), e);
+                }
+            }
+        }
+        
+        // Try to start Renode if not already running
+        // This handles devices that were connected before being enrolled
+        // or devices that were enrolled but Renode failed to start
+        if let Err(e) = self.start_renode_device(device).await {
+            warn!("Failed to start Renode for connected device {}: {}", device.name_any(), e);
+            // Don't fail the reconciliation if Renode fails to start
+            // The device can still be connected without Renode
+        }
         
         // Update heartbeat
         let mut status = device.status.clone().unwrap();
@@ -242,6 +484,18 @@ impl DeviceController {
         }
     }
 
+    // NOTE: This function is no longer used because Renode is managed as a standalone process
+    // by RenodeManager, not as a Docker container. Renode is spawned directly as a process
+    // (see wasmbed-qemu-manager/src/lib.rs build_renode_args and Command::spawn).
+    // 
+    // Renode is NOT a Docker container - it's a standalone application that runs as a process.
+    // See: https://interrupt.memfault.com/blog/intro-to-renode
+    //
+    // If you need to run Renode in a container in the future, you would need to:
+    // 1. Create a proper Docker image with Renode installed
+    // 2. Update the image name from "qemu/qemu:latest" (which doesn't exist) to the correct image
+    // 3. Ensure Renode binary is available in the container
+    #[allow(dead_code)]
     async fn create_device_pod(&self, device: &Device) -> Result<(), ControllerError> {
         let pod_name = format!("{}-pod", device.name_any());
         
@@ -272,7 +526,7 @@ impl DeviceController {
             spec: Some(k8s_openapi::api::core::v1::PodSpec {
                 containers: vec![k8s_openapi::api::core::v1::Container {
                     name: "qemu-device".to_string(),
-                    image: Some("qemu/qemu:latest".to_string()),
+                    image: Some("qemu/qemu:latest".to_string()), // NOTE: This image doesn't exist - Renode is not a Docker container
                     env: Some(vec![
                         k8s_openapi::api::core::v1::EnvVar {
                             name: "DEVICE_NAME".to_string(),
@@ -314,6 +568,11 @@ impl DeviceController {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Initialize rustls crypto provider
+    use rustls::crypto::aws_lc_rs::default_provider;
+    rustls::crypto::CryptoProvider::install_default(default_provider())
+        .expect("Failed to install default crypto provider");
+    
     tracing_subscriber::fmt::init();
     
     let client = Client::try_default().await?;

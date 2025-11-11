@@ -186,6 +186,14 @@ impl Callbacks {
             let gateway_reference = gateway_reference.clone();
             let http_server = http_server.clone();
             Box::pin(async move {
+                // Mark device as having active TLS connection when first message is received
+                let public_key_bytes = ctx.client_public_key();
+                let public_key_obj = PublicKey::from(public_key_bytes.as_slice());
+                if let Ok(Some(device)) = Device::find(api.clone(), public_key_obj.clone()).await {
+                    let device_id = device.name_any();
+                    http_server.mark_device_tls_connected(&device_id).await;
+                }
+                
                 match ctx.message() {
                     Some(ClientMessage::Heartbeat) => {
                         // Update heartbeat timestamp for the device
@@ -200,6 +208,8 @@ impl Callbacks {
                                 {
                                     error!("Error updating heartbeat: {e}");
                                 }
+                                // Update heartbeat in HTTP API
+                                http_server.update_heartbeat(&device.name_any()).await;
                             },
                             Ok(None) => {
                                 debug!("Heartbeat from unknown device: {:?}", public_key_obj);
@@ -388,6 +398,7 @@ async fn create_device_crd(
     let device_spec = wasmbed_k8s_resource::DeviceSpec {
         public_key: public_key_b64,
         mcu_type: Some("mps2-an385".to_string()),
+        preferred_gateway: None, // No preferred gateway during auto-enrollment
     };
     
     // Create Device status

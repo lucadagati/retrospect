@@ -1,0 +1,36 @@
+using sysbus
+
+# Test WASM Runtime su nRF52840 DK
+echo "=== Test WASM Runtime - nRF52840 DK ==="
+
+# Crea machine
+mach create "wasm-nrf52840"
+machine LoadPlatformDescription @platforms/boards/nrf52840dk_nrf52840.repl
+
+# Setup UART per output
+showAnalyzer sysbus.uart0
+
+# Setup GPIO (opzionale)
+# sysbus.gpio0 LED @ sysbus.gpio0 0
+
+# Carica firmware ARM
+$firmware_path?=@target/thumbv7em-none-eabihf/release/wasmbed-device-runtime
+if exists $firmware_path:
+    echo "Caricamento firmware..."
+    sysbus LoadELF $firmware_path
+    echo "Firmware caricato"
+    echo ""
+    echo "Avvio esecuzione..."
+    echo "Controlla UART analyzer per i log WASM"
+    echo ""
+    start
+else:
+    echo "ERRORE: Firmware non trovato: $firmware_path"
+    echo ""
+    echo "Compila prima con:"
+    echo "  ./scripts/build-wasm-runtime-arm.sh"
+    echo ""
+    echo "Oppure carica manualmente:"
+    echo "  sysbus LoadELF @target/thumbv7em-none-eabihf/release/wasmbed-device-runtime"
+    echo "  start"
+

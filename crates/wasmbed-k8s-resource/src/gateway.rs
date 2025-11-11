@@ -31,6 +31,7 @@ pub struct GatewayConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct GatewayStatus {
     pub phase: GatewayPhase,
     pub connected_devices: Option<i32>,
@@ -52,7 +53,9 @@ pub enum GatewayPhase {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct GatewayCondition {
+    #[serde(rename = "type")]
     pub r#type: String,
     pub status: String,
     pub reason: Option<String>,

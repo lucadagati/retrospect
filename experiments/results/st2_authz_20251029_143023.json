@@ -1,0 +1,7 @@
+{
+  "timestamp": "20251029_143023",
+  "unauthorized_request_result": "true",
+  "rbac_policies_exist": true,
+  "authorized_device_created": false,
+  "test_device": "st2-auth-test-20251029_143023"
+}

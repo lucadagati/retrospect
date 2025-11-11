@@ -159,9 +159,10 @@ const InitialConfiguration = () => {
     setConfiguring(true);
     try {
       // Deploy multiple gateways with configurable count
+      // Don't set endpoint - let the gateway controller set it automatically to Kubernetes service DNS
       const gatewayRequest = {
         count: gatewayCount, // Number of gateways to create
-        endpoint: '127.0.0.1',
+        // endpoint will be set automatically by gateway controller to {gateway-name}-service.wasmbed.svc.cluster.local:8080
         basePort: 30452
       };
 

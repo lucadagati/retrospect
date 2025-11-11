@@ -37,16 +37,26 @@ pub struct ApplicationController {
     devices: Api<wasmbed_k8s_resource::Device>,
     gateways: Api<wasmbed_k8s_resource::Gateway>,
     deployments: Api<Deployment>,
+    gateway_endpoint: String,
+    // Track which applications have been moved to Deploying phase
+    // This is a workaround for the status deserialization issue
+    deploying_apps: std::sync::Arc<tokio::sync::RwLock<std::collections::HashSet<String>>>,
 }
 
 impl ApplicationController {
     pub fn new(client: Client) -> Self {
+        // Get gateway endpoint from environment variable or use default
+        let gateway_endpoint = std::env::var("GATEWAY_ENDPOINT")
+            .unwrap_or_else(|_| "http://localhost:8080".to_string());
+        
         Self {
             applications: Api::<wasmbed_k8s_resource::Application>::namespaced(client.clone(), "wasmbed"),
             devices: Api::<wasmbed_k8s_resource::Device>::namespaced(client.clone(), "wasmbed"),
             gateways: Api::<wasmbed_k8s_resource::Gateway>::namespaced(client.clone(), "wasmbed"),
             deployments: Api::<Deployment>::namespaced(client.clone(), "wasmbed"),
             client,
+            gateway_endpoint,
+            deploying_apps: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashSet::new())),
         }
     }
 
@@ -83,10 +93,37 @@ impl ApplicationController {
         let name = application.name_any();
         info!("Reconciling application: {}", name);
 
-        // Get current status or initialize
-        let current_status = self.get_application_status(&application).await?;
+        // Always fetch fresh application from Kubernetes to get latest status
+        let application = match self.applications.get(&name).await {
+            Ok(app) => app,
+            Err(e) => {
+                error!("Failed to get application {}: {}", name, e);
+                return Err(ControllerError::KubeError(e));
+            }
+        };
+
+        // Get current phase from status - try multiple methods
+        let phase = if let Some(status) = application.status.as_ref() {
+            status.phase
+        } else if let Some(status) = application.status() {
+            status.phase
+        } else {
+            // If no status found, check if we've already moved it to Deploying
+            let is_deploying = {
+                let deploying = self.deploying_apps.read().await;
+                deploying.contains(&name)
+            };
+            if is_deploying {
+                wasmbed_k8s_resource::ApplicationPhase::Deploying
+            } else {
+                wasmbed_k8s_resource::ApplicationPhase::Creating
+            }
+        };
         
-        match current_status.phase {
+        info!("Application {} - Current phase: {:?}", name, phase);
+        
+        // Route to correct handler based on phase
+        match phase {
             wasmbed_k8s_resource::ApplicationPhase::Creating => {
                 self.handle_creating(&application).await?;
             }
@@ -112,12 +149,69 @@ impl ApplicationController {
                 self.handle_deleting(&application).await?;
             }
         }
-
+        
         Ok(Action::requeue(Duration::from_secs(30)))
     }
 
-    async fn get_application_status(&self, application: &wasmbed_k8s_resource::Application) -> Result<wasmbed_k8s_resource::ApplicationStatus, ControllerError> {
-        // For now, return a default status since we don't have status field access
+    async fn get_application_status_with_fallback(&self, name: &str, application: &wasmbed_k8s_resource::Application) -> Result<wasmbed_k8s_resource::ApplicationStatus, ControllerError> {
+        // CRITICAL FIX: Api::get() doesn't deserialize the status field correctly when using status subresource.
+        // We use a simple workaround: if we just set the status to "Deploying" in handle_creating,
+        // we track this in memory and immediately return "Deploying" on the next reconciliation.
+        // This avoids the deserialization issue entirely.
+        
+        // First, try to get status from the deserialized object
+        if let Some(status) = &application.status {
+            if status.phase != wasmbed_k8s_resource::ApplicationPhase::Creating {
+                // If we have a status and it's not Creating, trust it
+                info!("Application {} - Using status from deserialized object, phase: {:?}", name, status.phase);
+                return Ok(status.clone());
+            }
+        }
+        
+        if let Some(status) = application.status() {
+            if status.phase != wasmbed_k8s_resource::ApplicationPhase::Creating {
+                // If we have a status and it's not Creating, trust it
+                info!("Application {} - Using status() method, phase: {:?}", name, status.phase);
+                return Ok(status.clone());
+            }
+        }
+        
+        // If status is Creating or None, check if we recently moved it to Deploying
+        // by checking the resource version or by re-fetching with a fresh API call
+        // For now, we'll use a simpler approach: if status is Creating, check if
+        // we can get a fresh status by calling Api::get() again, but this time
+        // we'll parse the raw response if needed.
+        
+        // Actually, the simplest fix: if we're in Creating phase but we know we just
+        // set it to Deploying, we can check the actual Kubernetes state by making
+        // a direct API call using reqwest to the Kubernetes API server.
+        // But this requires knowing the API server URL and having proper auth.
+        
+        // SIMPLEST FIX: Just always assume that if status is Creating, we should
+        // check by re-fetching the application. But we already do that in reconcile().
+        // The real issue is that even after re-fetching, the status is still Creating.
+        
+        // Re-fetch the application to get fresh status
+        match self.applications.get(name).await {
+            Ok(fresh_app) => {
+                // Try status() method first
+                if let Some(status) = fresh_app.status() {
+                    info!("Application {} - Got status from fresh fetch using status(), phase: {:?}", name, status.phase);
+                    return Ok(status.clone());
+                }
+                // Try status field
+                if let Some(status) = &fresh_app.status {
+                    info!("Application {} - Got status from fresh fetch using status field, phase: {:?}", name, status.phase);
+                    return Ok(status.clone());
+                }
+            },
+            Err(e) => {
+                warn!("Application {} - Failed to re-fetch: {}", name, e);
+            }
+        }
+        
+        // Fallback: return Creating if we can't determine the status
+        warn!("Application {} - Could not determine status, defaulting to Creating", name);
         Ok(wasmbed_k8s_resource::ApplicationStatus {
             phase: wasmbed_k8s_resource::ApplicationPhase::Creating,
             device_statuses: None,
@@ -128,16 +222,35 @@ impl ApplicationController {
     }
 
     async fn handle_creating(&self, application: &wasmbed_k8s_resource::Application) -> Result<(), ControllerError> {
-        info!("Handling creating application: {}", application.name_any());
+        let name = application.name_any();
+        info!("Handling creating application: {}", name);
+        
+        // Check if we've already processed this app - if so, skip to deploying
+        let already_deploying = {
+            let deploying = self.deploying_apps.read().await;
+            deploying.contains(&name)
+        };
+        
+        if already_deploying {
+            info!("Application {} already marked as deploying, skipping handle_creating", name);
+            return Ok(());
+        }
         
         // Find target devices
         let target_devices = self.find_target_devices(&application.spec.target_devices).await?;
         
         if target_devices.is_empty() {
-            warn!("No target devices found for application: {}", application.name_any());
+            warn!("No target devices found for application: {}", name);
             return Ok(());
         }
 
+        // Mark this app as deploying BEFORE updating status
+        // This ensures that on the next reconciliation, we'll use Deploying phase
+        {
+            let mut deploying = self.deploying_apps.write().await;
+            deploying.insert(name.clone());
+        }
+        
         // Update status to deploying
         let status = wasmbed_k8s_resource::ApplicationStatus {
             phase: wasmbed_k8s_resource::ApplicationPhase::Deploying,
@@ -154,50 +267,134 @@ impl ApplicationController {
         };
 
         self.update_application_status(application, status).await?;
-        info!("Application {} moved to deploying phase", application.name_any());
+        
+        info!("Application {} moved to deploying phase", name);
         Ok(())
     }
 
     async fn handle_deploying(&self, application: &wasmbed_k8s_resource::Application) -> Result<(), ControllerError> {
         info!("Handling deploying application: {}", application.name_any());
         
-        // Create Deployment for the application
-        self.create_application_deployment(application).await?;
-        
-        // Find target devices again
+        // Find target devices
         let target_devices = self.find_target_devices(&application.spec.target_devices).await?;
         
-        let mut device_statuses = std::collections::BTreeMap::new();
-        let mut running_count = 0;
-        
-        for device in &target_devices {
-            let device_status = wasmbed_k8s_resource::DeviceApplicationStatus {
-                status: wasmbed_k8s_resource::DeviceApplicationPhase::Running,
-                last_heartbeat: Some(chrono::Utc::now().to_rfc3339()),
-                metrics: None,
-                error: None,
-                restart_count: 0,
-            };
-            device_statuses.insert(device.name_any(), device_status);
-            running_count += 1;
+        if target_devices.is_empty() {
+            warn!("No target devices found for application: {}", application.name_any());
+            return Ok(());
         }
 
+        // Deploy to each target device via gateway
+        let mut device_statuses = std::collections::BTreeMap::new();
+        let mut running_count = 0;
+        let mut failed_count = 0;
+        
+        for device in &target_devices {
+            let device_id = device.name_any();
+            
+            // Check if device is connected (status should be Connected)
+            let device_phase = device.status.as_ref()
+                .map(|s| &s.phase)
+                .unwrap_or(&wasmbed_k8s_resource::DevicePhase::Pending);
+            if device_phase != &wasmbed_k8s_resource::DevicePhase::Connected {
+                warn!("Device {} is not connected (phase: {:?}), skipping deployment", device_id, device_phase);
+                let device_status = wasmbed_k8s_resource::DeviceApplicationStatus {
+                    status: wasmbed_k8s_resource::DeviceApplicationPhase::Failed,
+                    last_heartbeat: Some(chrono::Utc::now().to_rfc3339()),
+                    metrics: None,
+                    error: Some("Device not connected".to_string()),
+                    restart_count: 0,
+                };
+                device_statuses.insert(device_id, device_status);
+                failed_count += 1;
+                continue;
+            }
+
+            // Get the gateway endpoint from the device's gateway reference
+            // If endpoint is a Renode endpoint (127.0.0.1:port), construct gateway service DNS endpoint
+            let gateway_endpoint = {
+                if let Some(gateway_ref) = device.status.as_ref().and_then(|s| s.gateway.as_ref()) {
+                    let endpoint = &gateway_ref.endpoint;
+                    let gateway_name = &gateway_ref.name;
+                    
+                    // Check if endpoint is a Renode endpoint (127.0.0.1:port) or localhost
+                    if endpoint.starts_with("127.0.0.1:") || endpoint.starts_with("localhost:") {
+                        // Endpoint is a Renode endpoint, construct gateway service DNS endpoint
+                        // Format: {gateway-name}-service.wasmbed.svc.cluster.local:8080
+                        format!("{}-service.wasmbed.svc.cluster.local:8080", gateway_name)
+                    } else if endpoint.contains("svc.cluster.local") {
+                        // Valid Kubernetes service DNS endpoint, use as-is
+                        endpoint.clone()
+                    } else {
+                        // Use endpoint as-is
+                        endpoint.clone()
+                    }
+                } else {
+                    // No gateway reference, use default
+                    self.gateway_endpoint.clone()
+                }
+            };
+            
+            // Deploy application to device via gateway
+            match self.deploy_application_to_device_with_gateway(&device_id, application, &gateway_endpoint).await {
+                Ok(_) => {
+                    info!("Successfully deployed application {} to device {}", application.name_any(), device_id);
+                    let device_status = wasmbed_k8s_resource::DeviceApplicationStatus {
+                        status: wasmbed_k8s_resource::DeviceApplicationPhase::Running,
+                        last_heartbeat: Some(chrono::Utc::now().to_rfc3339()),
+                        metrics: None,
+                        error: None,
+                        restart_count: 0,
+                    };
+                    device_statuses.insert(device_id, device_status);
+                    running_count += 1;
+                }
+                Err(e) => {
+                    error!("Failed to deploy application {} to device {}: {}", application.name_any(), device_id, e);
+                    let device_status = wasmbed_k8s_resource::DeviceApplicationStatus {
+                        status: wasmbed_k8s_resource::DeviceApplicationPhase::Failed,
+                        last_heartbeat: Some(chrono::Utc::now().to_rfc3339()),
+                        metrics: None,
+                        error: Some(e.to_string()),
+                        restart_count: 0,
+                    };
+                    device_statuses.insert(device_id, device_status);
+                    failed_count += 1;
+                }
+            }
+        }
+
+        // Update application status based on deployment results
+        let phase = if running_count == target_devices.len() {
+            wasmbed_k8s_resource::ApplicationPhase::Running
+        } else if running_count > 0 {
+            wasmbed_k8s_resource::ApplicationPhase::PartiallyRunning
+        } else if failed_count > 0 {
+            wasmbed_k8s_resource::ApplicationPhase::Failed
+        } else {
+            wasmbed_k8s_resource::ApplicationPhase::Deploying
+        };
+
         let status = wasmbed_k8s_resource::ApplicationStatus {
-            phase: wasmbed_k8s_resource::ApplicationPhase::Running,
+            phase,
             device_statuses: Some(device_statuses),
             statistics: Some(wasmbed_k8s_resource::ApplicationStatistics {
                 total_devices: target_devices.len() as u32,
-                deployed_devices: target_devices.len() as u32,
-                running_devices: running_count,
-                failed_devices: 0,
+                deployed_devices: running_count as u32,
+                running_devices: running_count as u32,
+                failed_devices: failed_count as u32,
                 stopped_devices: 0,
             }),
             last_updated: Some(chrono::Utc::now().to_rfc3339()),
-            error: None,
+            error: if failed_count > 0 {
+                Some(format!("Failed to deploy to {} device(s)", failed_count))
+            } else {
+                None
+            },
         };
 
         self.update_application_status(application, status).await?;
-        info!("Application {} deployed successfully", application.name_any());
+        info!("Application {} deployment completed: {} running, {} failed", 
+              application.name_any(), running_count, failed_count);
         Ok(())
     }
 
@@ -243,7 +440,58 @@ impl ApplicationController {
     }
 
     async fn handle_failed(&self, application: &wasmbed_k8s_resource::Application) -> Result<(), ControllerError> {
-        warn!("Application {} is in failed state", application.name_any());
+        warn!("Application {} is in failed state, checking if devices are now connected for retry", application.name_any());
+        
+        // Find target devices
+        let target_devices = self.find_target_devices(&application.spec.target_devices).await?;
+        
+        if target_devices.is_empty() {
+            warn!("No target devices found for application: {}", application.name_any());
+            return Ok(());
+        }
+        
+        // Check if any devices are now connected
+        let mut has_connected_devices = false;
+        for device in &target_devices {
+            let device_phase = device.status.as_ref()
+                .map(|s| &s.phase)
+                .unwrap_or(&wasmbed_k8s_resource::DevicePhase::Pending);
+            if device_phase == &wasmbed_k8s_resource::DevicePhase::Connected {
+                has_connected_devices = true;
+                break;
+            }
+        }
+        
+        // If devices are now connected, retry deployment by moving back to Deploying phase
+        if has_connected_devices {
+            info!("Application {} has connected devices, retrying deployment", application.name_any());
+            let status = wasmbed_k8s_resource::ApplicationStatus {
+                phase: wasmbed_k8s_resource::ApplicationPhase::Deploying,
+                device_statuses: None,
+                statistics: Some(wasmbed_k8s_resource::ApplicationStatistics {
+                    total_devices: target_devices.len() as u32,
+                    deployed_devices: 0,
+                    running_devices: 0,
+                    failed_devices: 0,
+                    stopped_devices: 0,
+                }),
+                last_updated: Some(chrono::Utc::now().to_rfc3339()),
+                error: None,
+            };
+            self.update_application_status(application, status).await?;
+        } else {
+            // No connected devices yet, keep in failed state but log for debugging
+            let device_phases: Vec<String> = target_devices.iter()
+                .map(|d| {
+                    d.status.as_ref()
+                        .map(|s| format!("{:?}", s.phase))
+                        .unwrap_or_else(|| "Pending".to_string())
+                })
+                .collect();
+            info!("Application {} still in failed state - device phases: {:?}", 
+                  application.name_any(), device_phases);
+        }
+        
         Ok(())
     }
 
@@ -292,6 +540,77 @@ impl ApplicationController {
         }
 
         Ok(matching_devices)
+    }
+
+    async fn deploy_application_to_device(&self, device_id: &str, application: &wasmbed_k8s_resource::Application) -> Result<(), ControllerError> {
+        // Use default gateway endpoint
+        self.deploy_application_to_device_with_gateway(device_id, application, &self.gateway_endpoint).await
+    }
+    
+    async fn deploy_application_to_device_with_gateway(&self, device_id: &str, application: &wasmbed_k8s_resource::Application, gateway_endpoint: &str) -> Result<(), ControllerError> {
+        info!("Deploying application {} to device {} via gateway {}", application.name_any(), device_id, gateway_endpoint);
+        
+        // wasm_bytes is already base64 encoded in the spec
+        let wasm_bytes_base64 = &application.spec.wasm_bytes;
+        
+        // Create deployment request
+        let deployment_request = serde_json::json!({
+            "app_id": application.name_any(),
+            "name": application.spec.name,
+            "wasm_bytes": wasm_bytes_base64
+        });
+        
+        // Convert gateway endpoint from Kubernetes service DNS to HTTP endpoint
+        // If endpoint is like "gateway-2-service.wasmbed.svc.cluster.local:8080", use it directly
+        // If endpoint is like "127.0.0.1:30468", use it directly
+        // Otherwise, construct HTTP endpoint from gateway name
+        let http_endpoint = if gateway_endpoint.contains(":8080") {
+            gateway_endpoint.to_string()
+        } else if gateway_endpoint.contains("svc.cluster.local") {
+            // Kubernetes service DNS - use HTTP port 8080
+            gateway_endpoint.replace(":8443", ":8080").replace(":304", ":8080")
+        } else if gateway_endpoint.contains(':') {
+            // Already has port - use as is
+            gateway_endpoint.to_string()
+        } else {
+            // No port specified - use default HTTP port
+            format!("{}:8080", gateway_endpoint)
+        };
+        
+        // Call gateway endpoint
+        let url = format!("http://{}/api/v1/devices/{}/deploy", http_endpoint, device_id);
+        let client = reqwest::Client::new();
+        
+        match client
+            .post(&url)
+            .json(&deployment_request)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if response.status().is_success() {
+                    let deployment_response: serde_json::Value = response.json().await
+                        .map_err(|e| ControllerError::ApplicationError(format!("Failed to parse deployment response: {}", e)))?;
+                    
+                    if deployment_response.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        info!("Successfully deployed application {} to device {}", application.name_any(), device_id);
+                        Ok(())
+                    } else {
+                        let error_msg = deployment_response.get("error")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown error");
+                        Err(ControllerError::ApplicationError(format!("Deployment failed: {}", error_msg)))
+                    }
+                } else {
+                    let status = response.status();
+                    let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                    Err(ControllerError::ApplicationError(format!("Gateway returned error {}: {}", status, error_text)))
+                }
+            }
+            Err(e) => {
+                Err(ControllerError::ApplicationError(format!("Failed to call gateway endpoint: {}", e)))
+            }
+        }
     }
 
     async fn update_application_status(&self, application: &wasmbed_k8s_resource::Application, status: wasmbed_k8s_resource::ApplicationStatus) -> Result<(), ControllerError> {
@@ -399,6 +718,11 @@ impl ApplicationController {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Initialize rustls crypto provider
+    use rustls::crypto::aws_lc_rs::default_provider;
+    rustls::crypto::CryptoProvider::install_default(default_provider())
+        .expect("Failed to install default crypto provider");
+    
     tracing_subscriber::fmt::init();
     
     let client = Client::try_default().await?;

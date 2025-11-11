@@ -29,11 +29,13 @@ import {
   QuestionCircleOutlined,
 } from '@ant-design/icons';
 import { apiGet, apiPost, apiDelete, apiPut } from '../utils/api';
+import { App } from 'antd';
 
 const { Title } = Typography;
 const { Option } = Select;
 
 const GatewayManagement = () => {
+  const { message } = App.useApp();
   const [gateways, setGateways] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -66,20 +68,27 @@ const GatewayManagement = () => {
     try {
       // Use form values or auto-generate if empty
       const gatewayName = values.name || `gateway-${gateways.length + 1}`;
-      const gatewayEndpoint = values.endpoint || '127.0.0.1';
+      // Don't set endpoint - let the gateway controller set it automatically to Kubernetes service DNS
+      // The endpoint will be set to {gateway-name}-service.wasmbed.svc.cluster.local:8080 by the controller
       
       const result = await apiPost('/api/v1/gateways', {
         name: gatewayName,
-        endpoint: gatewayEndpoint,
+        // endpoint will be set automatically by gateway controller
         description: `Gateway created from dashboard: ${gatewayName}`
       }, 15000);
       
-      console.log('Gateway created successfully:', result.message);
+      if (result.success) {
+        message.success(result.message || 'Gateway created successfully');
       setModalVisible(false);
       form.resetFields();
       fetchGateways(); // Refresh the list
+      } else {
+        message.error(result.message || 'Failed to create gateway');
+      }
     } catch (error) {
       console.error('Error creating gateway:', error);
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      message.error(`Failed to create gateway: ${errorMessage}`);
     }
   };
 

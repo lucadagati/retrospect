@@ -21,10 +21,10 @@ kind: ClusterRole
 metadata:
   name: wasmbed-device-controller
 rules:
-- apiGroups: ["wasmbed.io"]
+- apiGroups: ["wasmbed.github.io"]
   resources: ["devices"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: ["wasmbed.io"]
+- apiGroups: ["wasmbed.github.io"]
   resources: ["devices/status"]
   verbs: ["get", "update", "patch"]
 - apiGroups: ["wasmbed.io"]
@@ -36,13 +36,13 @@ kind: ClusterRole
 metadata:
   name: wasmbed-application-controller
 rules:
-- apiGroups: ["wasmbed.io"]
+- apiGroups: ["wasmbed.github.io"]
   resources: ["applications"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: ["wasmbed.io"]
+- apiGroups: ["wasmbed.github.io"]
   resources: ["applications/status"]
   verbs: ["get", "update", "patch"]
-- apiGroups: ["wasmbed.io"]
+- apiGroups: ["wasmbed.github.io"]
   resources: ["devices"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["wasmbed.io"]
@@ -60,7 +60,7 @@ rules:
 - apiGroups: ["wasmbed.io"]
   resources: ["gateways/status"]
   verbs: ["get", "update", "patch"]
-- apiGroups: ["wasmbed.io"]
+- apiGroups: ["wasmbed.github.io"]
   resources: ["devices"]
   verbs: ["get", "list", "watch"]
 ---

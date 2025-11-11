@@ -276,7 +276,7 @@ const ApplicationManagement = () => {
               key="deploy"
               type="link"
               icon={<PlayCircleOutlined />}
-              onClick={() => handleDeployApplication(record.id)}
+              onClick={() => handleDeployApplication(record.app_id || record.id)}
               size="small"
             >
               Deploy
@@ -286,7 +286,7 @@ const ApplicationManagement = () => {
               key="stop"
               type="link"
               icon={<PauseCircleOutlined />}
-              onClick={() => handleStopApplication(record.id)}
+              onClick={() => handleStopApplication(record.app_id || record.id)}
               size="small"
             >
               Stop
@@ -295,7 +295,7 @@ const ApplicationManagement = () => {
           <Popconfirm
             key="delete"
             title="Are you sure you want to delete this application?"
-            onConfirm={() => handleDeleteApplication(record.id)}
+            onConfirm={() => handleDeleteApplication(record.app_id || record.id)}
             okText="Yes"
             cancelText="No"
           >

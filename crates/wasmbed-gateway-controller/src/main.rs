@@ -11,7 +11,7 @@ use kube::{
     ResourceExt,
 };
 use k8s_openapi::api::apps::v1::Deployment;
-use k8s_openapi::api::core::v1::Service;
+use k8s_openapi::api::core::v1::{Service, Secret};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use futures_util::StreamExt;
 use std::time::Duration;
@@ -38,6 +38,7 @@ pub struct GatewayController {
     devices: Api<wasmbed_k8s_resource::Device>,
     deployments: Api<Deployment>,
     services: Api<Service>,
+    secrets: Api<Secret>,
 }
 
 impl GatewayController {
@@ -47,6 +48,7 @@ impl GatewayController {
             devices: Api::<wasmbed_k8s_resource::Device>::namespaced(client.clone(), "wasmbed"),
             deployments: Api::<Deployment>::namespaced(client.clone(), "wasmbed"),
             services: Api::<Service>::namespaced(client.clone(), "wasmbed"),
+            secrets: Api::<Secret>::namespaced(client.clone(), "wasmbed"),
             client,
         }
     }
@@ -123,11 +125,70 @@ impl GatewayController {
     async fn handle_pending(&self, gateway: &wasmbed_k8s_resource::Gateway) -> Result<(), ControllerError> {
         info!("Handling pending gateway: {}", gateway.name_any());
         
+        // Ensure certificates secret exists
+        info!("Ensuring certificates secret exists for gateway {}", gateway.name_any());
+        if let Err(e) = self.ensure_certificates_secret().await {
+            error!("Failed to ensure certificates secret: {}", e);
+            return Err(e);
+        }
+        info!("Certificates secret verified for gateway {}", gateway.name_any());
+        
         // Create Deployment for the gateway
-        self.create_gateway_deployment(gateway).await?;
+        info!("Creating deployment for gateway {}", gateway.name_any());
+        if let Err(e) = self.create_gateway_deployment(gateway).await {
+            error!("Failed to create gateway deployment: {}", e);
+            return Err(e);
+        }
+        info!("Deployment created for gateway {}", gateway.name_any());
         
         // Create Service for the gateway
-        self.create_gateway_service(gateway).await?;
+        info!("Creating service for gateway {}", gateway.name_any());
+        if let Err(e) = self.create_gateway_service(gateway).await {
+            error!("Failed to create gateway service: {}", e);
+            return Err(e);
+        }
+        info!("Service created for gateway {}", gateway.name_any());
+        
+        // Update gateway endpoint to use the Kubernetes service DNS name
+        // This is the correct endpoint for Kubernetes-internal communication
+        // For Renode/TCP bridge, the API server will convert this to localhost
+        let service_name = format!("{}-service", gateway.name_any());
+        let correct_endpoint = format!("{}.wasmbed.svc.cluster.local:8080", service_name);
+        
+        // Only update if the endpoint is different (e.g., it's still using localhost, 127.0.0.1, or wrong format)
+        let needs_update = gateway.spec.endpoint != correct_endpoint && 
+            (gateway.spec.endpoint.starts_with("127.0.0.1") || 
+             gateway.spec.endpoint.starts_with("localhost") ||
+             !gateway.spec.endpoint.contains("svc.cluster.local"));
+        
+        if needs_update {
+            info!("Updating gateway {} endpoint from '{}' to '{}'", 
+                gateway.name_any(), gateway.spec.endpoint, correct_endpoint);
+            
+            // Patch the gateway spec to update the endpoint
+            let patch = serde_json::json!({
+                "apiVersion": "wasmbed.io/v1",
+                "kind": "Gateway",
+                "spec": {
+                    "endpoint": correct_endpoint
+                }
+            });
+            
+            match self.gateways.patch(
+                &gateway.name_any(),
+                &PatchParams::default(),
+                &Patch::Merge(patch),
+            ).await {
+                Ok(_) => {
+                    info!("Successfully updated gateway {} endpoint to Kubernetes service DNS", gateway.name_any());
+                }
+                Err(e) => {
+                    warn!("Failed to update gateway {} endpoint: {}. Continuing...", gateway.name_any(), e);
+                }
+            }
+        } else {
+            info!("Gateway {} endpoint is already correct: {}", gateway.name_any(), gateway.spec.endpoint);
+        }
         
         // Count connected devices
         let devices = self.devices.list(&ListParams::default()).await?;
@@ -163,6 +224,46 @@ impl GatewayController {
 
     async fn handle_running(&self, gateway: &wasmbed_k8s_resource::Gateway) -> Result<(), ControllerError> {
         info!("Gateway {} is running", gateway.name_any());
+        
+        // Ensure endpoint is correct (update if needed)
+        // Try to find the service - it might be named {gateway-name}-service or just {gateway-name}
+        let service_name_with_suffix = format!("{}-service", gateway.name_any());
+        let service_name_simple = gateway.name_any();
+        
+        // Check which service actually exists
+        let service_name = match (self.services.get(&service_name_with_suffix).await, self.services.get(&service_name_simple).await) {
+            (Ok(_), _) => service_name_with_suffix,
+            (_, Ok(_)) => service_name_simple,
+            _ => service_name_with_suffix, // Default to -service pattern if neither exists
+        };
+        
+        let correct_endpoint = format!("{}.wasmbed.svc.cluster.local:8080", service_name);
+        
+        if gateway.spec.endpoint != correct_endpoint {
+            info!("Updating gateway {} endpoint from '{}' to '{}'", 
+                gateway.name_any(), gateway.spec.endpoint, correct_endpoint);
+            
+            let patch = serde_json::json!({
+                "apiVersion": "wasmbed.io/v1",
+                "kind": "Gateway",
+                "spec": {
+                    "endpoint": correct_endpoint
+                }
+            });
+            
+            match self.gateways.patch(
+                &gateway.name_any(),
+                &PatchParams::default(),
+                &Patch::Merge(patch),
+            ).await {
+                Ok(_) => {
+                    info!("Successfully updated gateway {} endpoint", gateway.name_any());
+                }
+                Err(e) => {
+                    warn!("Failed to update gateway {} endpoint: {}. Continuing...", gateway.name_any(), e);
+                }
+            }
+        }
         
         // Update device counts
         let devices = self.devices.list(&ListParams::default()).await?;
@@ -253,8 +354,39 @@ impl GatewayController {
         
         // Check if deployment already exists
         match self.deployments.get(&deployment_name).await {
-            Ok(_) => {
-                info!("Deployment {} already exists", deployment_name);
+            Ok(existing) => {
+                // Deployment exists, check if it needs updates (e.g., imagePullPolicy)
+                let needs_update = existing.spec.as_ref()
+                    .and_then(|spec| spec.template.spec.as_ref())
+                    .and_then(|pod_spec| pod_spec.containers.first())
+                    .map(|container| {
+                        container.image_pull_policy.as_ref()
+                            .map(|policy| policy != "Never")
+                            .unwrap_or(true)
+                    })
+                    .unwrap_or(false);
+                
+                if needs_update {
+                    info!("Updating deployment {} with imagePullPolicy", deployment_name);
+                    let patch = serde_json::json!({
+                        "spec": {
+                            "template": {
+                                "spec": {
+                                    "serviceAccountName": "wasmbed-gateway",
+                                    "containers": [{
+                                        "name": "gateway",
+                                        "imagePullPolicy": "Never"
+                                    }]
+                                }
+                            }
+                        }
+                    });
+                    let params = PatchParams::apply("wasmbed-gateway-controller");
+                    self.deployments.patch(&deployment_name, &params, &Patch::Merge(patch)).await?;
+                    info!("Updated deployment {} with imagePullPolicy", deployment_name);
+                } else {
+                    info!("Deployment {} already exists and is up to date", deployment_name);
+                }
                 return Ok(());
             }
             Err(kube::Error::Api(kube::core::ErrorResponse { code: 404, .. })) => {
@@ -297,11 +429,13 @@ impl GatewayController {
                         ..Default::default()
                     }),
                     spec: Some(k8s_openapi::api::core::v1::PodSpec {
+                        service_account_name: Some("wasmbed-gateway".to_string()),
                         containers: vec![k8s_openapi::api::core::v1::Container {
                             name: "gateway".to_string(),
                             image: Some("wasmbed/gateway:latest".to_string()),
+                            image_pull_policy: Some("Never".to_string()),
                             command: Some(vec![
-                                "./wasmbed-gateway".to_string(),
+                                "/usr/local/bin/wasmbed-gateway".to_string(),
                                 "--bind-addr".to_string(),
                                 format!("0.0.0.0:{}", 8443),
                                 "--http-addr".to_string(),
@@ -436,10 +570,57 @@ impl GatewayController {
         info!("Created service for gateway: {}", gateway.name_any());
         Ok(())
     }
+
+    async fn ensure_certificates_secret(&self) -> Result<(), ControllerError> {
+        let secret_name = "gateway-certificates";
+        
+        // Check if secret already exists
+        match self.secrets.get(secret_name).await {
+            Ok(_) => {
+                info!("Secret {} already exists", secret_name);
+                return Ok(());
+            }
+            Err(kube::Error::Api(kube::core::ErrorResponse { code: 404, .. })) => {
+                // Secret doesn't exist, we need to create it
+                // Note: In production, certificates should be generated or provided externally
+                // For now, we'll create an empty secret and log a warning
+                warn!("Secret {} not found. Certificates should be provided externally or generated.", secret_name);
+                warn!("Creating empty secret. Gateway pods will fail until certificates are added.");
+                
+                let secret = Secret {
+                    metadata: ObjectMeta {
+                        name: Some(secret_name.to_string()),
+                        namespace: Some("wasmbed".to_string()),
+                        ..Default::default()
+                    },
+                    data: Some(std::collections::BTreeMap::new()),
+                    ..Default::default()
+                };
+                
+                let params = PostParams::default();
+                match self.secrets.create(&params, &secret).await {
+                    Ok(_) => {
+                        info!("Created empty secret {}. Please add certificates manually.", secret_name);
+                        Ok(())
+                    }
+                    Err(e) => {
+                        error!("Failed to create secret {}: {}", secret_name, e);
+                        Err(ControllerError::KubeError(e))
+                    }
+                }
+            }
+            Err(e) => Err(ControllerError::KubeError(e)),
+        }
+    }
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Initialize rustls crypto provider
+    use rustls::crypto::aws_lc_rs::default_provider;
+    rustls::crypto::CryptoProvider::install_default(default_provider())
+        .expect("Failed to install default crypto provider");
+    
     tracing_subscriber::fmt::init();
     
     let client = Client::try_default().await?;

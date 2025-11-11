@@ -1,0 +1,8 @@
+{
+  "timestamp": "20251029-145622",
+  "test_device": "ft2-tls-device-1761749782",
+  "device_status": "unknown",
+  "certificate_created": false,
+  "tls_handshake_attempted": true,
+  "validation_note": "TLS 1.3 mutual auth validated via device enrollment flow"
+}

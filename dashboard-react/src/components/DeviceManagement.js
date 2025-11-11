@@ -15,6 +15,7 @@ import {
   Col,
   Statistic,
   Tooltip,
+  message,
 } from 'antd';
 import {
   PlusOutlined,
@@ -37,9 +38,12 @@ const { Option } = Select;
 
 const DeviceManagement = () => {
   const [devices, setDevices] = useState([]);
-  const [renodeDevices, setRenodeDevices] = useState([]);
   const [gateways, setGateways] = useState([]);
+  const [publicKeyModalVisible, setPublicKeyModalVisible] = useState(false);
+  const [selectedPublicKey, setSelectedPublicKey] = useState('');
   const [loading, setLoading] = useState(false);
+  const [creatingDevice, setCreatingDevice] = useState(false);
+  const [connectingDevice, setConnectingDevice] = useState(new Set());
   const [modalVisible, setModalVisible] = useState(false);
   const [form] = Form.useForm();
 
@@ -47,14 +51,6 @@ const DeviceManagement = () => {
   useEffect(() => {
     fetchDevices();
     fetchGateways();
-    fetchRenodeDevices();
-    
-    // Set up auto-refresh for Renode devices every 5 seconds
-    const interval = setInterval(() => {
-      fetchRenodeDevices();
-    }, 5000);
-    
-    return () => clearInterval(interval);
   }, []);
 
   const fetchDevices = async () => {
@@ -63,21 +59,25 @@ const DeviceManagement = () => {
       const data = await apiGet('/api/v1/devices', 10000);
       let deviceList = data.devices || [];
       
+      // Normalize device data - ensure publicKey is available
+      deviceList = deviceList.map(device => ({
+        ...device,
+        // Ensure publicKey is set (try both camelCase and snake_case)
+        publicKey: device.publicKey || device.public_key || null,
+        // Ensure id is set
+        id: device.id || device.device_id,
+        // Ensure name is set
+        name: device.name || device.device_id || device.id,
+        // Ensure device_id is set for rowKey
+        device_id: device.device_id || device.id,
+      }));
+      
       // Use real data from backend - no mock data
       setDevices(deviceList);
     } catch (error) {
       console.error('Error fetching devices:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchRenodeDevices = async () => {
-    try {
-      const data = await apiGet('/api/v1/renode/devices', 10000);
-      setRenodeDevices(data.devices || []);
-    } catch (error) {
-      console.error('Error fetching Renode devices:', error);
     }
   };
 
@@ -92,6 +92,7 @@ const DeviceManagement = () => {
   };
 
   const handleCreateDevice = async (values) => {
+    setCreatingDevice(true);
     try {
       // Auto-generate name if not provided
       const deviceCount = devices.length + 1;
@@ -101,20 +102,27 @@ const DeviceManagement = () => {
         name: deviceName,
         type: 'MCU', // Fixed to MCU only
         architecture: 'ARM_CORTEX_M', // Fixed architecture for QEMU
-        mcuType: values.mcuType || 'Mps2An385', // MCU type selection
-        publicKey: 'auto-generated',
+        mcuType: values.mcuType || 'RenodeArduinoNano33Ble', // MCU type selection (default to Arduino Nano 33 BLE)
         gatewayId: values.gateway || 'gateway-1', // Use selected gateway
         qemuEnabled: true // Enable QEMU emulation
-      }, 15000);
+      }, 60000); // Increased timeout to 60 seconds for device creation (gateway + K8s CRD creation)
       
       // Refresh the devices list to get the updated data
-      const updatedDevices = await apiGet('/api/v1/devices');
-      setDevices(updatedDevices.devices || []);
-      console.log('Device created successfully:', response.message);
+      await fetchDevices();
+      console.log('Device created successfully:', response?.message || 'Device created');
+      
+      // Close modal and reset form on success
       setModalVisible(false);
       form.resetFields();
     } catch (error) {
       console.error('Error creating device:', error);
+      // Show error message to user
+      // You could add a notification here using antd's message component
+      // Still close modal on error/timeout so user can try again
+      setModalVisible(false);
+      form.resetFields();
+    } finally {
+      setCreatingDevice(false);
     }
   };
 
@@ -162,19 +170,34 @@ const DeviceManagement = () => {
   };
 
   const handleConnectDevice = async (deviceId) => {
+    setConnectingDevice(prev => new Set(prev).add(deviceId));
     try {
-      const data = await apiPost(`/api/v1/devices/${deviceId}/connect`, {}, 15000);
+      // Increased timeout to 90 seconds for connection (Renode startup + firmware connection + TLS handshake)
+      const data = await apiPost(`/api/v1/devices/${deviceId}/connect`, {}, 90000);
       
-      setDevices(prevDevices => 
-        prevDevices.map(device => 
-          device.id === deviceId 
-            ? { ...device, status: data.status || 'Connected', connected: true, lastHeartbeat: data.lastHeartbeat }
-            : device
-        )
-      );
-      console.log(`Device ${deviceId} connected successfully`);
+      if (data && data.success) {
+        // Refresh the devices list to get the updated status
+        await fetchDevices();
+        console.log(`Device ${deviceId} connected successfully`);
+      } else {
+        // Still refresh to show updated status even if response is unclear
+        await fetchDevices();
+        console.log(`Device ${deviceId} connection initiated`);
+      }
     } catch (error) {
       console.error('Error connecting device:', error);
+      // Don't show error if it's just a timeout - connection might still be in progress
+      if (error.message && error.message.includes('timeout')) {
+        console.warn(`Device ${deviceId} connection is taking longer than expected. Please check the device status.`);
+      }
+      // Refresh anyway to show current status
+      await fetchDevices();
+    } finally {
+      setConnectingDevice(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(deviceId);
+        return newSet;
+      });
     }
   };
 
@@ -197,35 +220,47 @@ const DeviceManagement = () => {
 
   const handleStartRenode = async (deviceId) => {
     try {
-      const data = await apiPost(`/api/v1/devices/${deviceId}/renode/start`, {}, 20000);
+      message.info(`Starting emulation for device ${deviceId}...`);
+      const data = await apiPost(`/api/v1/devices/${deviceId}/emulation/start`, {}, 30000);
       
-      setDevices(prevDevices => 
-        prevDevices.map(device => 
-          device.id === deviceId 
-            ? { ...device, emulationStatus: 'Running', renodeInstance: data.renodeInstance }
-            : device
-        )
-      );
-      console.log(`Renode emulation started for device ${deviceId}`);
+      if (data && data.success) {
+        message.success(`Emulation started successfully for device ${deviceId}`);
+        setDevices(prevDevices => 
+          prevDevices.map(device => 
+            device.id === deviceId 
+              ? { ...device, emulationStatus: 'Running', renodeInstance: data.renodeInstance }
+              : device
+          )
+        );
+        console.log(`Renode Docker emulation started for device ${deviceId}`);
+      } else {
+        message.error(`Failed to start emulation for device ${deviceId}`);
+      }
     } catch (error) {
       console.error('Error starting Renode emulation:', error);
+      message.error(`Error starting emulation: ${error.message || 'Unknown error'}`);
     }
   };
 
   const handleStopRenode = async (deviceId) => {
     try {
-      await apiPost(`/api/v1/devices/${deviceId}/renode/stop`, {}, 15000);
+      message.info(`Stopping emulation for device ${deviceId}...`);
+      const data = await apiPost(`/api/v1/devices/${deviceId}/emulation/stop`, {}, 15000);
       
-      setDevices(prevDevices => 
-        prevDevices.map(device => 
-          device.id === deviceId 
-            ? { ...device, emulationStatus: 'Stopped', renodeInstance: null }
-            : device
-        )
-      );
-      console.log(`Renode emulation stopped for device ${deviceId}`);
+      if (data && data.success) {
+        message.success(`Emulation stopped successfully for device ${deviceId}`);
+        setDevices(prevDevices => 
+          prevDevices.map(device => 
+            device.id === deviceId 
+              ? { ...device, emulationStatus: 'Stopped', renodeInstance: null }
+              : device
+          )
+        );
+        console.log(`Renode emulation stopped for device ${deviceId}`);
+      }
     } catch (error) {
       console.error('Error stopping Renode emulation:', error);
+      message.error(`Error stopping emulation: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -297,12 +332,9 @@ const DeviceManagement = () => {
       key: 'mcuType',
       render: (mcuType) => {
         const mcuNames = {
-          'Mps2An385': 'MPS2-AN385',
-          'Mps2An386': 'MPS2-AN386', 
-          'Mps2An500': 'MPS2-AN500',
-          'Mps2An505': 'MPS2-AN505',
-          'Stm32Vldiscovery': 'STM32VL-Discovery',
-          'OlimexStm32H405': 'Olimex STM32-H405'
+          'RenodeArduinoNano33Ble': 'Arduino Nano 33 BLE',
+          'RenodeStm32F4Discovery': 'STM32F4 Discovery',
+          'RenodeArduinoUnoR4': 'Arduino Uno R4'
         };
         return <Tag color="purple">{mcuNames[mcuType] || mcuType}</Tag>;
       },
@@ -320,6 +352,31 @@ const DeviceManagement = () => {
       dataIndex: 'lastHeartbeat',
       key: 'lastHeartbeat',
       render: (timestamp) => timestamp ? new Date(timestamp * 1000).toLocaleString() : 'Never',
+    },
+    {
+      title: 'Public Key',
+      dataIndex: 'publicKey',
+      key: 'publicKey',
+      width: 150,
+      render: (publicKey, record) => {
+        if (!publicKey) {
+          return <Tag color="default">Not set</Tag>;
+        }
+        return (
+          <Tooltip title="Click to view public key">
+            <Button
+              type="link"
+              size="small"
+              onClick={() => {
+                setSelectedPublicKey(publicKey);
+                setPublicKeyModalVisible(true);
+              }}
+            >
+              View Key
+            </Button>
+          </Tooltip>
+        );
+      },
     },
     {
       title: 'Actions',
@@ -347,8 +404,10 @@ const DeviceManagement = () => {
                 icon={<LinkOutlined />}
                 size="small"
                 onClick={() => handleConnectDevice(record.id)}
+                loading={connectingDevice.has(record.id)}
+                disabled={connectingDevice.has(record.id)}
               >
-                Connect
+                {connectingDevice.has(record.id) ? 'Connecting...' : 'Connect'}
               </Button>
             </Tooltip>
           )}
@@ -507,56 +566,10 @@ const DeviceManagement = () => {
           </Space>
         </div>
 
-        {/* Renode Devices Section */}
-        <Card 
-          title="Renode Devices" 
-          size="small" 
-          style={{ marginBottom: 16 }}
-          extra={
-            <Button 
-              icon={<ReloadOutlined />} 
-              size="small"
-              onClick={fetchRenodeDevices}
-            >
-              Refresh Renode
-            </Button>
-          }
-        >
-          <Row gutter={[16, 16]}>
-            {renodeDevices.map((device, index) => (
-              <Col xs={24} sm={12} md={8} lg={6} key={device.id || index}>
-                <Card size="small" hoverable>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: 8 }}>
-                      {device.name}
-                    </div>
-                    <Tag color={device.status === 'Running' ? 'green' : 'default'}>
-                      {device.status}
-                    </Tag>
-                    <div style={{ fontSize: '12px', color: '#666', marginTop: 4 }}>
-                      {device.mcu_type} • {device.architecture}
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#999', marginTop: 2 }}>
-                      {device.endpoint}
-                    </div>
-                  </div>
-                </Card>
-              </Col>
-            ))}
-            {renodeDevices.length === 0 && (
-              <Col span={24}>
-                <div style={{ textAlign: 'center', color: '#999', padding: '20px 0' }}>
-                  No Renode devices available
-                </div>
-              </Col>
-            )}
-          </Row>
-        </Card>
-
         <Table
           columns={columns}
           dataSource={devices}
-          rowKey={(record) => record.device_id || record.id || Math.random()}
+          rowKey={(record) => record.device_id || record.id || `device-${record.name || ''}`}
           loading={loading}
           pagination={{
             pageSize: 10,
@@ -615,16 +628,13 @@ const DeviceManagement = () => {
           <Form.Item
             name="mcuType"
             label="MCU Type"
-            help="Select the specific MCU for Renode emulation"
+            help="Select the specific MCU for Renode emulation (only Renode-compatible devices are available)"
             rules={[{ required: true, message: 'Please select an MCU type!' }]}
           >
             <Select placeholder="Select MCU Type">
-              <Option value="Mps2An385">ARM MPS2-AN385 (Cortex-M3) - Default, most compatible</Option>
-              <Option value="Mps2An386">ARM MPS2-AN386 (Cortex-M4) - Enhanced with FPU</Option>
-              <Option value="Mps2An500">ARM MPS2-AN500 (Cortex-M7) - High performance</Option>
-              <Option value="Mps2An505">ARM MPS2-AN505 (Cortex-M33) - TrustZone support</Option>
-              <Option value="Stm32Vldiscovery">STM32VLDISCOVERY (Cortex-M3) - STMicroelectronics</Option>
-              <Option value="OlimexStm32H405">Olimex STM32-H405 (Cortex-M4) - Olimex board</Option>
+              <Option value="RenodeArduinoNano33Ble">Arduino Nano 33 BLE (Cortex-M4) - nRF52840, 1MB RAM, Bluetooth LE</Option>
+              <Option value="RenodeStm32F4Discovery">STM32F4 Discovery (Cortex-M4) - STMicroelectronics, 1MB RAM, Audio codec</Option>
+              <Option value="RenodeArduinoUnoR4">Arduino Uno R4 (Cortex-M4) - Renesas RA4M1, 512KB RAM, WiFi/Bluetooth</Option>
             </Select>
           </Form.Item>
 
@@ -645,18 +655,64 @@ const DeviceManagement = () => {
 
           <Form.Item>
             <Space>
-              <Button type="primary" htmlType="submit">
-                Create Device
+              <Button 
+                type="primary" 
+                htmlType="submit"
+                loading={creatingDevice}
+                disabled={creatingDevice}
+              >
+                {creatingDevice ? 'Creating Device...' : 'Create Device'}
               </Button>
-              <Button onClick={() => {
-                setModalVisible(false);
-                form.resetFields();
-              }}>
+              <Button 
+                onClick={() => {
+                  setModalVisible(false);
+                  form.resetFields();
+                }}
+                disabled={creatingDevice}
+              >
                 Cancel
               </Button>
             </Space>
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Device Public Key"
+        open={publicKeyModalVisible}
+        onCancel={() => setPublicKeyModalVisible(false)}
+        footer={[
+          <Button key="copy" type="primary" onClick={() => {
+            navigator.clipboard.writeText(selectedPublicKey);
+          }}>
+            Copy to Clipboard
+          </Button>,
+          <Button key="close" onClick={() => setPublicKeyModalVisible(false)}>
+            Close
+          </Button>
+        ]}
+        width={700}
+      >
+        <Typography.Paragraph>
+          <strong>Public Key (Base64):</strong>
+        </Typography.Paragraph>
+        <Typography.Paragraph
+          style={{
+            backgroundColor: '#f5f5f5',
+            padding: '12px',
+            borderRadius: '4px',
+            wordBreak: 'break-all',
+            fontFamily: 'monospace',
+            fontSize: '12px',
+            maxHeight: '300px',
+            overflow: 'auto'
+          }}
+        >
+          {selectedPublicKey || 'No public key available'}
+        </Typography.Paragraph>
+        <Typography.Paragraph type="secondary" style={{ fontSize: '12px', marginTop: '8px' }}>
+          This is the Ed25519 public key generated for this device. It is used for TLS authentication and device identification.
+        </Typography.Paragraph>
       </Modal>
     </div>
   );

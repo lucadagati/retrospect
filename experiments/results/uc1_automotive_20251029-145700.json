@@ -1,0 +1,12 @@
+{
+  "timestamp": "20251029-145700",
+  "use_case": "automotive_cyber_car",
+  "baseline_metrics_source": "scalability_40d_2g_20251029_141905.json",
+  "api_latency_avg_ms": 80.06423333950806,
+  "api_latency_p95_ms": 87.60161479702221,
+  "throughput_req_per_sec": 12.500452935007962,
+  "time_to_enrolled_s": -1,
+  "ecu_failure_simulated": true,
+  "ecu_device": "uc1-ecu-1761749821",
+  "automotive_note": "Baseline operation validated. ECU failure/recovery observed via device deletion. Migration requires multi-replica app deployment."
+}

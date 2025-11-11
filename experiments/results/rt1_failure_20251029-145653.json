@@ -1,0 +1,9 @@
+{
+  "timestamp": "20251029-145653",
+  "test_device": "rt1-fail-test-1761749813",
+  "initial_status": "unknown",
+  "controller_failure_injected": true,
+  "recovery_time_ms": 0,
+  "controller_recovered": false,
+  "final_device_status": "unknown"
+}

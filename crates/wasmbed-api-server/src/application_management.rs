@@ -52,10 +52,21 @@ impl ApplicationManager {
                         .unwrap_or("unknown")
                         .to_string();
                     
-                    let status = item["status"]["phase"]
+                    // Get status phase, defaulting to "Pending" if not available
+                    // Handle cases where status doesn't exist, is null, or phase is missing
+                    let status = if let Some(status_obj) = item.get("status") {
+                        if status_obj.is_null() {
+                            "Pending".to_string()
+                        } else {
+                            status_obj["phase"]
                         .as_str()
-                        .unwrap_or("unknown")
-                        .to_string();
+                                .filter(|s| !s.is_empty() && *s != "null" && *s != "undefined")
+                                .unwrap_or("Pending")
+                                .to_string()
+                        }
+                    } else {
+                        "Pending".to_string()
+                    };
                     
                     let name = item["spec"]["name"]
                         .as_str()
@@ -82,10 +93,37 @@ impl ApplicationManager {
                         .unwrap_or(SystemTime::now());
                     
                     // Extract target devices from spec
-                    let target_devices = item["spec"]["targetDevices"]["deviceNames"]
-                        .as_array()
-                        .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(|s| s.to_string()).collect())
-                        .or_else(|| {
+                    // Handle cases where targetDevices doesn't exist, is null, or deviceNames is missing
+                    let target_devices = if let Some(spec) = item.get("spec") {
+                        if let Some(target_devices_obj) = spec.get("targetDevices") {
+                            if target_devices_obj.is_null() {
+                                None
+                            } else if let Some(device_names) = target_devices_obj.get("deviceNames") {
+                                if device_names.is_null() {
+                                    None
+                                } else if let Some(arr) = device_names.as_array() {
+                                    let devices: Vec<String> = arr.iter()
+                                        .filter_map(|v| v.as_str())
+                                        .filter(|s| !s.is_empty() && *s != "null" && *s != "undefined")
+                                        .map(|s| s.to_string())
+                                        .collect();
+                                    if devices.is_empty() {
+                                        None
+                                    } else {
+                                        Some(devices)
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }.or_else(|| {
                             // Fallback to deployed_devices if targetDevices not found
                             if !deployed_devices.is_empty() {
                                 Some(deployed_devices.clone())

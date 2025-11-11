@@ -1,0 +1,33 @@
+# Multi-stage build for Wasmbed Application Controller
+FROM rust:latest as builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy Cargo files
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ crates/
+COPY firmware/ firmware/
+
+# Build the application controller
+# Exclude firmware packages that may not be present
+RUN cargo build --release --bin wasmbed-application-controller --workspace --exclude wasmbed-firmware-arduino-nano-33-ble || cargo build --release --bin wasmbed-application-controller
+
+# Runtime stage
+FROM debian:testing-slim
+
+# Install runtime dependencies including kubectl
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    && curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    && chmod +x kubectl \
+    && mv kubectl /usr/local/bin/ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the binary
+COPY --from=builder /app/target/release/wasmbed-application-controller /usr/local/bin/
+
+# Run the application controller
+CMD ["wasmbed-application-controller"]
+

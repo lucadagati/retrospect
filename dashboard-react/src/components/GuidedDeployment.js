@@ -36,6 +36,8 @@ const GuidedDeployment = ({ visible, onCancel, onSuccess }) => {
   const [form] = Form.useForm();
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [compilationStatus, setCompilationStatus] = useState('idle');
+  const [compiledWasm, setCompiledWasm] = useState(null); // Store compiled WASM separately from form
+  const [selectedTargetDevices, setSelectedTargetDevices] = useState([]); // Store selected target devices
   const [availableDevices, setAvailableDevices] = useState([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
   const { message } = App.useApp();
@@ -48,18 +50,17 @@ const GuidedDeployment = ({ visible, onCancel, onSuccess }) => {
       setSelectedTemplate(null);
       setCompilationStatus('idle');
       setAvailableDevices([]);
-      
-      // Reset form
-      form.resetFields();
-      form.setFieldsValue({
-        compiledWasm: null
-      });
+      setSelectedTargetDevices([]); // Reset selected target devices
+      // Reset compiled WASM state
+      setCompiledWasm(null);
+      // Don't reset form here - it will be reset when the Form component mounts
+      // Resetting here causes the warning about form not being connected
       
       console.log('Modal opened - all state reset');
       
       loadAvailableDevices();
     }
-  }, [visible]);
+  }, [visible, form]);
 
   const loadAvailableDevices = async () => {
     setLoadingDevices(true);
@@ -207,16 +208,9 @@ fn main() {
     // Reset compilation status when changing template
     setCompilationStatus('idle');
     
-    // Reset form values and clear compiled WASM
-    form.setFieldsValue({
-      name: template.name.toLowerCase().replace(/\s+/g, '-'),
-      description: template.description,
-      language: template.language,
-      compiledWasm: null, // Clear any previously compiled WASM
-      targetDevices: [] // Clear target devices
-    });
-    
-    console.log('Template selected:', template.name, '- Compilation status reset');
+    // Target devices are now preserved in state (selectedTargetDevices)
+    // No need to manually preserve them in the form since initialValues uses the state
+    console.log('Template selected:', template.name, 'Target devices preserved in state:', selectedTargetDevices);
   };
 
   const handleCompile = async () => {
@@ -257,12 +251,21 @@ fn main() {
         setCompilationStatus('success');
         message.success(`Code compiled successfully! WASM size: ${result.size} bytes`);
         
-        // Store the compiled WASM bytes for deployment
+        // Store the compiled WASM bytes in state and form
+        if (result.wasmBytes) {
+          setCompiledWasm(result.wasmBytes);
+          // Also store in form for the deploy step
+          if (form) {
         form.setFieldsValue({ compiledWasm: result.wasmBytes });
-        
-        console.log('WASM compiled and stored:', result.wasmBytes ? 'YES' : 'NO');
+          }
+          console.log('WASM compiled and stored:', 'YES');
         console.log('WASM size:', result.size, 'bytes');
-        console.log('WASM length:', result.wasmBytes ? result.wasmBytes.length : 0);
+          console.log('WASM length:', result.wasmBytes.length);
+        } else {
+          console.error('WASM bytes missing from response:', result);
+          message.error('Compilation succeeded but WASM bytes are missing');
+          setCompilationStatus('error');
+        }
       } else {
         setCompilationStatus('error');
         message.error(`Compilation failed: ${result.error}`);
@@ -277,13 +280,36 @@ fn main() {
 
   const handleDeploy = async (values) => {
     try {
-      // Get compiled WASM bytes
-      const compiledWasm = values.compiledWasm;
+      // Get compiled WASM bytes from state (more reliable than form values)
+      const wasmToDeploy = compiledWasm || values.compiledWasm;
+      
+      // Get form values with fallback to template or form.getFieldsValue()
+      const formValues = form ? form.getFieldsValue() : {};
+      // Generate a unique name if all fallbacks fail
+      const generateDefaultName = () => {
+        const timestamp = Date.now();
+        const templateName = selectedTemplate?.name || 'application';
+        return `${templateName.toLowerCase().replace(/\s+/g, '-')}-${timestamp}`;
+      };
+      const appName = (values.name && values.name !== 'undefined') 
+        ? values.name 
+        : (formValues.name && formValues.name !== 'undefined')
+        ? formValues.name
+        : (selectedTemplate?.name ? selectedTemplate.name.toLowerCase().replace(/\s+/g, '-') : null)
+        || generateDefaultName();
+      const appDescription = values.description || formValues.description || selectedTemplate?.description || '';
+      const appLanguage = values.language || formValues.language || selectedTemplate?.language || '';
       
       console.log('=== DEPLOYMENT DEBUG ===');
       console.log('Deployment values:', values);
-      console.log('Compiled WASM present:', compiledWasm ? 'YES' : 'NO');
-      console.log('Compiled WASM length:', compiledWasm ? compiledWasm.length : 0);
+      console.log('Form values:', formValues);
+      console.log('App name:', appName);
+      console.log('App description:', appDescription);
+      console.log('App language:', appLanguage);
+      console.log('Compiled WASM from state:', compiledWasm ? 'YES' : 'NO');
+      console.log('Compiled WASM from form:', values.compiledWasm ? 'YES' : 'NO');
+      console.log('Compiled WASM to deploy:', wasmToDeploy ? 'YES' : 'NO');
+      console.log('Compiled WASM length:', wasmToDeploy ? wasmToDeploy.length : 0);
       console.log('Selected template:', selectedTemplate?.name);
       console.log('Compilation status:', compilationStatus);
       
@@ -293,7 +319,7 @@ fn main() {
         return;
       }
       
-      if (!compiledWasm) {
+      if (!wasmToDeploy) {
         message.error('No compiled WASM found. Please compile your code first.');
         return;
       }
@@ -303,20 +329,50 @@ fn main() {
         return;
       }
 
+      if (!appName) {
+        message.error('Application name is required. Please enter a name.');
+        return;
+      }
+
+      // Get target devices from form with fallback to state
+      const targetDevicesFromForm = values.targetDevices || formValues.targetDevices;
+      console.log('Target devices from form values:', values.targetDevices);
+      console.log('Target devices from formValues:', formValues.targetDevices);
+      console.log('Target devices from state:', selectedTargetDevices);
+      
+      // Use form values if available, otherwise fall back to state
+      const targetDevicesFinal = targetDevicesFromForm || selectedTargetDevices;
+      console.log('Final target devices (before validation):', targetDevicesFinal);
+      
+      // Ensure targetDevices is an array
+      const targetDevices = Array.isArray(targetDevicesFinal) && targetDevicesFinal.length > 0
+        ? targetDevicesFinal
+        : [];
+      
+      if (targetDevices.length === 0) {
+        message.warning('No target devices selected. The application will be created without target devices.');
+      }
+
       // Create application with compiled WASM
       const application = {
-        name: values.name,
-        description: values.description,
-        language: values.language,
+        name: appName,
+        description: appDescription,
+        language: appLanguage,
         template: selectedTemplate?.id,
-        wasmBytes: compiledWasm,
-        targetDevices: values.targetDevices || []
+        wasmBytes: wasmToDeploy,
+        targetDevices: targetDevices
       };
 
       console.log('Creating application:', application.name);
-      console.log('Target devices:', application.targetDevices);
+      console.log('Target devices in request:', application.targetDevices);
 
       // Deploy to API server
+      console.log('=== SENDING REQUEST TO API ===');
+      console.log('Request body:', JSON.stringify(application, null, 2));
+      console.log('targetDevices type:', typeof application.targetDevices);
+      console.log('targetDevices is array:', Array.isArray(application.targetDevices));
+      console.log('targetDevices length:', application.targetDevices?.length);
+      
       const response = await fetch('/api/v1/applications', {
         method: 'POST',
         headers: {
@@ -397,11 +453,14 @@ fn main() {
             <Form
               form={form}
               layout="vertical"
+              key={`deploy-form-${selectedTemplate?.id || 'default'}`}
+              preserve={true}
               initialValues={{
                 name: selectedTemplate?.name.toLowerCase().replace(/\s+/g, '-'),
                 description: selectedTemplate?.description,
                 language: selectedTemplate?.language,
-                compiledWasm: null
+                compiledWasm: compiledWasm || null,
+                targetDevices: selectedTargetDevices // Use state instead of empty array
               }}
             >
               <Row gutter={16}>
@@ -448,6 +507,11 @@ fn main() {
                   placeholder="Select target devices"
                   loading={loadingDevices}
                   optionFilterProp="children"
+                  onChange={(value) => {
+                    console.log('Target devices selected in form:', value);
+                    setSelectedTargetDevices(value); // Save to state
+                    form.setFieldsValue({ targetDevices: value }); // Save to form
+                  }}
                 >
                   {availableDevices.map(device => (
                     <Option key={device.id || device.name} value={device.id || device.name}>
@@ -620,11 +684,27 @@ fn main() {
     
     // If going to step 2 (compile), reset compilation status if no WASM is stored
     if (currentStep === 1 && currentStep + 1 === 2) {
-      const compiledWasm = form.getFieldValue('compiledWasm');
       if (!compiledWasm) {
         setCompilationStatus('idle');
         console.log('Going to compile step - resetting status to idle');
+      } else {
+        // If WASM is already compiled, keep the success status
+        setCompilationStatus('success');
+        console.log('WASM already compiled, keeping success status');
       }
+    }
+    
+    // If going to step 3 (deploy), check if WASM is compiled
+    if (currentStep === 2 && currentStep + 1 === 3) {
+      if (!compiledWasm && compilationStatus !== 'success') {
+        message.warning('Please compile your code before deploying');
+        return; // Don't advance to deploy step
+      }
+      
+      // Target devices are preserved in state (selectedTargetDevices)
+      // Form will use them from initialValues
+      console.log('=== NAVIGATING TO DEPLOY STEP ===');
+      console.log('Target devices from state:', selectedTargetDevices);
     }
     
     setCurrentStep(currentStep + 1);
@@ -641,10 +721,36 @@ fn main() {
   };
 
   const handleFinish = () => {
-    form.validateFields().then(values => {
-      handleDeploy(values);
+    // Get all form values, not just validated fields from current step
+    // This ensures we get targetDevices from step 1 even if we're on step 3
+    const allFormValues = form ? form.getFieldsValue() : {};
+    console.log('=== HANDLE FINISH DEBUG ===');
+    console.log('All form values before validation:', allFormValues);
+    console.log('targetDevices from form:', allFormValues.targetDevices);
+    console.log('targetDevices type:', typeof allFormValues.targetDevices);
+    console.log('targetDevices is array:', Array.isArray(allFormValues.targetDevices));
+    console.log('targetDevices length:', allFormValues.targetDevices?.length);
+    
+    // Try to get targetDevices from form field directly
+    const targetDevicesDirectly = form ? form.getFieldValue('targetDevices') : undefined;
+    console.log('targetDevices directly from getFieldValue:', targetDevicesDirectly);
+    
+    // Validate only required fields for deploy step
+    form.validateFields(['name']).then(values => {
+      // Merge validated values with all form values to ensure we have targetDevices
+      const mergedValues = {
+        ...allFormValues,
+        ...values
+      };
+      console.log('Merged values for deploy:', mergedValues);
+      console.log('Merged targetDevices:', mergedValues.targetDevices);
+      handleDeploy(mergedValues);
     }).catch(error => {
       console.error('Validation failed:', error);
+      // Even if validation fails, try to deploy with all form values
+      // (user might have selected devices but validation failed on another field)
+      console.log('Attempting deploy with all form values despite validation error');
+      handleDeploy(allFormValues);
     });
   };
 

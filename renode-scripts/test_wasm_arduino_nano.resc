@@ -1,0 +1,33 @@
+using sysbus
+
+# Test WASM Runtime su Arduino Nano 33 BLE (nRF52840)
+echo "=== Test WASM Runtime - Arduino Nano 33 BLE ==="
+
+# Crea machine
+mach create "wasm-arduino-nano"
+machine LoadPlatformDescription @platforms/boards/arduino_nano_33_ble.repl
+
+# Setup UART per output
+showAnalyzer sysbus.uart0
+
+# Carica firmware ARM
+$firmware_path?=@target/thumbv7em-none-eabihf/release/wasmbed-device-runtime
+if exists $firmware_path:
+    echo "Caricamento firmware..."
+    sysbus LoadELF $firmware_path
+    echo "Firmware caricato"
+    echo ""
+    echo "Avvio esecuzione..."
+    echo "Controlla UART analyzer per i log WASM"
+    echo ""
+    start
+else:
+    echo "ERRORE: Firmware non trovato: $firmware_path"
+    echo ""
+    echo "Compila prima con:"
+    echo "  ./scripts/build-wasm-runtime-arm.sh"
+    echo ""
+    echo "Oppure carica manualmente:"
+    echo "  sysbus LoadELF @target/thumbv7em-none-eabihf/release/wasmbed-device-runtime"
+    echo "  start"
+

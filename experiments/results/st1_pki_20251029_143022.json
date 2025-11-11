@@ -1,0 +1,7 @@
+{
+  "timestamp": "20251029_143022",
+  "ca_cert_expiry": "Oct 29 09:25:42 2026 GMT",
+  "cert_version": "3",
+  "cert_in_k8s_secret": true,
+  "validation_note": "PKI infrastructure validated. Full rotation/revocation testing requires extended test setup."
+}

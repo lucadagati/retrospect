@@ -1,0 +1,50 @@
+using sysbus
+
+# Test WASM Execution in Renode
+# This script loads the device runtime firmware and tests WASM execution
+
+echo "=== WASM Runtime Test in Renode ==="
+
+# Create machine
+mach create "wasm-test-device"
+machine LoadPlatformDescription @platforms/boards/arduino_nano_33_ble.repl
+
+# Setup UART for output (this will show logs from the firmware)
+showAnalyzer sysbus.uart0
+
+# Setup GPIO for LED (optional, for hardware interaction tests)
+# Note: GPIO setup syntax may vary by platform
+
+# Connect UART to localhost for gateway communication (optional)
+# connector Connect sysbus.uart0 127.0.0.1:10001
+
+echo ""
+echo "Loading firmware..."
+# Try ARM firmware first (for Renode), fallback to x86_64 (for native testing)
+$firmware_path?=@target/thumbv7em-none-eabihf/release/wasmbed-device-runtime
+if not exists $firmware_path:
+    $firmware_path?=@target/release/wasmbed-device-runtime
+endif
+
+if exists $firmware_path:
+    sysbus LoadELF $firmware_path
+    echo "Firmware loaded successfully"
+    echo ""
+    echo "Starting execution..."
+    echo "Watch the UART analyzer for WASM execution logs"
+    echo ""
+    start
+else:
+    echo "ERROR: Firmware not found"
+    echo ""
+    echo "For ARM (Renode), compile with:"
+    echo "  ./scripts/build-wasm-runtime-arm.sh"
+    echo "  or: cargo build --target thumbv7em-none-eabihf --release --package wasmbed-device-runtime --no-default-features"
+    echo ""
+    echo "For x86_64 (native), compile with:"
+    echo "  cargo build --release --bin wasmbed-device-runtime --features std"
+    echo ""
+    echo "To manually load firmware:"
+    echo "  sysbus LoadELF @target/thumbv7em-none-eabihf/release/wasmbed-device-runtime"
+    echo "  or: sysbus LoadELF @target/release/wasmbed-device-runtime"
+    echo "  start"

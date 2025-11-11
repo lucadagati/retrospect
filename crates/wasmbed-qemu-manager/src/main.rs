@@ -90,7 +90,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Start { id } => {
             let manager = RenodeManager::new("renode".to_string(), 30000);
-            manager.start_device(&id).await?;
+            manager.start_device(&id, None).await?;
             println!("Started device: {}", id);
         }
         Commands::Stop { id } => {

@@ -1,0 +1,36 @@
+using sysbus
+
+# Test WASM Runtime su STM32F4 Discovery
+echo "=== Test WASM Runtime - STM32F4 Discovery ==="
+
+# Crea machine
+mach create "wasm-stm32f4"
+machine LoadPlatformDescription @platforms/boards/stm32f4_discovery.repl
+
+# Setup UART per output
+showAnalyzer sysbus.usart2
+
+# Setup ADC (opzionale, per sensori)
+# sysbus.adc1 TemperatureSensor @ sysbus.adc1 0
+
+# Carica firmware ARM
+$firmware_path?=@target/thumbv7em-none-eabihf/release/wasmbed-device-runtime
+if exists $firmware_path:
+    echo "Caricamento firmware..."
+    sysbus LoadELF $firmware_path
+    echo "Firmware caricato"
+    echo ""
+    echo "Avvio esecuzione..."
+    echo "Controlla UART analyzer per i log WASM"
+    echo ""
+    start
+else:
+    echo "ERRORE: Firmware non trovato: $firmware_path"
+    echo ""
+    echo "Compila prima con:"
+    echo "  ./scripts/build-wasm-runtime-arm.sh"
+    echo ""
+    echo "Oppure carica manualmente:"
+    echo "  sysbus LoadELF @target/thumbv7em-none-eabihf/release/wasmbed-device-runtime"
+    echo "  start"
+

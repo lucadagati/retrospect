@@ -1,0 +1,5 @@
+{
+  "timestamp": "20251029_143022",
+  "resource_efficiency_summary": [],
+  "metrics_sources": ["/home/lucadag/18_10_23_retrospect/retrospect/experiments/results/scalability_100d_5g_20251029_142822.json","/home/lucadag/18_10_23_retrospect/retrospect/experiments/results/scalability_40d_2g_20251029_141905.json","/home/lucadag/18_10_23_retrospect/retrospect/experiments/results/scalability_60d_3g_20251029_142358.json"]
+}

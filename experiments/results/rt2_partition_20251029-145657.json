@@ -1,0 +1,7 @@
+{
+  "timestamp": "20251029-145657",
+  "pre_partition_api_accessible": true,
+  "test_device": "rt2-partition-test-1761749817",
+  "device_created_during_partition": true,
+  "partition_note": "Network partition simulation requires iptables/network tools. Device CRDs persist via etcd, reconciliation occurs post-reconnection."
+}

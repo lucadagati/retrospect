@@ -21,11 +21,13 @@ spec:
       serviceAccountName: wasmbed-device-controller
       containers:
       - name: device-controller
-        image: wasmbed-device-controller:latest
-        imagePullPolicy: Never
+        image: wasmbed/device-controller:latest
+        imagePullPolicy: IfNotPresent
         env:
         - name: RUST_LOG
           value: "info"
+        - name: WASMBED_API_SERVER_URL
+          value: "http://172.18.0.1:3001"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -45,11 +47,13 @@ spec:
       serviceAccountName: wasmbed-application-controller
       containers:
       - name: application-controller
-        image: wasmbed-application-controller:latest
-        imagePullPolicy: Never
+        image: wasmbed/application-controller:latest
+        imagePullPolicy: IfNotPresent
         env:
         - name: RUST_LOG
           value: "info"
+        - name: GATEWAY_ENDPOINT
+          value: "http://wasmbed-gateway.wasmbed.svc.cluster.local:8080"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -69,7 +73,7 @@ spec:
       serviceAccountName: wasmbed-gateway-controller
       containers:
       - name: gateway-controller
-        image: wasmbed-gateway-controller:latest
+        image: wasmbed/gateway-controller:latest
         imagePullPolicy: Never
         env:
         - name: RUST_LOG
@@ -90,18 +94,45 @@ spec:
       labels:
         app: wasmbed-gateway
     spec:
+      serviceAccountName: wasmbed-gateway
       containers:
       - name: gateway
-        image: wasmbed-gateway:latest
+        image: wasmbed/gateway:latest
         imagePullPolicy: Never
+        command:
+        - /usr/local/bin/wasmbed-gateway
+        - --bind-addr
+        - "0.0.0.0:8081"
+        - --http-addr
+        - "0.0.0.0:8080"
+        - --private-key
+        - /certs/server-key.pem
+        - --certificate
+        - /certs/server-cert.pem
+        - --client-ca
+        - /certs/ca-cert.pem
+        - --namespace
+        - wasmbed
+        - --pod-namespace
+        - wasmbed
+        - --pod-name
+        - wasmbed-gateway
         ports:
         - containerPort: 8080
           name: http
-        - containerPort: 8443
+        - containerPort: 8081
           name: tls
         env:
         - name: RUST_LOG
           value: "info"
+        volumeMounts:
+        - name: certificates
+          mountPath: /certs
+          readOnly: true
+      volumes:
+      - name: certificates
+        secret:
+          secretName: gateway-certificates
 ---
 apiVersion: v1
 kind: Service
@@ -116,8 +147,8 @@ spec:
     port: 8080
     targetPort: 8080
   - name: tls
-    port: 8443
-    targetPort: 8443
+    port: 8081
+    targetPort: 8081
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -157,43 +188,3 @@ spec:
   - name: http
     port: 8080
     targetPort: 8080
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: wasmbed-dashboard
-  namespace: wasmbed
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: wasmbed-dashboard
-  template:
-    metadata:
-      labels:
-        app: wasmbed-dashboard
-    spec:
-      containers:
-      - name: dashboard
-        image: wasmbed-dashboard:latest
-        imagePullPolicy: Never
-        ports:
-        - containerPort: 3000
-          name: http
-        env:
-        - name: RUST_LOG
-          value: "info"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: wasmbed-dashboard
-  namespace: wasmbed
-spec:
-  selector:
-    app: wasmbed-dashboard
-  ports:
-  - name: http
-    port: 3000
-    targetPort: 3000
-  type: LoadBalancer

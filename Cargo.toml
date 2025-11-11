@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/wasmbed-tcp-bridge",
     "crates/wasmbed-cert",
     "crates/wasmbed-cert-tool",
     "crates/wasmbed-gateway",
@@ -24,6 +25,7 @@ members = [
     "crates/wasmbed-qemu-serial-bridge",
     "crates/wasmbed-config",
     "crates/wasmbed-config-manager",
+    "crates/wasmparser-nostd-fork",
     "firmware",
 ]
 
@@ -79,3 +81,18 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
+
+# Workspace dependencies to resolve version conflicts
+[workspace.dependencies]
+# TLS dependencies (for device-runtime)
+# Note: rustls 0.23 requires subtle ^2.5.0
+# embedded-tls 0.8 requires subtle <2.5, but we can test without TLS (TCP only)
+# ed25519-dalek 2.2 requires subtle ^2.3.0 (compatible with 2.5.0)
+embedded-tls = { git = "https://github.com/fratrung/embedded-tls.git", default-features = true }  # Fork with Ed25519 support and correct exports
+embedded-io = { version = "0.6", default-features = false }
+# Force compatible versions to resolve conflicts
+# Use subtle 2.5.0 for rustls 0.23 (ed25519-dalek 2.2 is compatible with ^2.3.0 which includes 2.5.0)
+subtle = { version = "2.5", default-features = false }
+ed25519-dalek = { version = "2.2", default-features = false }
+
+# Note: Fork wasmparser-nostd-fork handles indexmap substitution internally

@@ -1,0 +1,9 @@
+{
+  "timestamp": "20251029-145628",
+  "test_device": "ft4-reconcile-1761749788",
+  "create_time_ms": 3069,
+  "update_reconcile_time_ms": 2074,
+  "label_applied": "reconcile-test",
+  "delete_time_ms": 3065,
+  "deleted_successfully": true
+}

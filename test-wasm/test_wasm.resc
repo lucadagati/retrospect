@@ -1,0 +1,20 @@
+using sysbus
+
+# Create machine
+mach create "wasm-test"
+machine LoadPlatformDescription @platforms/boards/arduino_nano_33_ble.repl
+
+# Setup UART for output
+showAnalyzer sysbus.uart0
+
+# Note: In a real test, we would:
+# 1. Compile the device runtime to ELF binary
+# 2. Load it: sysbus LoadELF @firmware.elf
+# 3. Start execution: start
+# 4. Monitor UART for WASM execution logs
+
+echo "WASM Runtime Test Environment Ready"
+echo "To test WASM execution:"
+echo "1. Compile firmware: cargo build --target thumbv7em-none-eabihf --release"
+echo "2. Load firmware: sysbus LoadELF @target/thumbv7em-none-eabihf/release/wasmbed-device-runtime"
+echo "3. Start: start"

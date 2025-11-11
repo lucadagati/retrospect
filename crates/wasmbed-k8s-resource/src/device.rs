@@ -32,6 +32,9 @@ pub struct DeviceSpec {
     /// MCU type for QEMU emulation
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mcu_type: Option<String>,
+    /// Preferred gateway name (optional - if not set, round-robin is used)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preferred_gateway: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]

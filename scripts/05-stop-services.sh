@@ -61,13 +61,17 @@ print_status "INFO" "Stopping any remaining Wasmbed processes..."
 pkill -f "wasmbed-" 2>/dev/null || true
 pkill -f "wasmbed_" 2>/dev/null || true
 
+# Stop port-forwards
+print_status "INFO" "Stopping kubectl port-forwards..."
+pkill -f "kubectl port-forward" 2>/dev/null || true
+
 # Force kill processes using Wasmbed ports
 print_status "INFO" "Force killing processes using Wasmbed ports..."
 sudo fuser -k 30460/tcp 2>/dev/null || true
 sudo fuser -k 30470/tcp 2>/dev/null || true
 sudo fuser -k 30450/tcp 2>/dev/null || true
 sudo fuser -k 30451/tcp 2>/dev/null || true
-sudo fuser -k 8080/tcp 8081/tcp 2>/dev/null || true
+sudo fuser -k 3000/tcp 3001/tcp 8080/tcp 8081/tcp 8443/tcp 2>/dev/null || true
 sleep 2
 
 # Stop k3d cluster
@@ -80,9 +84,9 @@ rm -f .*.pid .wasmbed-pids 2>/dev/null || true
 
 # Verify ports are free
 print_status "INFO" "Verifying ports are free..."
-if netstat -tlnp 2>/dev/null | grep -E "30460|30470|30450|30451|8080|8081" >/dev/null; then
+if netstat -tlnp 2>/dev/null | grep -E "30460|30470|30450|30451|3000|3001|8080|8081|8443" >/dev/null; then
     print_status "WARNING" "Some Wasmbed ports are still in use"
-    netstat -tlnp 2>/dev/null | grep -E "30460|30470|30450|30451|8080|8081" || true
+    netstat -tlnp 2>/dev/null | grep -E "30460|30470|30450|30451|3000|3001|8080|8081|8443" || true
 else
     print_status "SUCCESS" "All Wasmbed ports are free"
 fi
