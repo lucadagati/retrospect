@@ -1,0 +1,14 @@
+{
+  "device-test-1": {
+    "id": "device-test-1",
+    "name": "device-test-1",
+    "architecture": "ARM_CORTEX_M",
+    "device_type": "MCU",
+    "mcu_type": "RenodeArduinoNano33Ble",
+    "status": "Stopped",
+    "process_id": null,
+    "endpoint": "127.0.0.1:30463",
+    "gateway_endpoint": null,
+    "wasm_runtime": null
+  }
+}

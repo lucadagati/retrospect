@@ -269,16 +269,16 @@ impl RenodeManager {
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             println!("Renode process for device {} exited early with status: {:?}", device_id_clone, status);
-                            // Process ended, update status
-                            let rt = tokio::runtime::Runtime::new().unwrap();
-                            rt.block_on(async {
-                                let mut devices = devices_clone.lock().await;
-                                if let Some(device) = devices.get_mut(&device_id_clone) {
-                                    device.status = QemuDeviceStatus::Stopped;
-                                    device.process_id = None;
-                                    println!("Updated device {} status to Stopped", device_id_clone);
-                                }
-                            });
+                    // Process ended, update status
+                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    rt.block_on(async {
+                        let mut devices = devices_clone.lock().await;
+                        if let Some(device) = devices.get_mut(&device_id_clone) {
+                            device.status = QemuDeviceStatus::Stopped;
+                            device.process_id = None;
+                            println!("Updated device {} status to Stopped", device_id_clone);
+                        }
+                    });
                         }
                         Ok(None) => {
                             // Process is still running, which is good
@@ -440,7 +440,7 @@ impl RenodeManager {
         } else {
             // Use RENODE_PATH environment variable or use latest version from /tmp/renode_latest
             std::env::var("RENODE_PATH")
-                .unwrap_or_else(|_| {
+            .unwrap_or_else(|_| {
                     // Use latest Renode from /tmp/renode_latest
                     let latest_path = std::path::Path::new("/tmp/renode_latest/renode");
                     if latest_path.exists() {
@@ -452,7 +452,7 @@ impl RenodeManager {
         };
         
         // Find firmware path (ARM build) - use absolute path
-        let current_dir = std::env::current_dir().unwrap_or_default();
+                let current_dir = std::env::current_dir().unwrap_or_default();
         
         // For Renode, prefer firmware compiled with std feature (for real TCP connections)
         // Fallback to no_std firmware if std version doesn't exist

@@ -377,10 +377,10 @@ fn main() {
                                 
                                 // Load and execute WASM
                                 match WasmInstance::load_module(&wasm_bytes) {
-                                    Ok(mut instance) => {
-                                        info!("WASM module loaded successfully");
-                                        match instance.execute() {
-                                            Ok(_) => {
+        Ok(mut instance) => {
+            info!("WASM module loaded successfully");
+            match instance.execute() {
+        Ok(_) => {
                                                 info!("✅ WASM execution completed successfully");
                                                 let _ = tls_client.send_deployment_ack(&app_id, true, None);
                                             }
@@ -399,19 +399,19 @@ fn main() {
                             ServerMessage::StopApplication { app_id } => {
                                 info!("🛑 Stopping application: {}", app_id);
                                 let _ = tls_client.send_stop_ack(&app_id, true, None);
-                            }
+                        }
                             ServerMessage::HeartbeatAck => {
                                 info!("💓 Heartbeat acknowledged");
                             }
                             _ => {
                                 warn!("❓ Received unhandled message type");
-                            }
+                    }
                         }
                     }
                     Ok(None) => {
                         // No messages, continue
-                    }
-                    Err(e) => {
+                }
+                Err(e) => {
                         error!("Error receiving message: {}", e);
                         break;
                     }

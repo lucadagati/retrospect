@@ -23,7 +23,7 @@ echo "Loading firmware..."
 # Try ARM firmware first (for Renode), fallback to x86_64 (for native testing)
 $firmware_path?=@target/thumbv7em-none-eabihf/release/wasmbed-device-runtime
 if not exists $firmware_path:
-    $firmware_path?=@target/release/wasmbed-device-runtime
+$firmware_path?=@target/release/wasmbed-device-runtime
 endif
 
 if exists $firmware_path:

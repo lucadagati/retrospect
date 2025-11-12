@@ -455,7 +455,8 @@ impl DashboardApi {
                     "type": d.device_type,
                     "architecture": d.architecture,
                     "status": d.status,
-                    "gateway": d.gateway_id,
+                    "gatewayId": d.gateway_id,
+                    "gateway_id": d.gateway_id, // For backward compatibility
                     "mcuType": d.mcu_type.unwrap_or_else(|| "Mps2An385".to_string()),
                     "lastHeartbeat": d.last_heartbeat.map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()),
                     "publicKey": d.public_key
@@ -471,9 +472,11 @@ impl DashboardApi {
         match tokio::time::timeout(Duration::from_secs(5), state.application_manager.get_all_applications()).await {
             Ok(Ok(applications)) => Ok(Json(serde_json::json!({
                 "applications": applications.into_iter().map(|app| serde_json::json!({
+                    "id": app.app_id.clone(),
                     "app_id": app.app_id,
                     "name": app.name,
                     "image": app.image,
+                    "description": app.name, // Add description field
                     "status": app.status,
                     "deployed_devices": app.deployed_devices,
                     "target_devices": app.target_devices,
@@ -519,7 +522,8 @@ impl DashboardApi {
                             .count();
                         
                         serde_json::json!({
-                            "id": g.gateway_id,
+                            "id": g.gateway_id.clone(),
+                            "gateway_id": g.gateway_id.clone(), // For backward compatibility
                             "name": g.gateway_id,
                             "status": g.status,
                             "endpoint": g.endpoint,
@@ -1013,20 +1017,20 @@ spec:
                         }
                         None => {
                             // Device doesn't exist in RenodeManager, create it
-                            let endpoint = format!("127.0.0.1:{}", 30450 + name.len() as u16);
-                            match state.renode_manager.create_device(
-                                name.clone(),
-                                name.clone(),
-                                "ARM_CORTEX_M".to_string(),
-                                device_type.to_string(),
-                                mcu_type.clone(),
-                                Some(endpoint),
-                            ).await {
-                                Ok(renode_device) => {
-                                    info!("Renode device {} created successfully", name);
+                                let endpoint = format!("127.0.0.1:{}", 30450 + name.len() as u16);
+                                match state.renode_manager.create_device(
+                                    name.clone(),
+                                    name.clone(),
+                                    "ARM_CORTEX_M".to_string(),
+                                    device_type.to_string(),
+                                    mcu_type.clone(),
+                                    Some(endpoint),
+                                ).await {
+                                    Ok(renode_device) => {
+                                        info!("Renode device {} created successfully", name);
                                     renode_device
-                                }
-                                Err(e) => {
+                                            }
+                                            Err(e) => {
                                     error!("Failed to create Renode device {}: {}", name, e);
                                     errors.push(format!("Failed to create Renode device {}: {}", name, e));
                                     continue; // Skip this device and continue with next
@@ -1038,17 +1042,17 @@ spec:
                     // Don't start Renode automatically during device creation
                     // User should start it manually via the connect/start endpoint
                     // This prevents timeout issues during device creation
-                    created_devices.push(serde_json::json!({
-                        "id": name,
-                        "name": name,
-                        "type": device_type,
-                        "mcuType": mcu_type_str,
-                        "status": "Pending",
-                        "renodeEndpoint": renode_device.endpoint,
-                        "renodeStarted": false,
-                        "qemuEndpoint": renode_device.endpoint, // Backward compatibility
-                        "qemuStarted": false // Backward compatibility
-                    }));
+                                                created_devices.push(serde_json::json!({
+                                                    "id": name,
+                                                    "name": name,
+                                                    "type": device_type,
+                                                    "mcuType": mcu_type_str,
+                                                    "status": "Pending",
+                                                    "renodeEndpoint": renode_device.endpoint,
+                                                    "renodeStarted": false,
+                                                    "qemuEndpoint": renode_device.endpoint, // Backward compatibility
+                                                    "qemuStarted": false // Backward compatibility
+                                                }));
         }
         
         // Return success even if some devices failed, as long as we have some info
