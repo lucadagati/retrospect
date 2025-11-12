@@ -286,19 +286,18 @@ async fn do_connect_device(
     })))
 }
 
-// Simple wrapper to satisfy Axum Handler trait
+// Handler for device connection - manual process
 async fn connect_device_handler(
-    State(state): State<Arc<DashboardState>>,
+    State(_state): State<Arc<DashboardState>>,
     Path(device_id): Path<String>,
-    Json(_request): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    // For now, return simple success - complex logic will be added separately
-    info!("Connecting device {} (simplified handler)", device_id);
+    info!("Device connection requested for {}. Use emulation/start endpoint to start Renode", device_id);
+    
     Ok(Json(serde_json::json!({
         "success": true,
-        "message": format!("Device {} connection initiated", device_id),
-        "lastHeartbeat": SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
-        "status": "Connected"
+        "message": format!("To connect device {}, first start emulation via /api/v1/devices/{}/emulation/start", device_id, device_id),
+        "instructions": "1. Start Renode emulation\n2. Renode will auto-connect to gateway via TCP bridge\n3. Device status will update to 'Connected'",
+        "status": "Pending"
     })))
 }
 
@@ -1133,7 +1132,6 @@ spec:
     pub async fn connect_device(
         State(state): State<Arc<DashboardState>>,
         Path(device_id): Path<String>,
-        Json(request): Json<serde_json::Value>,
     ) -> Result<Json<serde_json::Value>, StatusCode> {
         // Complete device connection flow: Kubernetes + Gateway registration + Renode startup
         info!("Connecting device {}", device_id);
