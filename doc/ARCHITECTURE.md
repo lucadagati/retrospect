@@ -1,57 +1,75 @@
-# Architettura Wasmbed
+# Wasmbed Architecture
 
-## Panoramica Sistema
+## System Overview
 
-Wasmbed è una piattaforma distribuita che permette il deployment e l'esecuzione di applicazioni WebAssembly su dispositivi embedded emulati tramite Renode.
+Wasmbed is a distributed platform that enables deployment and execution of WebAssembly applications on embedded devices emulated via Renode.
 
-## Componenti Principali
+## Main Components
 
 ### 1. API Server (`wasmbed-api-server`)
 
-**Responsabilità:**
-- Esposizione REST API per gestione dispositivi/applicazioni
-- Kubernetes controllers per CRDs
-- Coordinamento tra componenti
+**Responsibilities:**
+- Exposes REST API for device/application management
+- Kubernetes controllers for CRDs
+- Coordination between components
 
-**Interfacce:**
-- REST API (porta 8080)
+**Interfaces:**
+- REST API (port 8080)
 - Kubernetes API (CRDs)
-- Comunicazione con Gateway
+- Communication with Gateway
+
+**Location:**
+- Source: `crates/wasmbed-api-server/`
+- Deployment: Kubernetes Pod in `wasmbed` namespace
+- Service: Exposes port 8080
 
 ### 2. Gateway (`wasmbed-gateway`)
 
-**Responsabilità:**
-- Server TLS per dispositivi
-- Gestione connessioni device-to-gateway
-- Deployment moduli WASM
+**Responsibilities:**
+- TLS server for devices
+- Device-to-gateway connection management
+- WASM module deployment
 - Heartbeat monitoring
 
-**Protocollo:**
-- TLS 1.3 con autenticazione client
+**Protocol:**
+- TLS 1.3 with client authentication
 - CBOR serialization
 - Message-based communication
 
+**Location:**
+- Source: `crates/wasmbed-gateway/`
+- Deployment: Kubernetes Pod in `wasmbed` namespace
+- Service: Exposes TLS port (default 40029) and HTTP port (8080)
+
 ### 3. QEMU Manager (`wasmbed-qemu-manager`)
 
-**Responsabilità:**
-- Gestione istanze Renode
-- Avvio/stop dispositivi emulati
-- Configurazione TCP bridge
-- Caricamento firmware
+**Responsibilities:**
+- Renode instance management
+- Start/stop emulated devices
+- TCP bridge configuration
+- Firmware loading
 
-**Integrazione:**
-- Docker per containerizzazione Renode
-- TCP bridge per tunneling
-- Script Renode (.resc)
+**Integration:**
+- Docker for Renode containerization
+- TCP bridge for tunneling
+- Renode scripts (.resc)
+
+**Location:**
+- Source: `crates/wasmbed-qemu-manager/`
+- Runtime: Executes as part of API Server process
 
 ### 4. TCP Bridge (`wasmbed-tcp-bridge`)
 
-**Responsabilità:**
-- Tunneling TCP tra dispositivo e gateway
-- Gestione connessioni multiple
-- Forwarding dati TLS
+**Responsibilities:**
+- TCP tunneling between device and gateway
+- Multiple connection management
+- TLS data forwarding
 
-### 5. Firmware Zephyr (`zephyr-app`)
+**Location:**
+- Source: `crates/wasmbed-tcp-bridge/`
+- Runtime: Separate process or sidecar container
+
+### 5. Zephyr Firmware (`zephyr-app`)
 
 **Stack:**
 - Zephyr RTOS (v4.3.0)
@@ -59,13 +77,18 @@ Wasmbed è una piattaforma distribuita che permette il deployment e l'esecuzione
 - WAMR runtime (v2.4.3)
 - Wasmbed protocol handler
 
-**Funzionalità:**
-- Inizializzazione networking
-- Connessione TLS al gateway
-- Esecuzione moduli WASM
-- Gestione protocollo Wasmbed
+**Functionality:**
+- Network initialization
+- TLS connection to gateway
+- WASM module execution
+- Wasmbed protocol management
 
-## Flusso di Deployment
+**Location:**
+- Source: `zephyr-app/`
+- Build output: `zephyr-workspace/build/<board>/zephyr/zephyr.elf`
+- Runtime: Loaded into Renode emulation
+
+## Deployment Flow
 
 ```mermaid
 sequenceDiagram
@@ -77,22 +100,22 @@ sequenceDiagram
     participant Gateway
     participant Device
     
-    User->>Dashboard: Crea Device
+    User->>Dashboard: Create Device
     Dashboard->>APIServer: POST /devices
-    APIServer->>DeviceController: Crea Device CRD
-    DeviceController->>QEMUManager: Avvia Renode
-    QEMUManager->>Device: Configura TCP bridge
-    Device->>Gateway: Connessione TLS
-    Gateway->>APIServer: Registra dispositivo
+    APIServer->>DeviceController: Create Device CRD
+    DeviceController->>QEMUManager: Start Renode
+    QEMUManager->>Device: Configure TCP bridge
+    Device->>Gateway: TLS Connection
+    Gateway->>APIServer: Register device
     
     User->>Dashboard: Deploy Application
     Dashboard->>APIServer: POST /applications
     APIServer->>Gateway: Deploy WASM
-    Gateway->>Device: Invia modulo WASM
-    Device->>Device: WAMR carica ed esegue
+    Gateway->>Device: Send WASM module
+    Device->>Device: WAMR loads and executes
 ```
 
-## Comunicazione
+## Communication
 
 ### Device ↔ Gateway
 
@@ -111,7 +134,7 @@ sequenceDiagram
     Device->>Gateway: Execution Results
 ```
 
-**Protocollo:**
+**Protocol:**
 - **Transport**: TLS 1.3
 - **Format**: CBOR
 - **Messages**: Enrollment, Heartbeat, Deployment, Execution results
@@ -129,7 +152,7 @@ sequenceDiagram
     Gateway->>APIServer: Status Updates
 ```
 
-**Protocollo:**
+**Protocol:**
 - **Transport**: HTTP/gRPC
 - **Format**: JSON/Protobuf
 - **Operations**: Device registration, Application deployment, Status updates
@@ -138,42 +161,42 @@ sequenceDiagram
 
 ### Kubernetes Resources
 
-- **Device CRD**: Stato dispositivi
-- **Application CRD**: Configurazione applicazioni
-- **Gateway CRD**: Configurazione gateway
+- **Device CRD**: Device state
+- **Application CRD**: Application configuration
+- **Gateway CRD**: Gateway configuration
 
 ### Local Cache
 
-- Gateway mantiene cache locale per performance
-- Sincronizzazione periodica con API Server
+- Gateway maintains local cache for performance
+- Periodic synchronization with API Server
 
-## Sicurezza
+## Security
 
 ### TLS
 
-- Certificati client per autenticazione dispositivi
-- Certificati server per gateway
-- CA chain per validazione
+- Client certificates for device authentication
+- Server certificates for gateway
+- CA chain for validation
 
-### Autorizzazione
+### Authorization
 
 - Public key authentication
-- Device enrollment con pairing
+- Device enrollment with pairing
 - Gateway authorization
 
-## Scalabilità
+## Scalability
 
 ### Gateway
 
-- Multiple istanze gateway supportate
+- Multiple gateway instances supported
 - Load balancing via Kubernetes Service
-- HPA (Horizontal Pod Autoscaler) configurabile
+- Configurable HPA (Horizontal Pod Autoscaler)
 
-### Dispositivi
+### Devices
 
-- Ogni gateway gestisce multiple connessioni
-- TCP bridge per isolamento
-- Resource limits configurabili
+- Each gateway manages multiple connections
+- TCP bridge for isolation
+- Configurable resource limits
 
 ## Monitoring
 
@@ -187,5 +210,5 @@ sequenceDiagram
 ### Logging
 
 - Structured logging (tracing)
-- Log levels configurabili
+- Configurable log levels
 - Centralized logging via Kubernetes
