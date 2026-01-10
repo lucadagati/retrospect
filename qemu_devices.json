@@ -1,74 +1,14 @@
 {
-  "test-device-final": {
-    "id": "test-device-final",
-    "name": "test-device-final",
-    "architecture": "ARM_CORTEX_M",
-    "device_type": "MCU",
-    "mcu_type": "RenodeArduinoNano33Ble",
-    "status": "Starting",
-    "process_id": null,
-    "endpoint": "127.0.0.1:30467",
-    "gateway_endpoint": "http://127.0.0.1:40029",
-    "wasm_runtime": null
-  },
-  "test-device-fixed": {
-    "id": "test-device-fixed",
-    "name": "test-device-fixed",
-    "architecture": "ARM_CORTEX_M",
-    "device_type": "MCU",
+  "test-qemu-device": {
+    "id": "test-qemu-device",
+    "name": "Test QEMU Device",
+    "architecture": "arm",
+    "device_type": "ARM_CORTEX_M",
     "mcu_type": "RenodeArduinoNano33Ble",
     "status": "Stopped",
     "process_id": null,
-    "endpoint": "127.0.0.1:30467",
-    "gateway_endpoint": "http://127.0.0.1:40029",
-    "wasm_runtime": null
-  },
-  "workflow-device-1763826161": {
-    "id": "workflow-device-1763826161",
-    "name": "workflow-device-1763826161",
-    "architecture": "ARM_CORTEX_M",
-    "device_type": "MCU",
-    "mcu_type": "RenodeArduinoNano33Ble",
-    "status": "Stopped",
-    "process_id": null,
-    "endpoint": "127.0.0.1:30476",
+    "endpoint": "127.0.0.1:30000",
     "gateway_endpoint": null,
-    "wasm_runtime": null
-  },
-  "test-device-correct": {
-    "id": "test-device-correct",
-    "name": "test-device-correct",
-    "architecture": "ARM_CORTEX_M",
-    "device_type": "MCU",
-    "mcu_type": "RenodeArduinoNano33Ble",
-    "status": "Running",
-    "process_id": 3268119,
-    "endpoint": "127.0.0.1:30469",
-    "gateway_endpoint": "http://127.0.0.1:40029",
-    "wasm_runtime": null
-  },
-  "device-gateway-1-4": {
-    "id": "device-gateway-1-4",
-    "name": "device-gateway-1-4",
-    "architecture": "ARM_CORTEX_M",
-    "device_type": "MCU",
-    "mcu_type": "RenodeStm32F4Discovery",
-    "status": "Running",
-    "process_id": 3267688,
-    "endpoint": "127.0.0.1:30468",
-    "gateway_endpoint": "http://127.0.0.1:40029",
-    "wasm_runtime": null
-  },
-  "workflow-test-device-1763825486": {
-    "id": "workflow-test-device-1763825486",
-    "name": "workflow-test-device-1763825486",
-    "architecture": "ARM_CORTEX_M",
-    "device_type": "MCU",
-    "mcu_type": "RenodeArduinoNano33Ble",
-    "status": "Stopped",
-    "process_id": null,
-    "endpoint": "127.0.0.1:30481",
-    "gateway_endpoint": "http://127.0.0.1:40029",
     "wasm_runtime": null
   }
 }
