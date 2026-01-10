@@ -96,15 +96,15 @@ sequenceDiagram
     participant Dashboard
     participant APIServer
     participant DeviceController
-    participant QEMUManager
+    participant RenodeManager
     participant Gateway
     participant Device
     
     User->>Dashboard: Create Device
     Dashboard->>APIServer: POST /devices
     APIServer->>DeviceController: Create Device CRD
-    DeviceController->>QEMUManager: Start Renode
-    QEMUManager->>Device: Configure TCP bridge
+    DeviceController->>RenodeManager: Start Renode
+    RenodeManager->>Device: Configure TCP bridge
     Device->>Gateway: TLS Connection
     Gateway->>APIServer: Register device
     
