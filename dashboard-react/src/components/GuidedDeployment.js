@@ -146,7 +146,11 @@ pub fn main() {
 
 fn read_adc(channel: u8) -> f32 {
     // ADC read implementation
-    25.5 // Mock value
+    // In a real implementation, this would read from the ADC hardware
+    // For this template, we simulate a sensor reading
+    let base_value = 25.0;
+    let variation = (channel as f32) * 0.5;
+    base_value + variation
 }`,
       features: ['ADC Reading', 'Data Processing', 'Sensor Integration'],
       size: '6KB',

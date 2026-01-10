@@ -31,15 +31,45 @@ const Dashboard = () => {
   const fetchSystemStatus = async () => {
     try {
       // Fetch system status from individual APIs (no mock data)
-      const [devicesData, applicationsData, gatewaysData] = await apiAll([
-        '/api/v1/devices',
-        '/api/v1/applications',
-        '/api/v1/gateways'
-      ], 30000); // Increased timeout to 30 seconds for Kubernetes API calls
+      const [devicesData, applicationsData, gatewaysData, infraStatusResponse] = await Promise.all([
+        apiGet('/api/v1/devices', 30000),
+        apiGet('/api/v1/applications', 30000),
+        apiGet('/api/v1/gateways', 30000),
+        fetch('/api/v1/infrastructure/status').catch(() => ({ ok: false }))
+      ]);
 
       const devices = devicesData.devices || [];
       const applications = applicationsData.applications || [];
       const gateways = gatewaysData.gateways || [];
+      
+      // Normalize device data - handle 'connected' boolean
+      const normalizedDevices = devices.map(d => ({
+        ...d,
+        status: d.status || (d.connected === true ? 'Connected' : (d.enrolled === true ? 'Enrolled' : 'Pending'))
+      }));
+      
+      // Fetch infrastructure status
+      let infraStatus = {
+        ca_status: 'unknown',
+        secret_store_status: 'unknown',
+        monitoring_status: 'unknown',
+        logging_status: 'unknown'
+      };
+      
+      if (infraStatusResponse.ok) {
+        try {
+          const infraData = await infraStatusResponse.json();
+          const components = infraData.components || {};
+          infraStatus = {
+            ca_status: components.ca === 'healthy' || components.database === 'healthy' ? 'healthy' : 'unknown',
+            secret_store_status: components.secret_store === 'healthy' || components.database === 'healthy' ? 'healthy' : 'unknown',
+            monitoring_status: components.monitoring === 'healthy' ? 'healthy' : 'unknown',
+            logging_status: components.logging === 'healthy' || components.monitoring === 'healthy' ? 'healthy' : 'unknown'
+          };
+        } catch (e) {
+          console.warn('Failed to parse infrastructure status:', e);
+        }
+      }
 
       // Calculate application stats
       const runningCount = applications.filter(a => a.status === 'Running').length;
@@ -61,13 +91,13 @@ const Dashboard = () => {
 
       setSystemStatus({
         devices: {
-          total: devices.length,
-          connected: devices.filter(d => d.status === 'Connected').length,
-          enrolled: devices.filter(d => d.status === 'Enrolled').length,
-          enrolling: devices.filter(d => d.status === 'Enrolling').length,
-          pending: devices.filter(d => d.status === 'Pending').length,
-          disconnected: devices.filter(d => d.status === 'Disconnected').length,
-          unreachable: devices.filter(d => d.status === 'Unreachable').length
+          total: normalizedDevices.length,
+          connected: normalizedDevices.filter(d => d.status === 'Connected').length,
+          enrolled: normalizedDevices.filter(d => d.status === 'Enrolled').length,
+          enrolling: normalizedDevices.filter(d => d.status === 'Enrolling').length,
+          pending: normalizedDevices.filter(d => d.status === 'Pending').length,
+          disconnected: normalizedDevices.filter(d => d.status === 'Disconnected').length,
+          unreachable: normalizedDevices.filter(d => d.status === 'Unreachable').length
         },
         applications: {
           total: applications.length,
@@ -81,14 +111,14 @@ const Dashboard = () => {
         },
         gateways: {
           total: gateways.length,
-          active: gateways.filter(g => g.status === 'Running').length,
-          inactive: gateways.filter(g => g.status === 'Stopped' || g.status === 'Failed').length
+          active: gateways.filter(g => g.status === 'Running' || g.status === 'Active').length,
+          inactive: gateways.filter(g => g.status === 'Stopped' || g.status === 'Failed' || g.status === 'Inactive').length
         },
         infrastructure: {
-          ca_status: 'healthy',
-          secret_store_status: 'healthy',
-          monitoring_status: 'healthy',
-          logging_status: 'healthy'
+          ca_status: 'unknown',
+          secret_store_status: 'unknown',
+          monitoring_status: 'unknown',
+          logging_status: 'unknown'
         },
         uptime: Date.now(),
         last_update: new Date()

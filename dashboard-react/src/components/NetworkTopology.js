@@ -21,8 +21,8 @@ const NetworkTopology = () => {
     devices: [],
     infrastructure: {
       status: 'unknown',
-      endpoint: 'localhost:30460',
-      services: ['Certificate Authority', 'Secret Store', 'Monitoring']
+      endpoint: null, // Will be fetched from API
+      services: []
     }
   });
 
@@ -63,11 +63,20 @@ const NetworkTopology = () => {
         });
       }
 
+      // Extract infrastructure endpoint from API response or use first gateway endpoint
+      const infraEndpoint = infrastructure.endpoint || 
+                           (gatewayList.length > 0 ? gatewayList[0].endpoint : null);
+      
+      // Extract services from infrastructure response
+      const services = infrastructure.services || 
+                      (infrastructure.components ? Object.keys(infrastructure.components) : []);
+      
       setTopologyData(prev => ({
         ...prev,
         infrastructure: {
-          ...prev.infrastructure,
-          status: infrastructure.status || 'active'
+          status: infrastructure.status || 'unknown',
+          endpoint: infraEndpoint,
+          services: services.length > 0 ? services : ['Certificate Authority', 'Secret Store', 'Monitoring']
         },
         gateways: gatewayList,
         devices: deviceList
