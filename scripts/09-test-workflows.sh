@@ -205,6 +205,41 @@ else
     print_status "WARNING" "Device controller logs not found or device not processed yet"
 fi
 
+# Verify Device Controller pod is running
+print_status "INFO" "Verifying Device Controller pod is running..."
+DEVICE_CONTROLLER_POD=$(kubectl get pods -n wasmbed -l app=wasmbed-device-controller -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+if [ -n "$DEVICE_CONTROLLER_POD" ]; then
+    DEVICE_CONTROLLER_STATUS=$(kubectl get pod "$DEVICE_CONTROLLER_POD" -n wasmbed -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+    if [ "$DEVICE_CONTROLLER_STATUS" = "Running" ]; then
+        print_status "SUCCESS" "Device Controller pod is running: $DEVICE_CONTROLLER_POD"
+        # Check if pod is ready
+        READY=$(kubectl get pod "$DEVICE_CONTROLLER_POD" -n wasmbed -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+        if [ "$READY" = "true" ]; then
+            print_status "SUCCESS" "Device Controller pod is ready"
+        else
+            print_status "WARNING" "Device Controller pod is not ready yet"
+        fi
+    else
+        print_status "WARNING" "Device Controller pod status: $DEVICE_CONTROLLER_STATUS"
+    fi
+else
+    print_status "WARNING" "Device Controller pod not found"
+fi
+
+# Verify Renode container is created when device is connected/started
+print_status "INFO" "Checking if Renode container should be created for device..."
+# Try to start emulation if device is enrolled
+if [ "$DEVICE_STATUS" = "Enrolled" ] || [ "$CRD_STATUS" = "Enrolled" ]; then
+    print_status "INFO" "Device is enrolled, checking if Renode container exists..."
+    RENODE_CONTAINER=$(docker ps --format "{{.Names}}" 2>/dev/null | grep -i "renode.*${DEVICE_NAME}" || echo "")
+    if [ -n "$RENODE_CONTAINER" ]; then
+        RENODE_STATUS=$(docker ps --format "{{.Status}}" --filter "name=${RENODE_CONTAINER}" 2>/dev/null || echo "")
+        print_status "SUCCESS" "Renode container found: $RENODE_CONTAINER (status: $RENODE_STATUS)"
+    else
+        print_status "INFO" "Renode container not found for device (may be created when emulation starts)"
+    fi
+fi
+
 # Test 2: Application Deployment Workflow
 print_header "TEST 2: APPLICATION DEPLOYMENT WORKFLOW"
 
@@ -259,6 +294,27 @@ if kubectl logs -n wasmbed -l app=wasmbed-application-controller --tail=10 2>/de
     print_status "SUCCESS" "Application controller has processed the application"
 else
     print_status "WARNING" "Application controller logs not found or application not processed yet"
+fi
+
+# Verify Application Controller pod is running
+print_status "INFO" "Verifying Application Controller pod is running..."
+APP_CONTROLLER_POD=$(kubectl get pods -n wasmbed -l app=wasmbed-application-controller -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+if [ -n "$APP_CONTROLLER_POD" ]; then
+    APP_CONTROLLER_STATUS=$(kubectl get pod "$APP_CONTROLLER_POD" -n wasmbed -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+    if [ "$APP_CONTROLLER_STATUS" = "Running" ]; then
+        print_status "SUCCESS" "Application Controller pod is running: $APP_CONTROLLER_POD"
+        # Check if pod is ready
+        READY=$(kubectl get pod "$APP_CONTROLLER_POD" -n wasmbed -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+        if [ "$READY" = "true" ]; then
+            print_status "SUCCESS" "Application Controller pod is ready"
+        else
+            print_status "WARNING" "Application Controller pod is not ready yet"
+        fi
+    else
+        print_status "WARNING" "Application Controller pod status: $APP_CONTROLLER_STATUS"
+    fi
+else
+    print_status "WARNING" "Application Controller pod not found"
 fi
 
 # Test 3: Gateway Deployment Workflow
@@ -335,6 +391,54 @@ else
     print_status "WARNING" "Gateway controller logs not found or gateway not processed yet"
 fi
 
+# Verify Gateway Controller pod is running
+print_status "INFO" "Verifying Gateway Controller pod is running..."
+GW_CONTROLLER_POD=$(kubectl get pods -n wasmbed -l app=wasmbed-gateway-controller -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+if [ -n "$GW_CONTROLLER_POD" ]; then
+    GW_CONTROLLER_STATUS=$(kubectl get pod "$GW_CONTROLLER_POD" -n wasmbed -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+    if [ "$GW_CONTROLLER_STATUS" = "Running" ]; then
+        print_status "SUCCESS" "Gateway Controller pod is running: $GW_CONTROLLER_POD"
+        # Check if pod is ready
+        READY=$(kubectl get pod "$GW_CONTROLLER_POD" -n wasmbed -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+        if [ "$READY" = "true" ]; then
+            print_status "SUCCESS" "Gateway Controller pod is ready"
+        else
+            print_status "WARNING" "Gateway Controller pod is not ready yet"
+        fi
+    else
+        print_status "WARNING" "Gateway Controller pod status: $GW_CONTROLLER_STATUS"
+    fi
+else
+    print_status "WARNING" "Gateway Controller pod not found"
+fi
+
+# Verify Gateway service is accessible
+print_status "INFO" "Verifying Gateway service is accessible..."
+GATEWAY_SVC=$(kubectl get svc -n wasmbed -l app=gateway 2>/dev/null | grep "$GATEWAY_NAME" | awk '{print $1}' | head -1 || echo "")
+if [ -n "$GATEWAY_SVC" ]; then
+    print_status "SUCCESS" "Gateway service exists: $GATEWAY_SVC"
+    # Check service endpoints
+    ENDPOINTS=$(kubectl get endpoints "$GATEWAY_SVC" -n wasmbed -o jsonpath='{.subsets[0].addresses[*].ip}' 2>/dev/null || echo "")
+    if [ -n "$ENDPOINTS" ]; then
+        print_status "SUCCESS" "Gateway service has endpoints: $ENDPOINTS"
+    else
+        print_status "WARNING" "Gateway service has no endpoints yet"
+    fi
+else
+    print_status "WARNING" "Gateway service not found for: $GATEWAY_NAME"
+fi
+
+# Verify Gateway pod is actually functional (can accept connections)
+print_status "INFO" "Verifying Gateway pod functionality..."
+if [ "$GATEWAY_POD_STATUS" = "Running" ]; then
+    # Try to check if gateway is responding (if port-forward is available)
+    if curl -4 -s http://localhost:8080/health >/dev/null 2>&1; then
+        print_status "SUCCESS" "Gateway pod is functional and responding to health checks"
+    else
+        print_status "INFO" "Gateway pod is running but health check not accessible (may need port-forward)"
+    fi
+fi
+
 # Test 4: System Monitoring Workflow
 print_header "TEST 4: SYSTEM MONITORING WORKFLOW"
 
@@ -365,6 +469,16 @@ print_header "TEST 5: RENODE ARM CORTEX-M EMULATION"
 print_status "INFO" "Testing Renode availability..."
 if docker ps | grep -q renode >/dev/null 2>&1 || docker images | grep -q renode >/dev/null 2>&1; then
     print_status "SUCCESS" "Renode Docker image available"
+    
+    # Count running Renode containers
+    RENODE_CONTAINERS=$(docker ps --format "{{.Names}}" 2>/dev/null | grep -i renode | wc -l || echo "0")
+    if [ "$RENODE_CONTAINERS" -gt 0 ]; then
+        print_status "SUCCESS" "Found $RENODE_CONTAINERS running Renode container(s)"
+        # List Renode containers
+        docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" 2>/dev/null | grep -i renode | head -5
+    else
+        print_status "INFO" "No Renode containers currently running (will be created when devices start)"
+    fi
 else
     print_status "WARNING" "Renode Docker image not found (may be pulled automatically)"
 fi
@@ -377,8 +491,13 @@ if [ -f "target/debug/wasmbed-qemu-manager" ] || [ -f "target/release/wasmbed-qe
     
     # Test Renode Manager functionality
     print_status "INFO" "Testing Renode Manager list devices..."
-    $RENODE_MANAGER list >/dev/null 2>&1 || true
-    print_status "SUCCESS" "Renode Manager can list devices"
+    RENODE_LIST_OUTPUT=$($RENODE_MANAGER list 2>&1 || echo "")
+    if [ -n "$RENODE_LIST_OUTPUT" ]; then
+        print_status "SUCCESS" "Renode Manager can list devices"
+        echo "  Renode Manager output: $RENODE_LIST_OUTPUT"
+    else
+        print_status "INFO" "Renode Manager list returned empty (no devices managed yet)"
+    fi
 else
     print_status "WARNING" "Renode Manager binary not found (may be built on demand)"
 fi
@@ -386,6 +505,18 @@ fi
 print_status "INFO" "Testing TCP Bridge (replaces Serial Bridge)..."
 if [ -f "target/debug/wasmbed-tcp-bridge" ] || [ -f "target/release/wasmbed-tcp-bridge" ]; then
     print_status "SUCCESS" "TCP Bridge binary available"
+    
+    # Check if TCP Bridge processes are running
+    TCP_BRIDGE_PROCESSES=$(ps aux 2>/dev/null | grep -c "[w]asmbed-tcp-bridge" || echo "0")
+    # Ensure TCP_BRIDGE_PROCESSES is a number
+    if ! [[ "$TCP_BRIDGE_PROCESSES" =~ ^[0-9]+$ ]]; then
+        TCP_BRIDGE_PROCESSES=0
+    fi
+    if [ "$TCP_BRIDGE_PROCESSES" -gt 0 ]; then
+        print_status "SUCCESS" "Found $TCP_BRIDGE_PROCESSES TCP Bridge process(es) running"
+    else
+        print_status "INFO" "No TCP Bridge processes running (will be started when devices connect)"
+    fi
 else
     print_status "WARNING" "TCP Bridge binary not found (may be built on demand or integrated in Renode manager)"
 fi
@@ -401,6 +532,39 @@ else
     print_status "ERROR" "Dashboard React not accessible (HTTP $DASHBOARD_STATUS)"
 fi
 
+# Verify Dashboard pod is running
+print_status "INFO" "Verifying Dashboard pod is running..."
+DASHBOARD_POD=$(kubectl get pods -n wasmbed -l app=wasmbed-dashboard -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+if [ -n "$DASHBOARD_POD" ]; then
+    DASHBOARD_POD_STATUS=$(kubectl get pod "$DASHBOARD_POD" -n wasmbed -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+    if [ "$DASHBOARD_POD_STATUS" = "Running" ]; then
+        print_status "SUCCESS" "Dashboard pod is running: $DASHBOARD_POD"
+        # Check if pod is ready
+        READY=$(kubectl get pod "$DASHBOARD_POD" -n wasmbed -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+        if [ "$READY" = "true" ]; then
+            print_status "SUCCESS" "Dashboard pod is ready"
+        else
+            print_status "WARNING" "Dashboard pod is not ready yet"
+        fi
+    else
+        print_status "WARNING" "Dashboard pod status: $DASHBOARD_POD_STATUS"
+    fi
+else
+    print_status "WARNING" "Dashboard pod not found"
+fi
+
+# Verify Dashboard service exists
+print_status "INFO" "Verifying Dashboard service..."
+DASHBOARD_SVC=$(kubectl get svc -n wasmbed wasmbed-dashboard -o jsonpath='{.metadata.name}' 2>/dev/null || echo "")
+if [ -n "$DASHBOARD_SVC" ]; then
+    print_status "SUCCESS" "Dashboard service exists: $DASHBOARD_SVC"
+    SVC_TYPE=$(kubectl get svc "$DASHBOARD_SVC" -n wasmbed -o jsonpath='{.spec.type}' 2>/dev/null || echo "")
+    SVC_PORT=$(kubectl get svc "$DASHBOARD_SVC" -n wasmbed -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || echo "")
+    print_status "INFO" "Dashboard service type: $SVC_TYPE, port: $SVC_PORT"
+else
+    print_status "WARNING" "Dashboard service not found"
+fi
+
 print_status "INFO" "Testing Dashboard API proxy..."
 # Test if dashboard can reach API server
 API_FROM_DASHBOARD=$(curl -4 -s $DASHBOARD_URL/api/v1/devices 2>/dev/null || echo "proxy_error")
@@ -409,6 +573,92 @@ if [ "$API_FROM_DASHBOARD" != "proxy_error" ]; then
 else
     print_status "WARNING" "Dashboard API proxy may not be configured"
 fi
+
+# Test 7: Runtime Components Verification
+print_header "TEST 7: RUNTIME COMPONENTS VERIFICATION"
+
+print_status "INFO" "Verifying all controller pods are running..."
+CONTROLLER_PODS=$(kubectl get pods -n wasmbed -l 'app in (wasmbed-device-controller,wasmbed-application-controller,wasmbed-gateway-controller)' --no-headers 2>/dev/null | wc -l || echo "0")
+if [ "$CONTROLLER_PODS" -ge 3 ]; then
+    print_status "SUCCESS" "All controller pods are present: $CONTROLLER_PODS pod(s)"
+    
+    # Check each controller
+    for controller in wasmbed-device-controller wasmbed-application-controller wasmbed-gateway-controller; do
+        CONTROLLER_POD=$(kubectl get pods -n wasmbed -l app=$controller -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+        if [ -n "$CONTROLLER_POD" ]; then
+            CONTROLLER_STATUS=$(kubectl get pod "$CONTROLLER_POD" -n wasmbed -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            if [ "$CONTROLLER_STATUS" = "Running" ]; then
+                print_status "SUCCESS" "  $controller: Running ($CONTROLLER_POD)"
+            else
+                print_status "WARNING" "  $controller: $CONTROLLER_STATUS ($CONTROLLER_POD)"
+            fi
+        else
+            print_status "WARNING" "  $controller: Pod not found"
+        fi
+    done
+else
+    print_status "WARNING" "Some controller pods may be missing (found $CONTROLLER_PODS)"
+fi
+
+print_status "INFO" "Verifying API Server pod is running..."
+API_SERVER_POD=$(kubectl get pods -n wasmbed -l app=wasmbed-api-server -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+if [ -n "$API_SERVER_POD" ]; then
+    API_SERVER_STATUS=$(kubectl get pod "$API_SERVER_POD" -n wasmbed -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+    if [ "$API_SERVER_STATUS" = "Running" ]; then
+        print_status "SUCCESS" "API Server pod is running: $API_SERVER_POD"
+        # Check if pod is ready
+        READY=$(kubectl get pod "$API_SERVER_POD" -n wasmbed -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+        if [ "$READY" = "true" ]; then
+            print_status "SUCCESS" "API Server pod is ready"
+        else
+            print_status "WARNING" "API Server pod is not ready yet"
+        fi
+    else
+        print_status "WARNING" "API Server pod status: $API_SERVER_STATUS"
+    fi
+else
+    print_status "WARNING" "API Server pod not found"
+fi
+
+print_status "INFO" "Verifying Infrastructure pod is running..."
+INFRA_POD=$(kubectl get pods -n wasmbed -l app=wasmbed-infrastructure -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+if [ -n "$INFRA_POD" ]; then
+    INFRA_STATUS=$(kubectl get pod "$INFRA_POD" -n wasmbed -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+    if [ "$INFRA_STATUS" = "Running" ]; then
+        print_status "SUCCESS" "Infrastructure pod is running: $INFRA_POD"
+    else
+        print_status "WARNING" "Infrastructure pod status: $INFRA_STATUS"
+    fi
+else
+    print_status "WARNING" "Infrastructure pod not found"
+fi
+
+print_status "INFO" "Summary of all runtime components..."
+CONTROLLERS_COUNT=$(kubectl get pods -n wasmbed -l 'app in (wasmbed-device-controller,wasmbed-application-controller,wasmbed-gateway-controller)' --no-headers 2>/dev/null | grep -c Running 2>/dev/null || echo "0")
+if ! [[ "$CONTROLLERS_COUNT" =~ ^[0-9]+$ ]]; then
+    CONTROLLERS_COUNT=0
+fi
+GATEWAYS_COUNT=$(kubectl get pods -n wasmbed -l app=gateway --no-headers 2>/dev/null | grep -c Running 2>/dev/null || echo "0")
+if ! [[ "$GATEWAYS_COUNT" =~ ^[0-9]+$ ]]; then
+    GATEWAYS_COUNT=0
+fi
+RENODE_COUNT=$(docker ps --format "{{.Names}}" 2>/dev/null | grep -i renode | wc -l 2>/dev/null || echo "0")
+if ! [[ "$RENODE_COUNT" =~ ^[0-9]+$ ]]; then
+    RENODE_COUNT=0
+fi
+API_SERVER_COUNT=$(kubectl get pods -n wasmbed -l app=wasmbed-api-server --no-headers 2>/dev/null | grep -c Running 2>/dev/null || echo "0")
+if ! [[ "$API_SERVER_COUNT" =~ ^[0-9]+$ ]]; then
+    API_SERVER_COUNT=0
+fi
+DASHBOARD_COUNT=$(kubectl get pods -n wasmbed -l app=wasmbed-dashboard --no-headers 2>/dev/null | grep -c Running 2>/dev/null || echo "0")
+if ! [[ "$DASHBOARD_COUNT" =~ ^[0-9]+$ ]]; then
+    DASHBOARD_COUNT=0
+fi
+print_status "INFO" "  Controllers: $CONTROLLERS_COUNT running"
+print_status "INFO" "  Gateways: $GATEWAYS_COUNT running"
+print_status "INFO" "  Renode containers: $RENODE_COUNT running"
+print_status "INFO" "  API Server: $API_SERVER_COUNT running"
+print_status "INFO" "  Dashboard: $DASHBOARD_COUNT running"
 
 # Final Summary
 print_header "WORKFLOW TESTING COMPLETE"
