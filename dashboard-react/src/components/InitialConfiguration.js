@@ -203,7 +203,9 @@ const InitialConfiguration = () => {
       // Deploy sample devices with configurable count
       const deviceRequest = {
         count: deviceCount, // Number of devices to create
-        type: 'RISC-V MCU',
+        type: 'MCU', // ARM Cortex-M MCU for Renode emulation
+        architecture: 'ARM_CORTEX_M',
+        mcuType: 'RenodeArduinoNano33Ble', // Default to Arduino Nano 33 BLE
         gatewayId: 'gateway-1' // Will be updated to use the first available gateway
       };
 
@@ -397,7 +399,8 @@ const InitialConfiguration = () => {
                 <div style={{ marginBottom: 16 }}>
                   <Text strong>Sample Devices:</Text>
                   <ul style={{ marginTop: 8 }}>
-                    <li>ARM Cortex-M MCU (ARM architecture)</li>
+                    <li>ARM Cortex-M4 MCU (Renode emulation)</li>
+                    <li>Default: Arduino Nano 33 BLE (nRF52840)</li>
                     <li>Auto-generated names: device-1 to device-{deviceCount}</li>
                     <li>Connected to: gateway-1</li>
                   </ul>

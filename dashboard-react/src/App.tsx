@@ -197,12 +197,17 @@ const App: React.FC = () => {
           key: 'mcuType',
           render: (mcuType: string) => {
             const mcuNames: { [key: string]: string } = {
-              'Mps2An385': 'ARM MPS2-AN385 (Cortex-M3)',
-              'Mps2An386': 'ARM MPS2-AN386 (Cortex-M4)',
-              'Mps2An500': 'ARM MPS2-AN500 (Cortex-M7)',
-              'Mps2An505': 'ARM MPS2-AN505 (Cortex-M33)',
-              'Stm32Vldiscovery': 'STM32VLDISCOVERY (Cortex-M3)',
-              'OlimexStm32H405': 'Olimex STM32-H405 (Cortex-M4)',
+              // Renode-supported boards
+              'RenodeArduinoNano33Ble': 'Arduino Nano 33 BLE (Cortex-M4)',
+              'RenodeStm32F4Discovery': 'STM32F4 Discovery (Cortex-M4)',
+              // Legacy MPS2 boards (mapped to Renode boards)
+              'Mps2An385': 'ARM MPS2-AN385 (Cortex-M3) - Mapped to Arduino Nano',
+              'Mps2An386': 'ARM MPS2-AN386 (Cortex-M4) - Legacy',
+              'Mps2An500': 'ARM MPS2-AN500 (Cortex-M7) - Legacy',
+              'Mps2An505': 'ARM MPS2-AN505 (Cortex-M33) - Legacy',
+              // Legacy STM32 boards
+              'Stm32Vldiscovery': 'STM32VLDISCOVERY (Cortex-M3) - Legacy',
+              'OlimexStm32H405': 'Olimex STM32-H405 (Cortex-M4) - Legacy',
             };
             return (
               <Tag color="green">
