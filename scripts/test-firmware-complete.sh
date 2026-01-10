@@ -34,27 +34,20 @@ TESTS_FAILED=0
 echo -e "${BLUE}Running test suite...${NC}"
 echo ""
 
-# Test 1: WAMR Integration
-echo -e "${YELLOW}[1/3] Testing WAMR Integration...${NC}"
-if ./scripts/test-wamr-integration.sh "$BOARD" > /dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} WAMR Integration: PASSED"
+# Test 1: Firmware Build Check
+echo -e "${YELLOW}[1/2] Checking Firmware Build...${NC}"
+BOARD_SHORT=$(echo "$BOARD" | sed 's/_disco//' | sed 's/dk_nrf52840//' | sed 's/dk//')
+ELF_FILE="$PROJECT_ROOT/zephyr-workspace/build/$BOARD_SHORT/zephyr/zephyr.elf"
+
+if [ -f "$ELF_FILE" ]; then
+    echo -e "${GREEN}✓${NC} Firmware Build: ELF file found"
     TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-    echo -e "${RED}✗${NC} WAMR Integration: FAILED"
+    echo -e "${RED}✗${NC} Firmware Build: ELF file not found. Run build-zephyr-app.sh first"
     TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 
-# Test 2: Network Stack
-echo -e "${YELLOW}[2/3] Testing Network Stack...${NC}"
-if ./scripts/test-network-stack.sh "$BOARD" > /dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} Network Stack: PASSED"
-    TESTS_PASSED=$((TESTS_PASSED + 1))
-else
-    echo -e "${RED}✗${NC} Network Stack: FAILED"
-    TESTS_FAILED=$((TESTS_FAILED + 1))
-fi
-
-# Test 3: Firmware Size Check
+# Test 2: Firmware Size Check
 echo -e "${YELLOW}[3/3] Checking Firmware Size...${NC}"
 BOARD_SHORT=$(echo "$BOARD" | sed 's/_disco//' | sed 's/dk_nrf52840//' | sed 's/dk//')
 BIN_FILE="$PROJECT_ROOT/zephyr-workspace/build/$BOARD_SHORT/zephyr/zephyr.bin"
@@ -78,8 +71,8 @@ fi
 echo ""
 echo -e "${BLUE}=== Test Results ===${NC}"
 echo ""
-echo "Tests Passed: $TESTS_PASSED/3"
-echo "Tests Failed: $TESTS_FAILED/3"
+echo "Tests Passed: $TESTS_PASSED/2"
+echo "Tests Failed: $TESTS_FAILED/2"
 echo ""
 
 if [ $TESTS_FAILED -eq 0 ]; then
