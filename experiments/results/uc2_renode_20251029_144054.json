@@ -1,7 +1,0 @@
-{
-  "timestamp": "20251029_144054",
-  "use_case": "industrial_iot_renode_micro_ros",
-  "renode_available": true,
-  "renode_scripts_exist": true,
-  "renode_note": "Renode emulation infrastructure validated. Full micro-ROS message flow testing requires: STM32 firmware build, Zynq Yocto image, micro-ROS agent, and ROS 2 tools. See Section 4 Renode validation workflow for complete procedure."
-}

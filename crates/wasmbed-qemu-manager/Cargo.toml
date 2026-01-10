@@ -12,6 +12,7 @@ serde_json = "1.0"
 anyhow = "1.0"
 clap = { version = "4.4", features = ["derive"] }
 wasmbed-tcp-bridge = { path = "../wasmbed-tcp-bridge" }
+base64 = "0.21"
 
 [dev-dependencies]
 tokio-test = "0.4"

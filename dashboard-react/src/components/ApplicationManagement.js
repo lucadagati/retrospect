@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Table,
   Card,
@@ -19,6 +19,7 @@ import {
   Alert,
   Divider,
   Tooltip,
+  message,
 } from 'antd';
 import {
   PlusOutlined,
@@ -62,8 +63,37 @@ const ApplicationManagement = () => {
       const data = await apiGet('/api/v1/applications', 10000);
       let applicationList = data.applications || [];
       
+      // Normalize application data - ensure id is set (API returns app_id)
+      applicationList = applicationList.map(app => ({
+        ...app,
+        // Ensure id is set (API returns app_id)
+        id: app.id || app.app_id,
+        // Ensure app_id is set for backward compatibility
+        app_id: app.app_id || app.id,
+        // Ensure name is set
+        name: app.name || app.app_id || app.id,
+        // Ensure status is set
+        status: app.status || 'Pending',
+        // Normalize target_devices
+        target_devices: app.target_devices || app.targetDevices || [],
+        // Normalize deployed_devices
+        deployed_devices: app.deployed_devices || app.deployedDevices || [],
+      }));
+      
       // Use real data from backend - no mock data
       setApplications(applicationList);
+      
+      // Debug: log after state update
+      console.log('=== APPLICATIONS FETCH ===');
+      console.log('Raw API response:', data);
+      console.log('Applications count:', applicationList.length);
+      console.log('Normalized applications:', applicationList);
+      if (applicationList.length > 0) {
+        console.log('First app:', applicationList[0]);
+        console.log('First app keys:', Object.keys(applicationList[0]));
+      } else {
+        console.warn('⚠️ No applications found in API response!');
+      }
     } catch (error) {
       console.error('Error fetching applications:', error);
     } finally {
@@ -89,15 +119,26 @@ const ApplicationManagement = () => {
         wasmBytes: values.wasmBytes || 'dGVzdA==' // Base64 encoded "test"
       }, 15000);
       
-      // Refresh the applications list to get the updated data
-      const updatedApplications = await apiGet('/api/v1/applications');
-      setApplications(updatedApplications.applications || []);
+      console.log('Application creation response:', response);
       
-      console.log('Application created successfully:', response.message);
+      // Check if creation was successful
+      if (response?.success === false || response?.errors?.length > 0) {
+        const errorMsg = response?.message || response?.errors?.join('; ') || 'Failed to create application';
+        message.error(`Application creation failed: ${errorMsg}`);
+        console.error('Application creation failed:', response);
+        return;
+      }
+      
+      // Refresh the applications list to get the updated data
+      await fetchApplications();
+      
+      message.success(response?.message || 'Application created successfully');
+      console.log('Application created successfully:', response?.message || 'Application created');
       setModalVisible(false);
       form.resetFields();
     } catch (error) {
       console.error('Error creating application:', error);
+      message.error(`Failed to create application: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -218,15 +259,22 @@ const ApplicationManagement = () => {
       title: 'Target Devices',
       dataIndex: 'target_devices',
       key: 'target_devices',
-      render: (targetDevices) => {
-        if (targetDevices && targetDevices.length > 0) {
+      render: (targetDevices, record) => {
+        // Show deployed_devices if target_devices is null/empty, as it shows where WASM is actually running
+        const devicesToShow = (targetDevices && targetDevices.length > 0) 
+          ? targetDevices 
+          : (record.deployed_devices && record.deployed_devices.length > 0)
+            ? record.deployed_devices
+            : null;
+        
+        if (devicesToShow && devicesToShow.length > 0) {
           return (
             <Space wrap>
-              {targetDevices.slice(0, 2).map((name) => (
+              {devicesToShow.slice(0, 2).map((name) => (
                 <Tag key={name} color="blue">{name}</Tag>
               ))}
-              {targetDevices.length > 2 && (
-                <Tag color="blue">+{targetDevices.length - 2} more</Tag>
+              {devicesToShow.length > 2 && (
+                <Tag color="blue">+{devicesToShow.length - 2} more</Tag>
               )}
             </Space>
           );
@@ -313,19 +361,51 @@ const ApplicationManagement = () => {
     },
   ];
 
-  const applicationStats = applications.reduce(
-    (acc, app) => {
-      acc.total++;
-      if (app.status === 'Running') acc.running++;
-      else if (app.status === 'Deploying') acc.deploying++;
-      else if (app.status === 'Pending') acc.pending++;
-      else if (app.status === 'Failed') acc.failed++;
-      else if (app.status === 'Stopped') acc.stopped++;
-      else if (app.status === 'PartiallyRunning') acc.partiallyRunning++;
-      return acc;
-    },
-    { total: 0, running: 0, deploying: 0, pending: 0, failed: 0, stopped: 0, partiallyRunning: 0 }
-  );
+  // Debug: log applications state changes
+  useEffect(() => {
+    console.log('=== APPLICATION MANAGEMENT STATE ===');
+    console.log('Applications array:', applications);
+    console.log('Applications length:', applications.length);
+    if (applications.length > 0) {
+      console.log('First application:', applications[0]);
+      console.log('First application keys:', Object.keys(applications[0]));
+    } else {
+      console.warn('⚠️ No applications in state!');
+    }
+  }, [applications]);
+
+  // Use useMemo to calculate stats only when applications array changes
+  // This prevents calculating stats with empty array during initial render
+  const applicationStats = useMemo(() => {
+    const stats = applications.reduce(
+      (acc, app) => {
+        acc.total++;
+        const status = app.status || 'Pending'; // Default to Pending if status is missing
+        // Debug: log each app status for troubleshooting
+        if (status === 'Failed') {
+          console.log('Found Failed application:', app.name, 'status:', status, 'type:', typeof status);
+        }
+        if (status === 'Running') acc.running++;
+        else if (status === 'Deploying') acc.deploying++;
+        else if (status === 'Pending') acc.pending++;
+        else if (status === 'Failed') acc.failed++;
+        else if (status === 'Stopped') acc.stopped++;
+        else if (status === 'PartiallyRunning') acc.partiallyRunning++;
+        return acc;
+      },
+      { total: 0, running: 0, deploying: 0, pending: 0, failed: 0, stopped: 0, partiallyRunning: 0 }
+    );
+    
+    // Debug: log final stats
+    console.log('Application stats calculated (useMemo):', stats);
+    console.log('Applications array length:', applications.length);
+    console.log('Applications statuses:', applications.map(a => ({ name: a.name, status: a.status, type: typeof a.status })));
+    return stats;
+  }, [applications]);
+
+  // Debug: log stats right before render
+  console.log('ApplicationManagement - Rendering with stats:', applicationStats);
+  console.log('ApplicationManagement - Applications state:', applications.length);
 
   return (
     <div>
@@ -471,10 +551,27 @@ const ApplicationManagement = () => {
           </Space>
         </div>
 
+        {/* Debug info */}
+        {applications.length === 0 && !loading && (
+          <Alert
+            message="No applications found"
+            description="Try creating a new application or check the console for errors."
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+        )}
+        
         <Table
           columns={columns}
           dataSource={applications}
-          rowKey="app_id"
+          rowKey={(record) => {
+            const key = record.id || record.app_id || record.name;
+            if (!key) {
+              console.error('⚠️ No valid key for record:', record);
+            }
+            return key || `app-${Math.random()}`;
+          }}
           loading={loading}
           pagination={{
             pageSize: 10,

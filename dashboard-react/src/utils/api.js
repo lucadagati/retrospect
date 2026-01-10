@@ -1,14 +1,18 @@
 /**
- * API utility functions with timeout support and mock fallback
+ * API utility functions with timeout support
  */
 
-import { getMockData } from './mockData';
+// API base URL - use relative path for production (Nginx reverse proxy)
+// For development, use localhost or environment variable
+// When dashboard is in Kubernetes (even accessed via port-forward), Nginx proxies /api/ to the API server service
+// When dashboard is local (npm start), use localhost:3001
+// IMPORTANT: In production build (Kubernetes), always use relative path /api/ regardless of how you access it
+// Since the dashboard is always built and served via Nginx in Kubernetes, we always use relative paths
+// The only exception is when explicitly set via REACT_APP_API_BASE_URL (for development)
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '';
 
 // Default timeout in milliseconds
 const DEFAULT_TIMEOUT = 10000; // 10 seconds
-
-// Flag to enable/disable mock fallback
-const USE_MOCK_FALLBACK = true;
 
 /**
  * Create an AbortController with timeout
@@ -35,7 +39,14 @@ export const fetchWithTimeout = async (url, options = {}, timeout = DEFAULT_TIME
   try {
     const response = await fetch(url, {
       ...options,
-      signal: controller.signal
+      signal: controller.signal,
+      // Add keep-alive and connection reuse
+      keepalive: true,
+      // Add headers for better connection handling
+      headers: {
+        'Connection': 'keep-alive',
+        ...options.headers
+      }
     });
     
     clearTimeout(timeoutId);
@@ -45,6 +56,32 @@ export const fetchWithTimeout = async (url, options = {}, timeout = DEFAULT_TIME
     
     if (error.name === 'AbortError') {
       throw new Error(`Request timeout after ${timeout}ms`);
+    }
+    
+    // Retry once on connection reset
+    if (error.message && (error.message.includes('ERR_CONNECTION_RESET') || error.message.includes('Failed to fetch'))) {
+      console.warn(`Connection reset for ${url}, retrying once...`);
+      await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
+      
+      try {
+        const retryController = new AbortController();
+        const retryTimeoutId = setTimeout(() => retryController.abort(), timeout);
+        
+        const retryResponse = await fetch(url, {
+          ...options,
+          signal: retryController.signal,
+          keepalive: true,
+          headers: {
+            'Connection': 'keep-alive',
+            ...options.headers
+          }
+        });
+        
+        clearTimeout(retryTimeoutId);
+        return retryResponse;
+      } catch (retryError) {
+        throw error; // Throw original error if retry also fails
+      }
     }
     
     throw error;
@@ -74,130 +111,69 @@ export const apiCall = async (url, options = {}, timeout = DEFAULT_TIMEOUT) => {
 };
 
 /**
- * GET request with timeout and mock fallback
+ * GET request with timeout
  * @param {string} url - Request URL
  * @param {number} timeout - Timeout in milliseconds
  * @returns {Promise} - JSON response
  */
 export const apiGet = async (url, timeout = DEFAULT_TIMEOUT) => {
-  try {
-    const response = await apiCall(url, { method: 'GET' }, timeout);
-    return response.json();
-  } catch (error) {
-    console.warn(`API GET failed for ${url}, attempting mock fallback:`, error);
-    
-    if (USE_MOCK_FALLBACK) {
-      // Determine mock data type from URL
-      if (url.includes('/gateways')) {
-        console.log('Using mock gateways data');
-        return getMockData('gateways', 200);
-      } else if (url.includes('/devices')) {
-        console.log('Using mock devices data');
-        return getMockData('devices', 200);
-      } else if (url.includes('/applications')) {
-        console.log('Using mock applications data');
-        return getMockData('applications', 200);
-      } else if (url.includes('/status')) {
-        console.log('Using mock status data');
-        return getMockData('status', 200);
-      }
-    }
-    
-    // Re-throw if no mock available
-    throw error;
-  }
+  // Prepend API base URL if not absolute URL
+  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
+  const response = await apiCall(fullUrl, { method: 'GET' }, timeout);
+  return response.json();
 };
 
 /**
- * POST request with timeout and mock fallback
+ * POST request with timeout
  * @param {string} url - Request URL
  * @param {Object} data - Request body
  * @param {number} timeout - Timeout in milliseconds
  * @returns {Promise} - JSON response
  */
 export const apiPost = async (url, data, timeout = DEFAULT_TIMEOUT) => {
-  try {
-    const response = await apiCall(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data)
-    }, timeout);
-    return response.json();
-  } catch (error) {
-    console.warn(`API POST failed for ${url}, attempting mock response:`, error);
-    
-    if (USE_MOCK_FALLBACK) {
-      // Return mock success for POST operations
-      await new Promise(resolve => setTimeout(resolve, 300));
-      return {
-        success: true,
-        message: `Mock: Operation completed successfully`,
-        data: data
-      };
-    }
-    
-    throw error;
-  }
+  // Prepend API base URL if not absolute URL
+  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
+  const response = await apiCall(fullUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data)
+  }, timeout);
+  return response.json();
 };
 
 /**
- * PUT request with timeout and mock fallback
+ * PUT request with timeout
  * @param {string} url - Request URL
  * @param {Object} data - Request body
  * @param {number} timeout - Timeout in milliseconds
  * @returns {Promise} - JSON response
  */
 export const apiPut = async (url, data, timeout = DEFAULT_TIMEOUT) => {
-  try {
-    const response = await apiCall(url, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data)
-    }, timeout);
-    return response.json();
-  } catch (error) {
-    console.warn(`API PUT failed for ${url}, attempting mock response:`, error);
-    
-    if (USE_MOCK_FALLBACK) {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      return {
-        success: true,
-        message: `Mock: Update completed successfully`,
-        data: data
-      };
-    }
-    
-    throw error;
-  }
+  // Prepend API base URL if not absolute URL
+  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
+  const response = await apiCall(fullUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data)
+  }, timeout);
+  return response.json();
 };
 
 /**
- * DELETE request with timeout and mock fallback
+ * DELETE request with timeout
  * @param {string} url - Request URL
  * @param {number} timeout - Timeout in milliseconds
  * @returns {Promise} - JSON response
  */
 export const apiDelete = async (url, timeout = DEFAULT_TIMEOUT) => {
-  try {
-    const response = await apiCall(url, { method: 'DELETE' }, timeout);
-    return response.json();
-  } catch (error) {
-    console.warn(`API DELETE failed for ${url}, attempting mock response:`, error);
-    
-    if (USE_MOCK_FALLBACK) {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      return {
-        success: true,
-        message: `Mock: Delete completed successfully`
-      };
-    }
-    
-    throw error;
-  }
+  // Prepend API base URL if not absolute URL
+  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
+  const response = await apiCall(fullUrl, { method: 'DELETE' }, timeout);
+  return response.json();
 };
 
 /**
@@ -206,15 +182,41 @@ export const apiDelete = async (url, timeout = DEFAULT_TIMEOUT) => {
  * @param {number} timeout - Timeout in milliseconds
  * @returns {Promise} - Array of responses
  */
+// Rate limiting: execute requests sequentially with small delay to avoid overwhelming the server
 export const apiAll = async (requests, timeout = DEFAULT_TIMEOUT) => {
-  const promises = requests.map(request => {
-    if (typeof request === 'string') {
-      return apiGet(request, timeout);
-    }
-    return apiCall(request.url, request.options, timeout);
-  });
+  const results = [];
   
-  return Promise.all(promises);
+  for (const request of requests) {
+    try {
+      if (typeof request === 'string') {
+        const result = await apiGet(request, timeout);
+        results.push(result);
+      } else {
+        const result = await apiCall(request.url, request.options, timeout);
+        results.push(await result.json());
+      }
+      // Small delay between requests to avoid overwhelming the server
+      await new Promise(resolve => setTimeout(resolve, 50));
+    } catch (error) {
+      console.error(`API call failed for ${typeof request === 'string' ? request : request.url}:`, error);
+      // Return empty data structure instead of throwing to prevent all requests from failing
+      if (typeof request === 'string') {
+        if (request.includes('/devices')) {
+          results.push({ devices: [] });
+        } else if (request.includes('/applications')) {
+          results.push({ applications: [] });
+        } else if (request.includes('/gateways')) {
+          results.push({ gateways: [] });
+        } else {
+          results.push({});
+        }
+      } else {
+        results.push({ data: null });
+      }
+    }
+  }
+  
+  return results;
 };
 
 /**

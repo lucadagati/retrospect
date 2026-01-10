@@ -102,10 +102,8 @@ impl ApplicationController {
             }
         };
 
-        // Get current phase from status - try multiple methods
-        let phase = if let Some(status) = application.status.as_ref() {
-            status.phase
-        } else if let Some(status) = application.status() {
+        // Get current phase from status
+        let phase = if let Some(status) = application.status() {
             status.phase
         } else {
             // If no status found, check if we've already moved it to Deploying
@@ -160,7 +158,7 @@ impl ApplicationController {
         // This avoids the deserialization issue entirely.
         
         // First, try to get status from the deserialized object
-        if let Some(status) = &application.status {
+        if let Some(status) = application.status() {
             if status.phase != wasmbed_k8s_resource::ApplicationPhase::Creating {
                 // If we have a status and it's not Creating, trust it
                 info!("Application {} - Using status from deserialized object, phase: {:?}", name, status.phase);
@@ -199,11 +197,8 @@ impl ApplicationController {
                     info!("Application {} - Got status from fresh fetch using status(), phase: {:?}", name, status.phase);
                     return Ok(status.clone());
                 }
-                // Try status field
-                if let Some(status) = &fresh_app.status {
-                    info!("Application {} - Got status from fresh fetch using status field, phase: {:?}", name, status.phase);
-                    return Ok(status.clone());
-                }
+                // Status is only available via status() method
+                // If status() returns None, create default status
             },
             Err(e) => {
                 warn!("Application {} - Failed to re-fetch: {}", name, e);

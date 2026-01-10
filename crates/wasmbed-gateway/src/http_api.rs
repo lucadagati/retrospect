@@ -494,16 +494,63 @@ async fn deploy_application(
 ) -> Result<Json<DeploymentResponse>, StatusCode> {
     info!("Received deployment request for device {}: app_id={}", device_id, payload.app_id);
 
-    // Check if device is registered
-    let connections = server.device_connections.read().await;
-    if !connections.contains_key(&device_id) {
-        return Ok(Json(DeploymentResponse {
-            success: false,
-            message: "Device not registered".to_string(),
-            error: Some("Device not found or not registered".to_string()),
-        }));
+    // Check if device is registered - but allow waiting for TLS connection even if not yet registered
+    // This handles race conditions where device registration happens after deployment request
+    let max_wait_for_registration = 5; // Wait up to 5 seconds for device to be registered
+    let mut waited_for_registration = 0;
+    let mut device_registered = false;
+    
+    loop {
+        let connections = server.device_connections.read().await;
+        if connections.contains_key(&device_id) {
+            device_registered = true;
+            drop(connections);
+            break;
+        }
+        drop(connections);
+        
+        // If device is not registered, try to auto-register it from Kubernetes Device CRD
+        if waited_for_registration == 0 {
+            info!("Device {} not found in connections, attempting auto-registration from Kubernetes", device_id);
+            match server.device_api.get(&device_id).await {
+                Ok(device) => {
+                    // Check if device is in Connected phase
+                    if let Some(status) = &device.status {
+                        if matches!(status.phase, wasmbed_k8s_resource::DevicePhase::Connected) {
+                            info!("Device {} is Connected in Kubernetes, auto-registering in gateway", device_id);
+                            let public_key = device.spec.public_key.clone();
+                            let capabilities = DeviceCapabilities {
+                                available_memory: 1024 * 1024 * 1024, // 1GB default
+                                cpu_arch: "riscv32".to_string(),
+                                wasm_features: vec!["core".to_string()],
+                                max_app_size: 1024 * 1024, // 1MB default
+                            };
+                            server.register_device(device_id.clone(), public_key, capabilities).await;
+                            info!("Auto-registered device {} from Kubernetes Device CRD", device_id);
+                            // Continue loop to check if registration succeeded
+                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                            waited_for_registration += 1;
+                            continue;
+                        }
+                    }
+                }
+                Err(e) => {
+                    debug!("Failed to get device {} from Kubernetes for auto-registration: {}", device_id, e);
+                }
+            }
+        }
+        
+        if waited_for_registration >= max_wait_for_registration {
+            return Ok(Json(DeploymentResponse {
+                success: false,
+                message: "Device not registered".to_string(),
+                error: Some("Device not found or not registered".to_string()),
+            }));
+        }
+        
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        waited_for_registration += 1;
     }
-    drop(connections);
 
     // Decode WASM bytes
     let wasm_bytes = match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &payload.wasm_bytes) {
@@ -1094,7 +1141,6 @@ async fn create_application(
     let wasm_bytes = payload["wasm_bytes"].as_str().unwrap_or("").to_string();
     
     let application = Application {
-        status: None,
         metadata: kube::api::ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some("wasmbed".to_string()),

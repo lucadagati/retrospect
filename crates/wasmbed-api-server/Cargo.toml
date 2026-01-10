@@ -8,9 +8,9 @@ description = "API Server for Wasmbed platform orchestration"
 
 [dependencies]
 # Web framework
-axum = { version = "0.7", features = ["json", "tracing", "ws"] }
+axum = { version = "0.7", features = ["json", "tracing", "ws", "macros"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "fs", "compression-gzip", "timeout", "set-header"] }
 
 # Async runtime
 tokio = { version = "1.0", features = ["full"] }

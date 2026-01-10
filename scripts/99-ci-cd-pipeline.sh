@@ -78,7 +78,7 @@ print_status "SUCCESS" "Components build completed"
 
 # Step 2: Deploy Infrastructure
 print_header "STEP 2: DEPLOY INFRASTRUCTURE"
-./scripts/04-deploy-infrastructure.sh
+./scripts/03-deploy-infrastructure.sh
 print_status "SUCCESS" "Infrastructure deployment completed"
 
 # Step 3: Check System Status

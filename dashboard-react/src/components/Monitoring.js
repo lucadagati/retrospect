@@ -612,7 +612,7 @@ const Monitoring = () => {
         <Table
           columns={logColumns}
           dataSource={logs}
-          rowKey={(record, index) => `log-${index}`}
+          rowKey={(record) => `log-${record.id || record.timestamp || Math.random()}`}
           size="small"
           pagination={{
             pageSize: 20,

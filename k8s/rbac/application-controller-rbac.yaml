@@ -11,12 +11,15 @@ metadata:
 rules:
 - apiGroups: ["wasmbed.github.io"]
   resources: ["applications"]
-  verbs: ["get", "list", "watch", "update", "patch"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["wasmbed.github.io"]
   resources: ["applications/status"]
   verbs: ["get", "update", "patch"]
 - apiGroups: ["wasmbed.github.io"]
   resources: ["devices"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["wasmbed.io"]
+  resources: ["gateways"]
   verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

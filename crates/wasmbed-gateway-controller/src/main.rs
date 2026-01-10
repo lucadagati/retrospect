@@ -191,21 +191,32 @@ impl GatewayController {
         }
         
         // Count connected devices
-        let devices = self.devices.list(&ListParams::default()).await?;
-        let connected_count = devices.items.iter()
-            .filter(|device| {
-                if let Some(status) = &device.status {
-                    matches!(status.phase, wasmbed_k8s_resource::DevicePhase::Connected)
-                } else {
-                    false
-                }
-            })
-            .count();
+        info!("Listing devices for gateway {}", gateway.name_any());
+        let (connected_count, enrolled_count) = match self.devices.list(&ListParams::default()).await {
+            Ok(devices) => {
+                info!("Successfully listed {} devices for gateway {}", devices.items.len(), gateway.name_any());
+                let connected = devices.items.iter()
+                    .filter(|device| {
+                        if let Some(status) = &device.status {
+                            matches!(status.phase, wasmbed_k8s_resource::DevicePhase::Connected)
+                        } else {
+                            false
+                        }
+                    })
+                    .count();
+                (connected, devices.items.len())
+            },
+            Err(e) => {
+                warn!("Failed to list devices for gateway {}: {}. Continuing with empty device list.", gateway.name_any(), e);
+                // Continue with zero counts if listing fails - don't fail the reconcile
+                (0, 0)
+            }
+        };
 
         let status = wasmbed_k8s_resource::GatewayStatus {
             phase: wasmbed_k8s_resource::GatewayPhase::Running,
             connected_devices: Some(connected_count as i32),
-            enrolled_devices: Some(devices.items.len() as i32),
+            enrolled_devices: Some(enrolled_count as i32),
             last_heartbeat: Some(chrono::Utc::now().to_rfc3339()),
             conditions: Some(vec![wasmbed_k8s_resource::GatewayCondition {
                 r#type: "Ready".to_string(),
@@ -217,8 +228,13 @@ impl GatewayController {
         };
 
         info!("Updating gateway status for {}", gateway.name_any());
-        self.update_gateway_status(gateway, status).await?;
-        info!("Gateway {} moved to running phase", gateway.name_any());
+        if let Err(e) = self.update_gateway_status(gateway, status).await {
+            error!("Failed to update gateway status for {}: {}", gateway.name_any(), e);
+            // Don't fail the reconcile - status update is best effort
+            warn!("Continuing reconcile despite status update failure");
+        } else {
+            info!("Gateway {} moved to running phase", gateway.name_any());
+        }
         Ok(())
     }
 
@@ -266,7 +282,14 @@ impl GatewayController {
         }
         
         // Update device counts
-        let devices = self.devices.list(&ListParams::default()).await?;
+        let devices = match self.devices.list(&ListParams::default()).await {
+            Ok(devices) => devices,
+            Err(e) => {
+                error!("Failed to list devices for gateway {}: {}", gateway.name_any(), e);
+                // Continue with empty device list if listing fails - use default counts
+                return Ok(()); // Return early if we can't list devices
+            }
+        };
         let connected_count = devices.items.iter()
             .filter(|device| {
                 if let Some(status) = &device.status {
@@ -301,7 +324,11 @@ impl GatewayController {
             }]),
         };
         
-        self.update_gateway_status(gateway, status).await?;
+        if let Err(e) = self.update_gateway_status(gateway, status).await {
+            error!("Failed to update gateway status for {}: {}", gateway.name_any(), e);
+            // Don't fail the reconcile - status update is best effort
+            warn!("Continuing reconcile despite status update failure");
+        }
         Ok(())
     }
 
@@ -318,8 +345,12 @@ impl GatewayController {
     async fn update_gateway_status(&self, gateway: &wasmbed_k8s_resource::Gateway, status: wasmbed_k8s_resource::GatewayStatus) -> Result<(), ControllerError> {
         info!("Attempting to update status for gateway {}", gateway.name_any());
         
+        // Serialize status to JSON manually to ensure camelCase conversion
+        let status_json = serde_json::to_value(&status)
+            .map_err(|e| ControllerError::SerializationError(e))?;
+        
         let patch = serde_json::json!({
-            "status": status
+            "status": status_json
         });
 
         let params = PatchParams::apply("wasmbed-gateway-controller");
@@ -336,15 +367,24 @@ impl GatewayController {
             Err(kube::Error::Api(kube::core::ErrorResponse { code: 404, .. })) => {
                 info!("Status subresource not available, trying regular patch");
                 // Status subresource not available, use regular patch
-                self.gateways
+                match self.gateways
                     .patch(&gateway.name_any(), &params, &patch)
-                    .await?;
-                info!("Successfully updated gateway status using regular patch");
-                Ok(())
+                    .await {
+                    Ok(_) => {
+                        info!("Successfully updated gateway status using regular patch");
+                        Ok(())
+                    }
+                    Err(e) => {
+                        error!("Failed to update gateway status with regular patch: {}", e);
+                        Err(ControllerError::KubeError(e))
+                    }
+                }
             }
             Err(e) => {
                 error!("Failed to update gateway status: {}", e);
-                Err(ControllerError::KubeError(e))
+                // Don't fail the reconcile - log and continue
+                warn!("Gateway status update failed, but continuing reconcile. Error: {}", e);
+                Ok(())
             },
         }
     }

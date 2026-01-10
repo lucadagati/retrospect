@@ -16,6 +16,7 @@ Thumbs.db
 
 # Logs
 *.log
+logs/
 
 # Temporary files
 *.tmp
@@ -74,3 +75,9 @@ experiments/scalability_metrics_*.json
 experiments/*.old
 
 .wasmbed-pids
+
+# Runtime generated files
+qemu_devices.json
+
+# Zephyr SDK (large binary, should be downloaded separately)
+zephyr-sdk-*.tar.xz

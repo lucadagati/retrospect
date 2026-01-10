@@ -38,6 +38,31 @@ impl HostFunctionManager {
         &self.hello_world_functions
     }
 
+    /// Get device functions (delegates to context)
+    pub fn device_functions(&self) -> Option<&std::collections::HashMap<String, crate::context::DeviceFunction>> {
+        self.context.host_functions.device_functions()
+    }
+
+    /// Get sensor functions (delegates to context)
+    pub fn sensor_functions(&self) -> Option<&std::collections::HashMap<String, crate::context::SensorFunction>> {
+        self.context.host_functions.sensor_functions()
+    }
+
+    /// Get security functions (delegates to context)
+    pub fn security_functions(&self) -> Option<&std::collections::HashMap<String, crate::context::SecurityFunction>> {
+        self.context.host_functions.security_functions()
+    }
+
+    /// Get GPIO functions (delegates to context)
+    pub fn gpio_functions(&self) -> Option<&std::collections::HashMap<String, crate::context::GpioFunction>> {
+        self.context.host_functions.gpio_functions()
+    }
+
+    /// Get I2C/SPI functions (delegates to context)
+    pub fn i2c_spi_functions(&self) -> Option<&std::collections::HashMap<String, crate::context::I2cSpiFunction>> {
+        self.context.host_functions.i2c_spi_functions()
+    }
+
     /// Create WASM time imports for all enabled host functions
     pub fn create_imports(&self, store: &mut Store<WasmContext>) -> WasmResult<Vec<Extern>> {
         let mut imports = Vec::new();

@@ -44,8 +44,10 @@ print_header() {
 # Get script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-RENODE_BINARY="$PROJECT_ROOT/renode_1.15.0_portable/renode"
-WASM_DIR="$PROJECT_ROOT/wasm-apps"
+# Renode ora usa Docker
+RENODE_DOCKER_IMAGE="antmicro/renode:nightly"
+# WASM apps directory non più necessaria (rimossa)
+# WASM_DIR="$PROJECT_ROOT/wasm-apps"
 
 print_header "Wasmbed Complete Demo Setup"
 
@@ -492,13 +494,13 @@ echo ""
 
 print_status "INFO" "To start Renode emulated devices:"
 echo "  # Terminal 1 - Arduino Nano BLE:"
-echo "  $RENODE_BINARY renode-scripts/arduino_nano_ble.resc"
+echo "  docker run -it --rm -v \"$PROJECT_ROOT:/workspace\" $RENODE_DOCKER_IMAGE renode-scripts/arduino_nano_ble.resc"
 echo ""
 echo "  # Terminal 2 - STM32F4 Discovery:"
-echo "  $RENODE_BINARY renode-scripts/stm32f4_discovery.resc"
+echo "  docker run -it --rm -v \"$PROJECT_ROOT:/workspace\" $RENODE_DOCKER_IMAGE renode-scripts/stm32f4_discovery.resc"
 echo ""
 echo "  # Terminal 3 - nRF52840 DK:"
-echo "  $RENODE_BINARY renode-scripts/nrf52840_dk.resc"
+echo "  docker run -it --rm -v \"$PROJECT_ROOT:/workspace\" $RENODE_DOCKER_IMAGE renode-scripts/nrf52840_dk.resc"
 echo ""
 
 print_status "INFO" "Check deployment status:"

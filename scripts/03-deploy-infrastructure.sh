@@ -198,7 +198,16 @@ kubectl create namespace wasmbed 2>/dev/null || {
     print_status "INFO" "Namespace wasmbed already exists, continuing..."
 }
 kubectl apply -f k8s/crds/
-kubectl apply -f k8s/rbac/
+
+# Apply RBAC resources in specific order to ensure correct permissions
+# Apply gateway-controller-rbac.yaml LAST to ensure it overwrites any incomplete definitions
+print_status "INFO" "Applying RBAC resources..."
+kubectl apply -f k8s/rbac/device-controller-rbac.yaml
+kubectl apply -f k8s/rbac/application-controller-rbac.yaml
+kubectl apply -f k8s/rbac/wasmbed-rbac.yaml
+# Apply gateway-controller-rbac.yaml last to ensure complete permissions (including secrets)
+kubectl apply -f k8s/rbac/gateway-controller-rbac.yaml
+kubectl apply -f k8s/rbac/gateway-rbac.yaml
 
 # Wait for CRDs
 kubectl wait --for condition=established --timeout=60s crd/devices.wasmbed.github.io

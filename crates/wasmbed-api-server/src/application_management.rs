@@ -78,13 +78,20 @@ impl ApplicationManager {
                         .unwrap_or("unknown:latest")
                         .to_string();
                     
-                    let deployed_devices: Vec<String> = item["status"]["deployedDevices"]
-                        .as_array()
-                        .map(|arr| arr.iter()
+                    // Extract deployed devices from deviceStatuses (keys are device IDs)
+                    // Also check if there's a deployedDevices array for backward compatibility
+                    let deployed_devices: Vec<String> = if let Some(device_statuses) = item["status"]["deviceStatuses"].as_object() {
+                        // Extract device IDs from deviceStatuses keys
+                        device_statuses.keys().cloned().collect()
+                    } else if let Some(deployed_devices_arr) = item["status"]["deployedDevices"].as_array() {
+                        // Fallback to deployedDevices array if it exists
+                        deployed_devices_arr.iter()
                             .filter_map(|v| v.as_str())
                             .map(|s| s.to_string())
-                            .collect())
-                        .unwrap_or_default();
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
                     
                     let created_at = metadata["creationTimestamp"]
                         .as_str()
@@ -140,7 +147,8 @@ impl ApplicationManager {
                         .or(Some(created_at));
 
                     applications.push(ApplicationInfo {
-                        app_id,
+                        app_id: app_id.clone(),
+                        id: Some(app_id.clone()), // Ensure id is set from app_id
                         name,
                         image,
                         status,

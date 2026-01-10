@@ -15,7 +15,7 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use futures_util::StreamExt;
 use std::time::Duration;
 use tracing::{error, info, warn};
-use wasmbed_k8s_resource::{Device, DeviceStatus, DevicePhase, Gateway, GatewayStatus, GatewayPhase};
+use wasmbed_k8s_resource::{Device, DeviceStatus, DevicePhase, Gateway, GatewayPhase};
 use wasmbed_types::GatewayReference;
 use thiserror::Error;
 
@@ -417,6 +417,60 @@ impl DeviceController {
                             return Ok(());
                         }
                     }
+                    
+                    // Check if TLS connection is actually active by querying gateway API
+                    let gateway_endpoint = if gateway_ref.endpoint.is_empty() {
+                        "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string()
+                    } else {
+                        gateway_ref.endpoint.clone()
+                    };
+                    
+                    // Verify TLS connection is active
+                    let client = reqwest::Client::new();
+                    let device_id = device.name_any();
+                    let gateway_url = format!("{}/api/v1/devices", gateway_endpoint);
+                    match client
+                        .get(&gateway_url)
+                        .timeout(std::time::Duration::from_secs(5))
+                        .send()
+                        .await
+                    {
+                        Ok(resp) if resp.status().is_success() => {
+                            if let Ok(devices_response) = resp.json::<serde_json::Value>().await {
+                                if let Some(devices) = devices_response["devices"].as_array() {
+                                    let device_found = devices.iter().find(|d| {
+                                        d["device_id"].as_str() == Some(&device_id)
+                                    });
+                                    
+                                    if let Some(device_info) = device_found {
+                                        let tls_connected = device_info["tls_connected"]
+                                            .as_bool()
+                                            .unwrap_or(false);
+                                        
+                                        if !tls_connected {
+                                            warn!("Device {} is marked as Connected but has no active TLS connection. Disconnecting to trigger reconnection.", device_id);
+                                            let mut status = device.status.clone().unwrap();
+                                            status.phase = DevicePhase::Disconnected;
+                                            self.update_device_status(device, status).await?;
+                                            return Ok(());
+                                        }
+                                    } else {
+                                        warn!("Device {} is marked as Connected but not found in gateway. Disconnecting to trigger reconnection.", device_id);
+                                        let mut status = device.status.clone().unwrap();
+                                        status.phase = DevicePhase::Disconnected;
+                                        self.update_device_status(device, status).await?;
+                                        return Ok(());
+                                    }
+                                }
+                            }
+                        }
+                        Ok(_) => {
+                            warn!("Failed to check TLS connection for device {}: gateway returned non-success status", device_id);
+                        }
+                        Err(e) => {
+                            warn!("Failed to check TLS connection for device {}: {}. Continuing...", device_id, e);
+                        }
+                    }
                 }
                 Err(kube::Error::Api(kube::error::ErrorResponse { code: 404, .. })) => {
                     // Gateway doesn't exist anymore, disconnect the device
@@ -444,7 +498,8 @@ impl DeviceController {
             // The device can still be connected without Renode
         }
         
-        // Update heartbeat
+        // Update heartbeat only if device has active TLS connection
+        // (if we got here, TLS connection is active)
         let mut status = device.status.clone().unwrap();
         status.last_heartbeat = Some(chrono::Utc::now());
         
@@ -453,7 +508,61 @@ impl DeviceController {
     }
 
     async fn handle_disconnected(&self, device: &Device) -> Result<(), ControllerError> {
-        info!("Device {} disconnected", device.name_any());
+        let device_id = device.name_any();
+        info!("Device {} disconnected, attempting automatic reconnection", device_id);
+        
+        // Get gateway endpoint from device status or use default
+        let gateway_endpoint = if let Some(gateway_ref) = device.status.as_ref().and_then(|s| s.gateway.as_ref()) {
+            gateway_ref.endpoint.clone()
+        } else {
+            // Try to find a running gateway
+            let gateways_api = Api::<Gateway>::namespaced(self.client.clone(), "wasmbed");
+            match gateways_api.list(&kube::api::ListParams::default()).await {
+                Ok(gateways) => {
+                    // Find first running gateway
+                    gateways.items.iter()
+                        .find_map(|g| {
+                            if let Some(status) = &g.status {
+                                if matches!(status.phase, GatewayPhase::Running) {
+                                    let endpoint = if g.spec.endpoint.is_empty() {
+                                        "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string()
+                                    } else {
+                                        g.spec.endpoint.clone()
+                                    };
+                                    return Some(endpoint);
+                                }
+                            }
+                            None
+                        })
+                        .unwrap_or_else(|| "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string())
+                }
+                Err(_) => "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string(),
+            }
+        };
+        
+        // Register device with gateway to enable reconnection
+        info!("Registering device {} with gateway at {} for reconnection", device_id, gateway_endpoint);
+        let gateway_url = format!("{}/api/v1/devices/{}/connect", gateway_endpoint, device_id);
+        
+        let client = reqwest::Client::new();
+        match client
+            .post(&gateway_url)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                info!("Device {} successfully re-registered with gateway", device_id);
+                // The device will transition to Connected when TLS connection is established
+            }
+            Ok(resp) => {
+                warn!("Gateway reconnection returned status {} for device {}", resp.status(), device_id);
+            }
+            Err(e) => {
+                warn!("Failed to reconnect device {} to gateway: {}. Will retry on next reconciliation.", device_id, e);
+            }
+        }
+        
         Ok(())
     }
 

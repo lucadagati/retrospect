@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wasmbed-api-server
+  namespace: wasmbed
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wasmbed-api-server
+  template:
+    metadata:
+      labels:
+        app: wasmbed-api-server
+    spec:
+      serviceAccountName: wasmbed-api-server
+      containers:
+      - name: api-server
+        image: wasmbed/api-server:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3001
+          name: http
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: WASMBED_API_SERVER_PORT
+          value: "3001"
+        # Use Kubernetes service name instead of localhost
+        - name: WASMBED_API_SERVER_GATEWAY_ENDPOINT
+          value: "http://wasmbed-gateway.wasmbed.svc.cluster.local:8080"
+        - name: WASMBED_API_SERVER_INFRASTRUCTURE_ENDPOINT
+          value: "http://wasmbed-infrastructure.wasmbed.svc.cluster.local:30432"
+        volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+        # Firmware is in container image, no need for host mount
+        # - name: zephyr-firmware
+        #   mountPath: /app/zephyr-workspace
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      # In k3d, Docker socket is accessible directly from host
+      # k3d automatically mounts /var/run/docker.sock from host to node
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+          type: Socket
+      # For k3d, we can't mount host directories directly
+      # Firmware is already in the container image, so we don't need this mount
+      # - name: zephyr-firmware
+      #   hostPath:
+      #     path: /home/lucadag/18_10_23_retrospect/retrospect/zephyr-workspace
+      #     type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wasmbed-api-server
+  namespace: wasmbed
+spec:
+  selector:
+    app: wasmbed-api-server
+  ports:
+  - name: http
+    port: 3001
+    targetPort: 3001
+  type: ClusterIP
+

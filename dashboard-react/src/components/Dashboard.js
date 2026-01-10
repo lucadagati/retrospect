@@ -35,11 +35,29 @@ const Dashboard = () => {
         '/api/v1/devices',
         '/api/v1/applications',
         '/api/v1/gateways'
-      ], 5000);
+      ], 30000); // Increased timeout to 30 seconds for Kubernetes API calls
 
       const devices = devicesData.devices || [];
       const applications = applicationsData.applications || [];
       const gateways = gatewaysData.gateways || [];
+
+      // Calculate application stats
+      const runningCount = applications.filter(a => a.status === 'Running').length;
+      const deployingCount = applications.filter(a => a.status === 'Deploying').length;
+      const failedCount = applications.filter(a => a.status === 'Failed').length;
+      
+      // Debug: log applications data and stats
+      console.log('Dashboard - Fetched applications:', applications);
+      console.log('Dashboard - Applications count:', applications.length);
+      console.log('Dashboard - Calculated stats:', { 
+        total: applications.length, 
+        running: runningCount, 
+        deploying: deployingCount, 
+        failed: failedCount 
+      });
+      if (applications.length > 0) {
+        console.log('Dashboard - First app:', applications[0].name, 'status:', applications[0].status);
+      }
 
       setSystemStatus({
         devices: {
@@ -53,13 +71,13 @@ const Dashboard = () => {
         },
         applications: {
           total: applications.length,
-          running: applications.filter(a => a.status === 'Running').length,
-          deploying: applications.filter(a => a.status === 'Deploying').length,
+          running: runningCount,
+          deploying: deployingCount,
           creating: applications.filter(a => a.status === 'Creating').length,
           partiallyRunning: applications.filter(a => a.status === 'PartiallyRunning').length,
           stopping: applications.filter(a => a.status === 'Stopping').length,
           stopped: applications.filter(a => a.status === 'Stopped').length,
-          failed: applications.filter(a => a.status === 'Failed').length
+          failed: failedCount
         },
         gateways: {
           total: gateways.length,

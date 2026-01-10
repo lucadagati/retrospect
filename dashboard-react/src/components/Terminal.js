@@ -61,7 +61,7 @@ const Terminal = () => {
     },
     {
       name: 'Infrastructure Health',
-      command: 'curl -s http://localhost:3001/api/v1/infrastructure/health',
+      command: 'curl -s http://wasmbed-api-server.wasmbed.svc.cluster.local:3001/api/v1/infrastructure/health',
       description: 'Check infrastructure service health status',
       category: 'Infrastructure'
     },

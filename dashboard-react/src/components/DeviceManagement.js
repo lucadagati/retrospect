@@ -15,7 +15,7 @@ import {
   Col,
   Statistic,
   Tooltip,
-  message,
+  App,
 } from 'antd';
 import {
   PlusOutlined,
@@ -37,6 +37,7 @@ const { Title } = Typography;
 const { Option } = Select;
 
 const DeviceManagement = () => {
+  const { message } = App.useApp(); // Use App.useApp() instead of static message
   const [devices, setDevices] = useState([]);
   const [gateways, setGateways] = useState([]);
   const [publicKeyModalVisible, setPublicKeyModalVisible] = useState(false);
@@ -107,8 +108,25 @@ const DeviceManagement = () => {
         qemuEnabled: true // Enable QEMU emulation
       }, 60000); // Increased timeout to 60 seconds for device creation (gateway + K8s CRD creation)
       
+      // Check if creation was successful
+      if (response?.success === false || response?.errors?.length > 0) {
+        const errorMsg = response?.message || response?.errors?.join('; ') || 'Failed to create device';
+        message.error(`Device creation failed: ${errorMsg}`);
+        
+        // Check if it's a gateway connection error
+        if (errorMsg.includes('Connection refused') || errorMsg.includes('localhost:8080')) {
+          message.warning('Gateway is not reachable. Please ensure port-forward is active: kubectl port-forward -n wasmbed svc/gateway-1-service 8080:8080');
+        }
+        
+        console.error('Device creation failed:', response);
+        setModalVisible(false);
+        form.resetFields();
+        return;
+      }
+      
       // Refresh the devices list to get the updated data
       await fetchDevices();
+      message.success(response?.message || 'Device created successfully');
       console.log('Device created successfully:', response?.message || 'Device created');
       
       // Close modal and reset form on success
@@ -116,8 +134,14 @@ const DeviceManagement = () => {
       form.resetFields();
     } catch (error) {
       console.error('Error creating device:', error);
-      // Show error message to user
-      // You could add a notification here using antd's message component
+      const errorMsg = error.message || 'Unknown error occurred';
+      message.error(`Failed to create device: ${errorMsg}`);
+      
+      // Check if it's a gateway connection error
+      if (errorMsg.includes('Connection refused') || errorMsg.includes('localhost:8080')) {
+        message.warning('Gateway is not reachable. Please ensure port-forward is active: kubectl port-forward -n wasmbed svc/gateway-1-service 8080:8080');
+      }
+      
       // Still close modal on error/timeout so user can try again
       setModalVisible(false);
       form.resetFields();

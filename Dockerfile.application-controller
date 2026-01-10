@@ -7,11 +7,9 @@ WORKDIR /app
 # Copy Cargo files
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
-COPY firmware/ firmware/
 
 # Build the application controller
-# Exclude firmware packages that may not be present
-RUN cargo build --release --bin wasmbed-application-controller --workspace --exclude wasmbed-firmware-arduino-nano-33-ble || cargo build --release --bin wasmbed-application-controller
+RUN cargo build --release --workspace --bin wasmbed-application-controller
 
 # Runtime stage
 FROM debian:testing-slim

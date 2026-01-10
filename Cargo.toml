@@ -17,16 +17,10 @@ members = [
     "crates/wasmbed-device-controller",
     "crates/wasmbed-application-controller",
     "crates/wasmbed-gateway-controller",
-    "crates/wasmbed-device-runtime",
     "crates/wasmbed-infrastructure",
     "crates/wasmbed-api-server",
     "crates/wasmbed-qemu-manager",
-    "crates/wasmbed-qemu-deployment",
-    "crates/wasmbed-qemu-serial-bridge",
     "crates/wasmbed-config",
-    "crates/wasmbed-config-manager",
-    "crates/wasmparser-nostd-fork",
-    "firmware",
 ]
 
 [workspace.package]
@@ -95,4 +89,4 @@ embedded-io = { version = "0.6", default-features = false }
 subtle = { version = "2.5", default-features = false }
 ed25519-dalek = { version = "2.2", default-features = false }
 
-# Note: Fork wasmparser-nostd-fork handles indexmap substitution internally
+# Note: Removed patches for deprecated no_std components (wasmbed-device-runtime)

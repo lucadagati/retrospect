@@ -52,63 +52,81 @@ const InitialConfiguration = () => {
 
   const checkSystemStatus = async () => {
     setLoading(true);
+    console.log('[InitialConfiguration] Starting system status check...');
     try {
-      // Check infrastructure with timeout
+      // Check infrastructure with timeout (increased to 10s)
       let infraStatus = false;
       try {
-        const infraResponse = await fetchWithTimeout('/api/v1/status', {}, 3000);
+        console.log('[InitialConfiguration] Checking infrastructure at /api/v1/status...');
+        const infraResponse = await fetchWithTimeout('/api/v1/status', {}, 10000);
         infraStatus = infraResponse.ok;
+        console.log('[InitialConfiguration] Infrastructure status:', infraStatus, infraResponse.status);
       } catch (e) {
-        console.warn('Infrastructure not available:', e);
+        console.error('[InitialConfiguration] Infrastructure check failed:', e);
         infraStatus = false;
       }
 
-      // Check controllers by testing API endpoints with timeout
+      // Check controllers by testing API endpoints with timeout (increased to 10s)
       let controllersStatus = false;
       try {
+        console.log('[InitialConfiguration] Checking controllers (devices, applications, gateways)...');
         const [devicesResponse, applicationsResponse, gatewaysResponse] = await apiAll([
           { url: '/api/v1/devices', options: {} },
           { url: '/api/v1/applications', options: {} },
           { url: '/api/v1/gateways', options: {} }
-        ], 3000);
+        ], 10000);
         controllersStatus = true; // If we get here, all APIs responded
+        console.log('[InitialConfiguration] Controllers status:', controllersStatus);
       } catch (e) {
-        console.warn('Controllers not available:', e);
+        console.error('[InitialConfiguration] Controllers check failed:', e);
         controllersStatus = false;
       }
 
       // Check dashboard
       const dashboardStatus = true; // Dashboard is running
 
-      // Check existing gateways and devices with timeout
+      // Check existing gateways and devices with timeout (increased to 10s)
       let gateways = [];
       let devices = [];
       try {
+        console.log('[InitialConfiguration] Fetching gateways and devices...');
         const [gatewaysData, devicesData] = await apiAll([
           '/api/v1/gateways',
           '/api/v1/devices'
-        ], 3000);
+        ], 10000);
         
         gateways = gatewaysData.gateways || [];
         devices = devicesData.devices || [];
+        console.log('[InitialConfiguration] Gateways:', gateways.length, 'Devices:', devices.length);
       } catch (e) {
-        console.warn('Failed to fetch gateways/devices:', e);
+        console.error('[InitialConfiguration] Failed to fetch gateways/devices:', e);
       }
 
-      setSystemStatus({
+      const newStatus = {
         infrastructure: infraStatus,
         controllers: controllersStatus,
         dashboard: dashboardStatus,
         gateways: gateways.length,
         devices: devices.length,
-      });
+      };
+      
+      console.log('[InitialConfiguration] Setting system status:', newStatus);
+      setSystemStatus(newStatus);
 
       // Auto-advance to next step if infrastructure is ready
       if (infraStatus && controllersStatus && dashboardStatus && currentStep === 0) {
+        console.log('[InitialConfiguration] All systems ready, advancing to step 1');
         setCurrentStep(1);
+      } else {
+        console.log('[InitialConfiguration] Systems not ready yet:', {
+          infraStatus,
+          controllersStatus,
+          dashboardStatus,
+          currentStep
+        });
       }
     } catch (error) {
-      console.error('Error checking system status:', error);
+      console.error('[InitialConfiguration] Error checking system status:', error);
       // Set default status on error
       setSystemStatus({
         infrastructure: false,
@@ -118,6 +136,7 @@ const InitialConfiguration = () => {
         devices: 0,
       });
     } finally {
+      console.log('[InitialConfiguration] System status check completed');
       setLoading(false);
     }
   };

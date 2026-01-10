@@ -63,7 +63,7 @@ impl GatewayManager {
                     
                     let endpoint = item["spec"]["endpoint"]
                         .as_str()
-                        .unwrap_or("localhost:8080")
+                        .unwrap_or("wasmbed-gateway.wasmbed.svc.cluster.local:8080")
                         .to_string();
                     
                     let connected_devices = item["status"]["connectedDevices"]

@@ -19,7 +19,6 @@ import Monitoring from './components/Monitoring';
 import NetworkTopology from './components/NetworkTopology';
 import InitialConfiguration from './components/InitialConfiguration';
 import Terminal from './components/Terminal';
-import MockDataBanner from './components/MockDataBanner';
 import './App.css';
 
 const { Header, Sider, Content } = Layout;
@@ -318,7 +317,6 @@ function App() {
       }}
     >
       <AntApp>
-        <MockDataBanner />
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Layout style={{ minHeight: '100vh' }}>
           <Sider 

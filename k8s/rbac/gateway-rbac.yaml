@@ -9,17 +9,37 @@ kind: ClusterRole
 metadata:
   name: wasmbed-gateway
 rules:
+# Device CRD access (wasmbed.github.io)
 - apiGroups: ["wasmbed.github.io"]
   resources: ["devices"]
   verbs: ["create", "get", "list", "watch", "update", "patch"]
 - apiGroups: ["wasmbed.github.io"]
   resources: ["devices/status"]
-  verbs: ["get"]
+  verbs: ["get", "update", "patch"]
+# Application CRD access (wasmbed.github.io)
+- apiGroups: ["wasmbed.github.io"]
+  resources: ["applications"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["wasmbed.github.io"]
+  resources: ["applications/status"]
+  verbs: ["get", "update", "patch"]
+# Gateway CRD access (wasmbed.io)
+- apiGroups: ["wasmbed.io"]
+  resources: ["gateways"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["wasmbed.io"]
+  resources: ["gateways/status"]
+  verbs: ["get", "update", "patch"]
+# Kubernetes core resources for monitoring
 - apiGroups: [""]
   resources: ["pods"]
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]
   resources: ["services"]
+  verbs: ["get", "list", "watch"]
+# Secrets for TLS certificates
+- apiGroups: [""]
+  resources: ["secrets"]
   verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

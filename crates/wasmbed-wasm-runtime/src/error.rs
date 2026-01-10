@@ -62,6 +62,9 @@ pub enum WasmRuntimeError {
 
     #[error("WASM parser error: {0}")]
     WasmParserError(#[from] wasmparser::BinaryReaderError),
+
+    #[error("Application not found: {0}")]
+    ApplicationNotFound(String),
 }
 
 /// Result type for WASM runtime operations

@@ -15,6 +15,8 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
     process::Stdio,
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
 };
 use tokio::sync::RwLock;
 use tokio::net::TcpListener;
@@ -34,7 +36,7 @@ use monitoring::MonitoringDashboard;
 use templates::DashboardTemplates;
 
 // Renode Manager integration (previously QEMU, now using Renode)
-use wasmbed_qemu_manager::{RenodeManager, QemuDevice, QemuDeviceStatus};
+use wasmbed_qemu_manager::{RenodeManager, McuType};
 
 #[derive(Parser)]
 #[command(name = "wasmbed-api-server")]
@@ -42,7 +44,7 @@ use wasmbed_qemu_manager::{RenodeManager, QemuDevice, QemuDeviceStatus};
 struct Args {
     #[arg(long, env = "WASMBED_API_SERVER_PORT", default_value = "3001")]
     port: u16,
-    #[arg(long, env = "WASMBED_API_SERVER_GATEWAY_ENDPOINT", default_value = "http://localhost:8080")]
+    #[arg(long, env = "WASMBED_API_SERVER_GATEWAY_ENDPOINT", default_value = "http://wasmbed-gateway.wasmbed.svc.cluster.local:8080")]
     gateway_endpoint: String,
     #[arg(long, env = "WASMBED_API_SERVER_INFRASTRUCTURE_ENDPOINT", default_value = "http://localhost:30432")]
     infrastructure_endpoint: String,
@@ -61,8 +63,8 @@ impl Default for DashboardConfig {
     fn default() -> Self {
         Self {
             port: 3001,
-            gateway_endpoint: "http://localhost:8080".to_string(), // Requires port-forward: kubectl port-forward -n wasmbed svc/wasmbed-gateway 8080:8080
-            infrastructure_endpoint: "http://localhost:30461".to_string(),
+            gateway_endpoint: "http://wasmbed-gateway.wasmbed.svc.cluster.local:8080".to_string(), // Kubernetes service name (no port-forward needed)
+            infrastructure_endpoint: "http://wasmbed-infrastructure.wasmbed.svc.cluster.local:30432".to_string(),
             refresh_interval: Duration::from_secs(5),
         }
     }
@@ -189,7 +191,7 @@ async fn do_connect_device(
     
     // Step 1: Register device with gateway to enable WASM deployment
     let gateway_endpoint = std::env::var("WASMBED_API_SERVER_GATEWAY_ENDPOINT")
-        .unwrap_or_else(|_| "http://localhost:8080".to_string());
+        .unwrap_or_else(|_| "http://wasmbed-gateway.wasmbed.svc.cluster.local:8080".to_string());
     info!("Registering device {} with gateway at {}", device_id, gateway_endpoint);
     let gateway_url = format!("{}/api/v1/devices/{}/connect", gateway_endpoint, device_id);
     
@@ -220,7 +222,10 @@ async fn do_connect_device(
         .next()
         .unwrap_or("localhost")
         .to_string();
-    let gateway_tls_endpoint = format!("{}:8443", gateway_host);
+    
+    // Get TLS port dynamically from gateway CRD or service
+    let gateway_tls_port = DashboardApi::get_gateway_tls_port(&gateway_host).await.unwrap_or(8081);
+    let gateway_tls_endpoint = format!("{}:{}", gateway_host, gateway_tls_port);
     
     let mut hasher = DefaultHasher::new();
     device_id.hash(&mut hasher);
@@ -230,25 +235,7 @@ async fn do_connect_device(
     
     info!("TCP bridge will use port {} for device {} (gateway TLS: {})", bridge_port, device_id, gateway_tls_endpoint);
     
-    // Step 3: Start TCP bridge
-    let bridge_binary = "/home/lucadag/18_10_23_retrospect/retrospect/target/release/wasmbed-tcp-bridge";
-    match tokio::process::Command::new(bridge_binary)
-        .arg(&gateway_tls_endpoint)
-        .arg(&bridge_port.to_string())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
-        Ok(mut child) => {
-            info!("TCP bridge started for device {} on port {} (PID: {:?})", device_id, bridge_port, child.id());
-            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-        }
-        Err(e) => {
-            warn!("Failed to start TCP bridge for device {}: {}", device_id, e);
-        }
-    }
-    
-    // Step 4: Start Renode emulation
+    // Step 3: Start Renode emulation (TCP bridge is handled internally by RenodeManager)
     info!("Starting Renode emulation for device {} with bridge endpoint {}", device_id, bridge_endpoint);
     match state.renode_manager.start_device(&device_id, Some(bridge_endpoint.clone())).await {
         Ok(_) => {
@@ -285,20 +272,158 @@ async fn do_connect_device(
         "status": "Connected"
     })))
 }
-
-// Handler for device connection - manual process
-async fn connect_device_handler(
-    State(_state): State<Arc<DashboardState>>,
+#[axum::debug_handler]
+async fn connect_device_standalone_handler(
+    State(state): State<Arc<DashboardState>>,
     Path(device_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    info!("Device connection requested for {}. Use emulation/start endpoint to start Renode", device_id);
+    info!("Connecting device: {}", device_id);
     
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "message": format!("To connect device {}, first start emulation via /api/v1/devices/{}/emulation/start", device_id, device_id),
-        "instructions": "1. Start Renode emulation\n2. Renode will auto-connect to gateway via TCP bridge\n3. Device status will update to 'Connected'",
-        "status": "Pending"
-    })))
+    // Get device info from Kubernetes to retrieve gateway ID
+    let device_info = state.device_manager.get_device(&device_id).await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    let device_info = match device_info {
+        Some(info) => info,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+    
+    // Get gateway ID from device info
+    let gateway_id = device_info.gateway_id.unwrap_or_else(|| "gateway-1".to_string());
+    
+    // Calculate bridge port based on device ID hash
+    let mut hasher = DefaultHasher::new();
+    device_id.hash(&mut hasher);
+    let device_hash = hasher.finish();
+    let bridge_port = 40000 + (device_hash % 1000) as u16;
+    let bridge_endpoint = format!("127.0.0.1:{}", bridge_port);
+    
+    // Register device with gateway to enable WASM deployment
+    let gateway_endpoint = std::env::var("WASMBED_API_SERVER_GATEWAY_ENDPOINT")
+        .unwrap_or_else(|_| "http://wasmbed-gateway.wasmbed.svc.cluster.local:8080".to_string());
+    info!("Registering device {} with gateway at {}", device_id, gateway_endpoint);
+    
+    let gateway_url = format!("{}/api/v1/devices/{}/connect", gateway_endpoint, device_id);
+    let gateway_response = reqwest::Client::new()
+        .post(&gateway_url)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await;
+    
+    match gateway_response {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                info!("Device {} successfully registered with gateway", device_id);
+            } else {
+                let status = resp.status();
+                let error_text = resp.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                warn!("Gateway registration failed for device {} (status: {}): {}", device_id, status, error_text);
+            }
+        }
+        Err(e) => {
+            warn!("Failed to connect to gateway for device {} registration: {}", device_id, e);
+        }
+    }
+    
+    // Start TCP bridge for device
+    let gateway_host = gateway_endpoint
+        .replace("http://", "")
+        .replace("https://", "")
+        .split(':')
+        .next()
+        .unwrap_or("localhost")
+        .to_string();
+    // Gateway TLS port is 8081 (not 8443) - see k8s/deployments/wasmbed-deployments.yaml
+    let gateway_tls_endpoint = format!("{}:8081", gateway_host);
+    
+    // Start Renode emulation directly (not delegated to device controller)
+    // Call internal endpoint to avoid Send issues with anyhow::Error
+    info!("Starting Renode emulation for device {} (gateway: {})", device_id, gateway_endpoint);
+    
+    // Use HTTP call to internal endpoint which properly handles anyhow::Error
+    let internal_url = format!("http://localhost:3001/api/v1/devices/{}/renode/start", device_id);
+    let renode_start_response = reqwest::Client::new()
+        .post(&internal_url)
+        .json(&serde_json::json!({"gatewayEndpoint": gateway_endpoint}))
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await;
+    
+    // Calculate bridge endpoint for status update (same logic as RenodeManager uses)
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    device_id.hash(&mut hasher);
+    let device_hash = hasher.finish();
+    let bridge_port = 40000 + (device_hash % 1000) as u16;
+    let bridge_endpoint = format!("127.0.0.1:{}", bridge_port);
+    
+    match renode_start_response {
+        Ok(resp) if resp.status().is_success() => {
+            info!("Renode Docker container started for device {} (bridge endpoint: {})", device_id, bridge_endpoint);
+        }
+        Ok(resp) => {
+            let status = resp.status();
+            let error_text = resp.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            warn!("Failed to start Renode for device {}: HTTP {} - {} (continuing anyway)", device_id, status, error_text);
+        }
+        Err(e) => {
+            warn!("Failed to call Renode start endpoint for device {}: {} (continuing anyway)", device_id, e);
+        }
+    }
+    
+    // Update device status in Kubernetes
+    let patch = serde_json::json!({
+        "status": {
+            "phase": "Connected",
+            "lastHeartbeat": chrono::Utc::now().to_rfc3339(),
+            "connectedSince": chrono::Utc::now().to_rfc3339(),
+            "gateway": {
+                "name": gateway_id,
+                "endpoint": bridge_endpoint,
+                "connectedAt": chrono::Utc::now().to_rfc3339()
+            },
+            "pairingMode": false
+        }
+    });
+    
+    let patch_str = serde_json::to_string(&patch).unwrap_or_else(|_| "{}".to_string());
+    let output = tokio::process::Command::new("kubectl")
+        .args(&["patch", "device", &device_id, "-n", "wasmbed", "--type", "merge", "--subresource", "status", "--patch", &patch_str])
+        .output()
+        .await;
+        
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                info!("Device {} connected successfully (Kubernetes + Gateway + Renode)", device_id);
+                Ok(Json(serde_json::json!({
+                    "success": true,
+                    "message": format!("Device {} connected and registered with gateway", device_id),
+                    "lastHeartbeat": SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                    "status": "Connected"
+                })))
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                warn!("Failed to update Kubernetes status for device {}: {}", device_id, stderr);
+                Ok(Json(serde_json::json!({
+                    "success": true,
+                    "message": format!("Device {} connected to gateway (Kubernetes update pending)", device_id),
+                    "lastHeartbeat": SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                    "status": "Connected"
+                })))
+            }
+        }
+        Err(e) => {
+            error!("Failed to execute kubectl for device connection {}: {}", device_id, e);
+            Ok(Json(serde_json::json!({
+                "success": true,
+                "message": format!("Device {} connected successfully (Renode emulation)", device_id),
+                "lastHeartbeat": SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                "status": "Connected"
+            })))
+        }
+    }
 }
 
 async fn start_qemu_device_handler(
@@ -315,39 +440,6 @@ async fn stop_qemu_device_handler(
     request: Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     DashboardApi::stop_qemu_device(state, path, request).await
-}
-
-// Simple handlers for emulation start/stop using external script
-async fn start_emulation_handler(
-    State(_state): State<Arc<DashboardState>>,
-    Path(device_id): Path<String>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    info!("Starting emulation for device: {}", device_id);
-    
-    // Use external script to start Renode Docker
-    let output = tokio::process::Command::new("/tmp/start-renode-docker.sh")
-        .arg(&device_id)
-        .output()
-        .await;
-    
-    match output {
-        Ok(output) if output.status.success() => {
-            info!("Emulation started for device {}", device_id);
-            Ok(Json(serde_json::json!({
-                "success": true,
-                "message": format!("Emulation started for device {}", device_id)
-            })))
-        }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            error!("Failed to start emulation for device {}: {}", device_id, stderr);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-        Err(e) => {
-            error!("Failed to execute start script for device {}: {}", device_id, e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
 }
 
 async fn stop_emulation_handler(
@@ -445,7 +537,17 @@ impl DashboardApi {
     }
 
     /// Get devices API
-    pub async fn api_devices(State(state): State<Arc<DashboardState>>) -> Result<Json<serde_json::Value>, StatusCode> {
+    pub async fn api_devices(
+        State(state): State<Arc<DashboardState>>,
+        headers: axum::http::HeaderMap,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        let user_agent = headers.get("user-agent")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("unknown");
+        let connection = headers.get("connection")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("unknown");
+        info!("API devices request - User-Agent: {}, Connection: {}", user_agent, connection);
         match tokio::time::timeout(Duration::from_secs(5), state.device_manager.get_all_devices()).await {
             Ok(Ok(devices)) => Ok(Json(serde_json::json!({
                 "devices": devices.into_iter().map(|d| serde_json::json!({
@@ -454,8 +556,7 @@ impl DashboardApi {
                     "type": d.device_type,
                     "architecture": d.architecture,
                     "status": d.status,
-                    "gatewayId": d.gateway_id,
-                    "gateway_id": d.gateway_id, // For backward compatibility
+                    "gateway": d.gateway_id,
                     "mcuType": d.mcu_type.unwrap_or_else(|| "Mps2An385".to_string()),
                     "lastHeartbeat": d.last_heartbeat.map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()),
                     "publicKey": d.public_key
@@ -467,15 +568,20 @@ impl DashboardApi {
     }
 
     /// Get applications API
-    pub async fn api_applications(State(state): State<Arc<DashboardState>>) -> Result<Json<serde_json::Value>, StatusCode> {
+    pub async fn api_applications(
+        State(state): State<Arc<DashboardState>>,
+        headers: axum::http::HeaderMap,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        let user_agent = headers.get("user-agent")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("unknown");
+        info!("API applications request - User-Agent: {}", user_agent);
         match tokio::time::timeout(Duration::from_secs(5), state.application_manager.get_all_applications()).await {
             Ok(Ok(applications)) => Ok(Json(serde_json::json!({
                 "applications": applications.into_iter().map(|app| serde_json::json!({
-                    "id": app.app_id.clone(),
                     "app_id": app.app_id,
                     "name": app.name,
                     "image": app.image,
-                    "description": app.name, // Add description field
                     "status": app.status,
                     "deployed_devices": app.deployed_devices,
                     "target_devices": app.target_devices,
@@ -499,7 +605,14 @@ impl DashboardApi {
     }
 
     /// Get gateways API
-    pub async fn api_gateways(State(state): State<Arc<DashboardState>>) -> Result<Json<serde_json::Value>, StatusCode> {
+    pub async fn api_gateways(
+        State(state): State<Arc<DashboardState>>,
+        headers: axum::http::HeaderMap,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        let user_agent = headers.get("user-agent")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("unknown");
+        info!("API gateways request - User-Agent: {}", user_agent);
         match tokio::time::timeout(Duration::from_secs(5), state.gateway_manager.get_all_gateways()).await {
             Ok(Ok(gateways)) => {
                 // Get all devices to calculate connected devices per gateway
@@ -521,8 +634,7 @@ impl DashboardApi {
                             .count();
                         
                         serde_json::json!({
-                            "id": g.gateway_id.clone(),
-                            "gateway_id": g.gateway_id.clone(), // For backward compatibility
+                            "id": g.gateway_id,
                             "name": g.gateway_id,
                             "status": g.status,
                             "endpoint": g.endpoint,
@@ -912,6 +1024,28 @@ spec:
             .and_then(|v| v.as_str())
             .unwrap_or("gateway-1");
         
+        // Resolve the gateway endpoint dynamically based on gateway_id
+        let gateway_endpoint = match state.gateway_manager.get_gateway(gateway_id).await {
+            Ok(Some(gateway_info)) => {
+                // Extract the base URL from the endpoint (remove /api/v1 if present)
+                let endpoint = gateway_info.endpoint.trim();
+                if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
+                    endpoint.to_string()
+                } else {
+                    // If endpoint doesn't have protocol, add http://
+                    format!("http://{}", endpoint)
+                }
+            }
+            Ok(None) => {
+                warn!("Gateway {} not found, using default endpoint", gateway_id);
+                state.config.gateway_endpoint.clone()
+            }
+            Err(e) => {
+                warn!("Failed to get gateway {}: {}, using default endpoint", gateway_id, e);
+                state.config.gateway_endpoint.clone()
+            }
+        };
+        
         let mcu_type_str = request.get("mcuType")
             .and_then(|v| v.as_str())
             .unwrap_or("RenodeArduinoNano33Ble");
@@ -940,6 +1074,8 @@ spec:
         let mut created_devices = Vec::new();
         let mut errors = Vec::new();
         
+        info!("Using gateway endpoint: {} for gateway_id: {}", gateway_endpoint, gateway_id);
+        
         for i in 1..=count {
             let name = if count == 1 {
                 device_name.clone()
@@ -948,7 +1084,7 @@ spec:
             };
             
                     // Call gateway API to create device (which generates a real Ed25519 public key)
-                    let gateway_url = format!("{}/api/v1/devices", state.config.gateway_endpoint);
+                    let gateway_url = format!("{}/api/v1/devices", gateway_endpoint);
                     let device_payload = serde_json::json!({
                         "name": name,
                         "type": device_type,
@@ -957,7 +1093,21 @@ spec:
                         "enabled": true
                     });
                     
-                    let client = reqwest::Client::new();
+                    // Create reqwest client with timeout and DNS resolution settings
+                    let client = match reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(30))
+                        .connect_timeout(std::time::Duration::from_secs(10))
+                        .build()
+                    {
+                        Ok(client) => client,
+                        Err(e) => {
+                            error!("Failed to create HTTP client: {}", e);
+                            errors.push(format!("Failed to create device {}: HTTP client initialization error - {}", name, e));
+                            continue;
+                        }
+                    };
+                    
+                    info!("Calling gateway API at: {}", gateway_url);
                     match client
                         .post(&gateway_url)
                         .json(&device_payload)
@@ -973,13 +1123,18 @@ spec:
                                 
                                 // Parse response to check for public key
                                 if let Ok(response_json) = serde_json::from_str::<serde_json::Value>(&response_text) {
-                                    if let Some(public_key) = response_json.get("publicKey")
+                                    // Check for public_key in device object (gateway returns it nested)
+                                    let public_key = response_json.get("device")
+                                        .and_then(|d| d.get("public_key"))
+                                        .or_else(|| response_json.get("publicKey"))
                                         .or_else(|| response_json.get("public_key"))
-                                        .and_then(|v| v.as_str())
-                                    {
-                                        info!("Device {} has public key from gateway: {}", name, &public_key[..50.min(public_key.len())]);
+                                        .and_then(|v| v.as_str());
+                                    
+                                    if let Some(pk) = public_key {
+                                        info!("Device {} has public key from gateway: {}...", name, &pk[..50.min(pk.len())]);
                                     } else {
-                                        warn!("Device {} created but no public key in gateway response", name);
+                                        warn!("Device {} created but no public key in gateway response. Response structure: {}", name, 
+                                            serde_json::to_string(&response_json).unwrap_or_else(|_| "invalid JSON".to_string()));
                                     }
                                 }
                             } else {
@@ -997,8 +1152,20 @@ spec:
                             }
                         }
                         Err(e) => {
-                            error!("Failed to call gateway API for device {}: {}", name, e);
-                            errors.push(format!("Failed to create device {}: {}", name, e));
+                            error!("Failed to call gateway API for device {} at {}: {}", name, gateway_url, e);
+                            
+                            // Provide more helpful error messages based on error type
+                            let error_msg = if e.is_timeout() {
+                                format!("Failed to create device {}: Gateway timeout (gateway may be unreachable or slow)", name)
+                            } else if e.is_connect() {
+                                format!("Failed to create device {}: Cannot connect to gateway at {}. Check if gateway is running.", name, gateway_url)
+                            } else if e.to_string().contains("name resolution") || e.to_string().contains("DNS") || e.to_string().contains("Temporary failure") {
+                                format!("Failed to create device {}: DNS resolution failed for gateway endpoint {}. Check Kubernetes service DNS.", name, gateway_url)
+                            } else {
+                                format!("Failed to create device {}: Gateway API error - {}", name, e)
+                            };
+                            
+                            errors.push(error_msg);
                             continue;
                         }
                     }
@@ -1132,197 +1299,171 @@ spec:
     pub async fn connect_device(
         State(state): State<Arc<DashboardState>>,
         Path(device_id): Path<String>,
+        Json(_request): Json<serde_json::Value>,
     ) -> Result<Json<serde_json::Value>, StatusCode> {
-        // Complete device connection flow: Kubernetes + Gateway registration + Renode startup
         info!("Connecting device {}", device_id);
         
-        // Get gateway ID from device info
-        let gateway_id = {
-            let device_info = state.device_manager.get_device(&device_id).await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            match device_info {
-                Some(info) => info.gateway_id.unwrap_or_else(|| "gateway-1".to_string()),
-                None => "gateway-1".to_string(),
-            }
-        };
+        // Get gateway ID
+        let gateway_id = state.device_manager.get_device(&device_id).await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .and_then(|info| info.gateway_id)
+            .unwrap_or_else(|| "gateway-1".to_string());
         
-        // Step 1: Register device with gateway to enable WASM deployment
+        // Perform connection steps
         let gateway_endpoint = std::env::var("WASMBED_API_SERVER_GATEWAY_ENDPOINT")
-            .unwrap_or_else(|_| "http://localhost:8080".to_string());
+            .unwrap_or_else(|_| "http://wasmbed-gateway.wasmbed.svc.cluster.local:8080".to_string());
+        
+        // Register with gateway
+        Self::register_with_gateway(&device_id, &gateway_endpoint).await;
+        
+        // Start Renode emulation (TCP bridge is handled internally by RenodeManager)
+        // Pass gateway endpoint - RenodeManager will convert to TLS and start bridge internally
+        Self::start_renode_emulation(&state, &device_id, &gateway_endpoint).await;
+        
+        // Calculate bridge endpoint for status update (same logic as RenodeManager uses)
+        let bridge_endpoint = Self::calculate_bridge_endpoint(&device_id).await;
+        Self::update_device_status(&device_id, &gateway_id, &bridge_endpoint).await;
+        
+        Ok(Json(serde_json::json!({
+            "success": true,
+            "message": format!("Device {} connected and registered with gateway", device_id),
+            "lastHeartbeat": SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            "status": "Connected"
+        })))
+    }
+    
+    async fn register_with_gateway(device_id: &str, gateway_endpoint: &str) {
         info!("Registering device {} with gateway at {}", device_id, gateway_endpoint);
         let gateway_url = format!("{}/api/v1/devices/{}/connect", gateway_endpoint, device_id);
-        let gateway_response = reqwest::Client::new()
+        match reqwest::Client::new()
             .post(&gateway_url)
             .timeout(std::time::Duration::from_secs(10))
             .send()
-            .await;
-        
-        match gateway_response {
+            .await {
+            Ok(resp) if resp.status().is_success() => {
+                info!("Device {} successfully registered with gateway", device_id);
+            }
             Ok(resp) => {
-                if resp.status().is_success() {
-                    info!("Device {} successfully registered with gateway", device_id);
-                } else {
-                    let status = resp.status();
-                    let error_text = resp.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-                    warn!("Gateway registration failed for device {} (status: {}): {}", device_id, status, error_text);
-                    // Continue anyway - Kubernetes update might still work
-                }
+                let status = resp.status();
+                let error_text = resp.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                warn!("Gateway registration failed for device {} (status: {}): {}", device_id, status, error_text);
             }
             Err(e) => {
                 warn!("Failed to connect to gateway for device {} registration: {}", device_id, e);
-                // Continue anyway - device might still work in simulation mode
+            }
+        }
+    }
+    
+    /// Get gateway TLS port dynamically from gateway CRD or service
+    /// Returns the TLS port or None if not found (caller should use default)
+    async fn get_gateway_tls_port(gateway_host: &str) -> Option<u16> {
+        // Extract gateway name from host (e.g., "gateway-1-service.wasmbed.svc.cluster.local" -> "gateway-1")
+        let gateway_name = gateway_host
+            .split('.')
+            .next()
+            .unwrap_or(gateway_host)
+            .replace("-service", "");
+        
+        // Try to get TLS port from gateway CRD
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["get", "gateway", &gateway_name, "-n", "wasmbed", "-o", "json"])
+            .output()
+            .await;
+        
+        if let Ok(output) = output {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if let Ok(gateway_json) = serde_json::from_str::<serde_json::Value>(&stdout) {
+                    // Try to get tlsPort from spec
+                    if let Some(tls_port) = gateway_json["spec"]["tlsPort"].as_u64() {
+                        info!("Found TLS port {} from gateway CRD for {}", tls_port, gateway_name);
+                        return Some(tls_port as u16);
+                    }
+                }
             }
         }
         
-        // Step 2: Start TCP bridge for device
-        // The bridge listens on a local port and forwards to gateway TLS endpoint
-        // Extract host from gateway endpoint (remove http://, https://, and port if present)
-        let gateway_host = gateway_endpoint
-            .replace("http://", "")
-            .replace("https://", "")
-            .split(':')
-            .next()
-            .unwrap_or("localhost")
-            .to_string();
-        let gateway_tls_endpoint = format!("{}:8443", gateway_host);
+        // Fallback: Try to get TLS port from service
+        let service_name = if gateway_host.contains("-service") {
+            gateway_host.split('.').next().unwrap_or(gateway_host).to_string()
+        } else {
+            format!("{}-service", gateway_name)
+        };
         
-        // Calculate bridge port based on device ID hash (to avoid conflicts)
+        let output = tokio::process::Command::new("kubectl")
+            .args(&["get", "svc", &service_name, "-n", "wasmbed", "-o", "json"])
+            .output()
+            .await;
+        
+        if let Ok(output) = output {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if let Ok(service_json) = serde_json::from_str::<serde_json::Value>(&stdout) {
+                    // Look for TLS port in service ports
+                    if let Some(ports) = service_json["spec"]["ports"].as_array() {
+                        for port in ports {
+                            if let Some(name) = port["name"].as_str() {
+                                if name == "tls" || name == "https" {
+                                    if let Some(port_num) = port["targetPort"].as_u64() {
+                                        info!("Found TLS port {} from service {} for {}", port_num, service_name, gateway_name);
+                                        return Some(port_num as u16);
+                                    }
+                                    if let Some(port_num) = port["port"].as_u64() {
+                                        info!("Found TLS port {} from service {} for {}", port_num, service_name, gateway_name);
+                                        return Some(port_num as u16);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        warn!("Could not determine TLS port for gateway {}, will use default 8081", gateway_name);
+        None
+    }
+
+    async fn calculate_bridge_endpoint(device_id: &str) -> String {
+        // Calculate bridge port (same logic as RenodeManager uses)
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        use std::process::Stdio;
         let mut hasher = DefaultHasher::new();
         device_id.hash(&mut hasher);
         let device_hash = hasher.finish();
         let bridge_port = 40000 + (device_hash % 1000) as u16;
-        let bridge_endpoint = format!("127.0.0.1:{}", bridge_port);
-        
-        info!("Starting TCP bridge for device {} on port {} (gateway: {})", device_id, bridge_port, gateway_tls_endpoint);
-        
-        // Start TCP bridge in background using compiled binary
-        let bridge_binary = "/home/lucadag/18_10_23_retrospect/retrospect/target/release/wasmbed-tcp-bridge";
-        let bridge_start = tokio::process::Command::new(bridge_binary)
-            .arg(&gateway_tls_endpoint)
-            .arg(&bridge_port.to_string())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn();
-        
-        match bridge_start {
-            Ok(mut child) => {
-                info!("TCP bridge process started for device {} on port {} (PID: {:?})", device_id, bridge_port, child.id());
-                // Give bridge time to start and bind to port
-                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                
-                // Check if process is still running
-                match child.try_wait() {
-                    Ok(Some(status)) => {
-                        warn!("TCP bridge process exited immediately with status: {:?}", status);
-                    }
-                    Ok(None) => {
-                        info!("TCP bridge is running for device {}", device_id);
-                    }
-                    Err(e) => {
-                        warn!("Error checking TCP bridge status: {}", e);
-                    }
-                }
-            }
-            Err(e) => {
-                warn!("Failed to start TCP bridge for device {}: {} (bridge may need to be started manually)", device_id, e);
-            }
+        format!("127.0.0.1:{}", bridge_port)
+    }
+    
+    async fn start_renode_emulation(state: &Arc<DashboardState>, device_id: &str, gateway_endpoint: &str) {
+        info!("Starting Renode emulation for device {} (gateway: {})", device_id, gateway_endpoint);
+        // RenodeManager will handle TCP bridge internally and convert gateway endpoint to TLS
+        match state.renode_manager.start_device(device_id, Some(gateway_endpoint.to_string())).await {
+            Ok(_) => info!("Renode started for device {}", device_id),
+            Err(e) => warn!("Failed to start Renode for device {}: {}", device_id, e),
         }
-        
-        // Step 3: Start Renode emulation with bridge endpoint
-        // The firmware will connect to the bridge, which forwards to gateway
-        info!("Starting Renode emulation for device {} (bridge endpoint: {})", device_id, bridge_endpoint);
-        
-        // Use RenodeManager to start device (this will generate correct script with container paths)
-        let bridge_endpoint_for_renode = bridge_endpoint.clone();
-        match state.renode_manager.start_device(&device_id, Some(bridge_endpoint_for_renode)).await {
-            Ok(_) => {
-                info!("Renode Docker container started for device {} with bridge endpoint {}", device_id, bridge_endpoint);
-            }
-            Err(e) => {
-                warn!("Failed to start Renode for device {}: {} (device may need to be created first)", device_id, e);
-                // Continue anyway - user can manually start Renode later
-            }
-        }
-        
-        // Step 4: Start Renode-TCP bridge (memory<->TCP bridge)
-        // This bridges data between Renode shared memory and the TCP bridge
-        info!("Starting Renode-TCP memory bridge for device {}", device_id);
-        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await; // Give Renode time to start
-        
-        let memory_bridge_script = "/tmp/renode-tcp-bridge.py";
-        let memory_bridge_start = tokio::process::Command::new("python3")
-            .arg(memory_bridge_script)
-            .arg(&device_id)
-            .arg("3000")  // Renode monitor port
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn();
-        
-        match memory_bridge_start {
-            Ok(mut child) => {
-                info!("Renode-TCP memory bridge started for device {} (PID: {:?})", device_id, child.id());
-            }
-            Err(e) => {
-                warn!("Failed to start Renode-TCP memory bridge for device {}: {}", device_id, e);
-            }
-        }
-        
-        // Step 5: Update device status in Kubernetes
+    }
+    
+    async fn update_device_status(device_id: &str, gateway_id: &str, bridge_endpoint: &str) {
         let patch = serde_json::json!({
             "status": {
                 "phase": "Connected",
                 "lastHeartbeat": chrono::Utc::now().to_rfc3339(),
+                "connectedSince": chrono::Utc::now().to_rfc3339(),
                 "gateway": {
                     "name": gateway_id,
-                    "endpoint": format!("127.0.0.1:{}", 30450 + device_id.len() as u16),
+                    "endpoint": bridge_endpoint,
                     "connectedAt": chrono::Utc::now().to_rfc3339()
-                }
+                },
+                "pairingMode": false
             }
         });
         
         let patch_str = serde_json::to_string(&patch).unwrap_or_else(|_| "{}".to_string());
-        
-        let output = tokio::process::Command::new("kubectl")
-            .args(&["patch", "device", &device_id, "-n", "wasmbed", "--type", "merge", "--subresource", "status", "--patch", &patch_str])
+        let _ = tokio::process::Command::new("kubectl")
+            .args(&["patch", "device", device_id, "-n", "wasmbed", "--type", "merge", "--subresource", "status", "--patch", &patch_str])
             .output()
             .await;
-            
-        match output {
-            Ok(output) => {
-                if output.status.success() {
-                    info!("Device {} connected successfully (Kubernetes + Gateway + Renode)", device_id);
-                    Ok(Json(serde_json::json!({
-                        "success": true,
-                        "message": format!("Device {} connected and registered with gateway", device_id),
-                        "lastHeartbeat": SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
-                        "status": "Connected"
-                    })))
-                } else {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    warn!("Failed to update Kubernetes status for device {}: {}", device_id, stderr);
-                    // Still return success for dashboard, but log the error
-                    Ok(Json(serde_json::json!({
-                        "success": true,
-                        "message": format!("Device {} connected to gateway (Kubernetes update pending)", device_id),
-                        "lastHeartbeat": SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
-                        "status": "Connected"
-                    })))
-                }
-            }
-            Err(e) => {
-                error!("Failed to execute kubectl for device connection {}: {}", device_id, e);
-                // Still return success for dashboard, but log the error
-                Ok(Json(serde_json::json!({
-                    "success": true,
-                    "message": format!("Device {} connected successfully (Renode emulation)", device_id),
-                    "lastHeartbeat": SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
-                    "status": "Connected"
-                })))
-            }
-        }
     }
 
     /// Disconnect device
@@ -1753,19 +1894,25 @@ spec:
                     if let Ok(k8s_device) = serde_json::from_str::<serde_json::Value>(&stdout) {
                         // Try to get endpoint from device.status.gateway.endpoint
                         if let Some(endpoint) = k8s_device["status"]["gateway"]["endpoint"].as_str() {
-                            // Convert HTTP endpoint (port 8080) to TLS endpoint (port 8443)
-                            let tls_endpoint = if endpoint.contains(":8080") {
-                                endpoint.replace(":8080", ":8443")
-                            } else if !endpoint.contains(':') {
-                                format!("{}:8443", endpoint)
-                            } else {
-                                endpoint.to_string()
-                            };
+                            // Extract gateway host from endpoint
+                            let gateway_host = endpoint
+                                .replace("http://", "")
+                                .replace("https://", "")
+                                .split(':')
+                                .next()
+                                .unwrap_or(endpoint)
+                                .to_string();
+                            
+                            // Get TLS port dynamically
+                            let gateway_tls_port = Self::get_gateway_tls_port(&gateway_host).await.unwrap_or(8081);
+                            let tls_endpoint = format!("{}:{}", gateway_host, gateway_tls_port);
                             Some(tls_endpoint)
                         } else {
                             // Fallback: construct from gateway name
                             if let Some(gateway_name) = k8s_device["status"]["gateway"]["name"].as_str() {
-                                Some(format!("{}-service.wasmbed.svc.cluster.local:8443", gateway_name))
+                                let gateway_host = format!("{}-service.wasmbed.svc.cluster.local", gateway_name);
+                                let gateway_tls_port = Self::get_gateway_tls_port(&gateway_host).await.unwrap_or(8081);
+                                Some(format!("{}:{}", gateway_host, gateway_tls_port))
                             } else {
                                 None
                             }
@@ -1801,7 +1948,7 @@ spec:
     pub async fn stop_qemu_device(
         State(state): State<Arc<DashboardState>>,
         Path(device_id): Path<String>,
-        Json(request): Json<serde_json::Value>,
+        Json(_request): Json<serde_json::Value>,
     ) -> Result<Json<serde_json::Value>, StatusCode> {
         info!("Stopping Renode emulation for device: {}", device_id);
 
@@ -1820,6 +1967,48 @@ spec:
             }
         }
     }
+
+    /// Start lightweight emulation flow using renode_manager directly
+    pub async fn start_emulation(
+        State(state): State<Arc<DashboardState>>,
+        Path(device_id): Path<String>,
+    ) -> Result<Json<serde_json::Value>, StatusCode> {
+        info!("Starting emulation for device: {}", device_id);
+
+        // Ensure the device exists within the Renode manager (create a placeholder if needed)
+        if state.renode_manager.get_device(&device_id).await.is_none() {
+            let placeholder_endpoint = format!("127.0.0.1:{}", 30450 + device_id.len() as u16);
+            if let Err(e) = state.renode_manager.create_device(
+                device_id.clone(),
+                device_id.clone(),
+                "ARM_CORTEX_M".to_string(),
+                "MCU".to_string(),
+                McuType::RenodeArduinoNano33Ble,
+                Some(placeholder_endpoint),
+            ).await {
+                error!("Failed to auto-create Renode device {}: {}", device_id, e);
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+
+        // TODO: Make gateway endpoint configurable per device
+        let gateway_endpoint = Some("http://127.0.0.1:40029".to_string());
+
+        match state.renode_manager.start_device(&device_id, gateway_endpoint).await {
+            Ok(_) => {
+                info!("Emulation started successfully for device {}", device_id);
+                Ok(Json(serde_json::json!({
+                    "success": true,
+                    "message": format!("Emulation started for device {}", device_id)
+                })))
+            }
+            Err(e) => {
+                error!("Failed to start emulation for device {}: {}", device_id, e);
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
 
     /// List all Renode devices (endpoint kept as /qemu/ for backward compatibility)
     pub async fn list_qemu_devices(
@@ -1850,6 +2039,8 @@ spec:
             "count": device_list.len()
         })))
     }
+
+    const WASM_TEMPLATE_LOCK: &str = include_str!("../templates/wasm_template.lock");
 
     /// Compile Rust code to WASM
     pub async fn compile_code(
@@ -1957,9 +2148,16 @@ pub fn greet() {{
             })));
         }
 
+        if let Err(e) = std::fs::write(temp_dir.join("Cargo.lock"), Self::WASM_TEMPLATE_LOCK) {
+            return Ok(Json(serde_json::json!({
+                "success": false,
+                "error": format!("Failed to write Cargo.lock: {}", e)
+            })));
+        }
+
         // Compile to WASM
         let output = tokio::process::Command::new("cargo")
-            .args(&["build", "--target", "wasm32-unknown-unknown", "--release"])
+            .args(&["build", "--target", "wasm32-unknown-unknown", "--release", "--offline"])
             .current_dir(&temp_dir)
             .output()
             .await;
@@ -2382,6 +2580,8 @@ pub struct DeviceInfo {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ApplicationInfo {
     pub app_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>, // Normalized id field (same as app_id)
     pub name: String,
     pub image: String,
     pub status: String,
@@ -2722,10 +2922,11 @@ impl Dashboard {
             .route("/api/v1/devices", post(DashboardApi::create_device))
             .route("/api/v1/devices/:id", delete(DashboardApi::delete_device))
             .route("/api/v1/devices/:id/enroll", post(DashboardApi::enroll_device))
-            .route("/api/v1/devices/:id/connect", post(connect_device_handler))
+            .route("/api/v1/devices/:id/connect", post(connect_device_standalone_handler))
             .route("/api/v1/devices/:id/disconnect", post(DashboardApi::disconnect_device))
-            .route("/api/v1/devices/:id/emulation/start", post(start_emulation_handler))
+            .route("/api/v1/devices/:id/emulation/start", post(DashboardApi::start_emulation))
             .route("/api/v1/devices/:id/emulation/stop", post(stop_emulation_handler))
+            .route("/api/v1/devices/:id/renode/start", post(DashboardApi::start_emulation)) // Endpoint for device controller
             .route("/api/v1/renode/devices", get(DashboardApi::list_qemu_devices)) // Renode endpoint
             .route("/api/v1/applications/:id", delete(DashboardApi::delete_application))
             .route("/api/v1/applications/:id/deploy", post(DashboardApi::deploy_application_by_id))
@@ -2749,6 +2950,18 @@ impl Dashboard {
                     .allow_origin(tower_http::cors::Any)
                     .allow_methods(tower_http::cors::Any)
                     .allow_headers(tower_http::cors::Any)
+                    .max_age(std::time::Duration::from_secs(3600))
+            )
+            .layer(
+                tower::ServiceBuilder::new()
+                    .layer(tower_http::timeout::TimeoutLayer::new(
+                        std::time::Duration::from_secs(60)
+                    ))
+                    .layer(tower_http::compression::CompressionLayer::new())
+                    .layer(tower_http::set_header::SetResponseHeaderLayer::overriding(
+                        axum::http::header::CONNECTION,
+                        axum::http::HeaderValue::from_static("keep-alive"),
+                    ))
             )
             .with_state(self.state);
 
@@ -2757,6 +2970,10 @@ impl Dashboard {
         info!("Starting web server on {}", addr);
         
         let listener = TcpListener::bind(addr).await?;
+        
+        info!("Web server listening on {}", addr);
+        info!("Server ready to accept connections");
+        
         axum::serve(listener, app).await?;
 
         Ok(())

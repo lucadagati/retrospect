@@ -102,6 +102,7 @@ pub fn main() -> Result<()> {
                     DeviceSpec {
                         public_key: public_key.to_string(),
                         mcu_type: Some("Mps2An385".to_string()),
+                        preferred_gateway: None,
                     },
                 );
 

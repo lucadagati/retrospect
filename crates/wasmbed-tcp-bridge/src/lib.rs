@@ -31,7 +31,7 @@ impl TcpBridge {
     /// Start the bridge server
     /// This creates a local TCP server that the firmware can connect to
     /// The bridge then forwards data to/from the gateway
-    pub fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let gateway_endpoint = self.gateway_endpoint.clone();
         let connection = self.connection.clone();
         let bridge_port = self.bridge_port;
