@@ -82,14 +82,30 @@ const Monitoring = () => {
 
       // Calculate real metrics from API data
       const activeDevices = devices.filter(d => d.status === 'Connected').length;
-      const enrolledDevices = devices.filter(d => d.enrolled).length;
+      const enrolledDevices = devices.filter(d => d.status === 'Enrolled' || d.enrolled).length;
+      const pendingDevices = devices.filter(d => d.status === 'Pending' || d.status === 'Enrolling').length;
+      const failedDevices = devices.filter(d => d.status === 'Failed' || d.status === 'Unreachable').length;
+      
       const runningApplications = applications.filter(a => a.status === 'Running').length;
-      const activeGateways = gateways.filter(g => g.status === 'Active').length;
-      const inactiveGateways = gateways.filter(g => g.status === 'Inactive').length;
+      const deployingApplications = applications.filter(a => a.status === 'Deploying' || a.status === 'Creating').length;
+      const failedApplications = applications.filter(a => a.status === 'Failed').length;
+      
+      // Gateway status: use 'Running' instead of 'Active'
+      const activeGateways = gateways.filter(g => g.status === 'Running' || g.status === 'Active').length;
+      const inactiveGateways = gateways.filter(g => g.status === 'Stopped' || g.status === 'Failed' || g.status === 'Inactive').length;
+      
+      // Calculate max connections from gateway configs (sum of maxDevices)
+      const maxConnections = gateways.reduce((sum, g) => sum + (g.maxDevices || 50), 0);
+      
+      // Determine system health based on component status
+      const systemHealth = (infraComponents.ca === 'active' && 
+                           infraComponents.secretStore === 'active' && 
+                           activeGateways > 0) ? 'Good' : 'Degraded';
 
       setMetrics({
+        systemHealth: systemHealth,
         activeConnections: activeDevices,
-        maxConnections: 30, // This would come from gateway config
+        maxConnections: maxConnections || 50, // Default to 50 if no gateways
         totalDevices: devices.length,
         activeDevices: activeDevices,
         totalApplications: applications.length,
@@ -99,19 +115,32 @@ const Monitoring = () => {
           inactive: inactiveGateways,
           totalDevices: activeDevices
         },
+        deviceStatus: {
+          connected: activeDevices,
+          enrolled: enrolledDevices,
+          pending: pendingDevices,
+          failed: failedDevices
+        },
+        applicationStatus: {
+          running: runningApplications,
+          deploying: deployingApplications,
+          failed: failedApplications
+        },
         infrastructureStatus: infraComponents,
+        // System metrics are not available - hide or show as N/A
         systemMetrics: {
-          cpuUsage: 0, // Would need system metrics API
-          memoryUsage: 0, // Would need system metrics API
-          diskUsage: 0, // Would need system metrics API
-          networkIn: 0, // Would need system metrics API
-          networkOut: 0 // Would need system metrics API
+          cpuUsage: null, // Not available
+          memoryUsage: null, // Not available
+          diskUsage: null, // Not available
+          networkIn: null, // Not available
+          networkOut: null // Not available
         }
       });
     } catch (error) {
       console.error('Error fetching metrics:', error);
       // Set empty metrics when backend is not available
       setMetrics({
+        systemHealth: 'Unknown',
         activeConnections: 0,
         maxConnections: 0,
         totalDevices: 0,
@@ -123,6 +152,17 @@ const Monitoring = () => {
           inactive: 0,
           totalDevices: 0
         },
+        deviceStatus: {
+          connected: 0,
+          enrolled: 0,
+          pending: 0,
+          failed: 0
+        },
+        applicationStatus: {
+          running: 0,
+          deploying: 0,
+          failed: 0
+        },
         infrastructureStatus: {
           ca: 'unknown',
           secretStore: 'unknown',
@@ -130,11 +170,11 @@ const Monitoring = () => {
           logging: 'unknown'
         },
         systemMetrics: {
-          cpuUsage: 0,
-          memoryUsage: 0,
-          diskUsage: 0,
-          networkIn: 0,
-          networkOut: 0
+          cpuUsage: null,
+          memoryUsage: null,
+          diskUsage: null,
+          networkIn: null,
+          networkOut: null
         }
       });
     }
@@ -411,40 +451,28 @@ const Monitoring = () => {
             <Col xs={24} sm={12} lg={6}>
               <Card>
                 <Statistic
-                  title="CPU Usage"
-                  value={metrics.cpuUsage}
-                  suffix="%"
+                  title="Total Applications"
+                  value={metrics.totalApplications}
                   prefix={<LineChartOutlined />}
-                  valueStyle={{ 
-                    color: metrics.cpuUsage > 80 ? '#cf1322' : 
-                           metrics.cpuUsage > 60 ? '#faad14' : '#3f8600' 
-                  }}
+                  valueStyle={{ color: '#1890ff' }}
                 />
-                <Progress
-                  percent={metrics.cpuUsage}
-                  size="small"
-                  status={metrics.cpuUsage > 80 ? 'exception' : 'success'}
-                />
+                <div style={{ marginTop: 8, fontSize: '12px', color: '#666' }}>
+                  Running: {metrics.runningApplications}
+                </div>
               </Card>
             </Col>
             
             <Col xs={24} sm={12} lg={6}>
               <Card>
                 <Statistic
-                  title="Memory Usage"
-                  value={metrics.memoryUsage}
-                  suffix="%"
+                  title="Total Devices"
+                  value={metrics.totalDevices}
                   prefix={<DatabaseOutlined />}
-                  valueStyle={{ 
-                    color: metrics.memoryUsage > 80 ? '#cf1322' : 
-                           metrics.memoryUsage > 60 ? '#faad14' : '#3f8600' 
-                  }}
+                  valueStyle={{ color: '#1890ff' }}
                 />
-                <Progress
-                  percent={metrics.memoryUsage}
-                  size="small"
-                  status={metrics.memoryUsage > 80 ? 'exception' : 'success'}
-                />
+                <div style={{ marginTop: 8, fontSize: '12px', color: '#666' }}>
+                  Connected: {metrics.activeDevices}
+                </div>
               </Card>
             </Col>
           </Row>
@@ -592,70 +620,6 @@ const Monitoring = () => {
             </Col>
           </Row>
 
-          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-            <Col xs={24}>
-              <Card title="System Metrics" size="small">
-                <Row gutter={16}>
-                  <Col xs={12} sm={6}>
-                    <Statistic
-                      title="CPU Usage"
-                      value={metrics.systemMetrics?.cpuUsage || 0}
-                      suffix="%"
-                      valueStyle={{ 
-                        color: (metrics.systemMetrics?.cpuUsage || 0) > 80 ? '#cf1322' : 
-                               (metrics.systemMetrics?.cpuUsage || 0) > 60 ? '#faad14' : '#3f8600'
-                      }}
-                    />
-                    <Progress 
-                      percent={metrics.systemMetrics?.cpuUsage || 0} 
-                      size="small" 
-                      status={(metrics.systemMetrics?.cpuUsage || 0) > 80 ? 'exception' : 'normal'}
-                    />
-                  </Col>
-                  <Col xs={12} sm={6}>
-                    <Statistic
-                      title="Memory Usage"
-                      value={metrics.systemMetrics?.memoryUsage || 0}
-                      suffix="%"
-                      valueStyle={{ 
-                        color: (metrics.systemMetrics?.memoryUsage || 0) > 80 ? '#cf1322' : 
-                               (metrics.systemMetrics?.memoryUsage || 0) > 60 ? '#faad14' : '#3f8600'
-                      }}
-                    />
-                    <Progress 
-                      percent={metrics.systemMetrics?.memoryUsage || 0} 
-                      size="small" 
-                      status={(metrics.systemMetrics?.memoryUsage || 0) > 80 ? 'exception' : 'normal'}
-                    />
-                  </Col>
-                  <Col xs={12} sm={6}>
-                    <Statistic
-                      title="Disk Usage"
-                      value={metrics.systemMetrics?.diskUsage || 0}
-                      suffix="%"
-                      valueStyle={{ 
-                        color: (metrics.systemMetrics?.diskUsage || 0) > 80 ? '#cf1322' : 
-                               (metrics.systemMetrics?.diskUsage || 0) > 60 ? '#faad14' : '#3f8600'
-                      }}
-                    />
-                    <Progress 
-                      percent={metrics.systemMetrics?.diskUsage || 0} 
-                      size="small" 
-                      status={(metrics.systemMetrics?.diskUsage || 0) > 80 ? 'exception' : 'normal'}
-                    />
-                  </Col>
-                  <Col xs={12} sm={6}>
-                    <Statistic
-                      title="Network Traffic"
-                      value={`${metrics.systemMetrics?.networkIn || 0} / ${metrics.systemMetrics?.networkOut || 0}`}
-                      suffix="KB/s"
-                      valueStyle={{ color: '#1890ff' }}
-                    />
-                  </Col>
-                </Row>
-              </Card>
-            </Col>
-          </Row>
         </>
       )}
 

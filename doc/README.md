@@ -24,31 +24,159 @@ Wasmbed is a complete platform for deploying and managing WebAssembly applicatio
 
 ## Architecture
 
-### High-Level Architecture
+### Complete System Architecture
 
 ```mermaid
 graph TB
-    Dashboard["Dashboard<br/>(React Web UI)"]
-    APIServer["API Server<br/>(REST API + Kubernetes Controllers)"]
-    Gateway1["Gateway 1<br/>(TLS Server)"]
-    Gateway2["Gateway 2<br/>(TLS Server)"]
-    TCPBridge["TCP Bridge<br/>(TLS Tunneling)"]
-    Device["Renode Device<br/>(ARM Cortex-M Emulation)<br/>+ Zephyr RTOS<br/>+ WAMR"]
+    subgraph "Kubernetes Cluster (wasmbed namespace)"
+        subgraph "User Interface Layer"
+            DashboardPod["Pod: wasmbed-dashboard<br/>Container: dashboard<br/>Image: wasmbed/dashboard:latest<br/>Port: 3000"]
+            DashboardSvc["Service: wasmbed-dashboard<br/>Type: LoadBalancer<br/>Port: 3000"]
+        end
+        
+        subgraph "API Layer"
+            APIServerPod["Pod: wasmbed-api-server<br/>Container: api-server<br/>Image: wasmbed/api-server:latest<br/>Port: 3001<br/>Mounts: /var/run/docker.sock"]
+            APIServerSvc["Service: wasmbed-api-server<br/>Type: ClusterIP<br/>Port: 3001"]
+        end
+        
+        subgraph "Gateway Layer"
+            GatewayPod["Pod: wasmbed-gateway<br/>Container: gateway<br/>Image: wasmbed/gateway:latest<br/>Ports: 8080 HTTP, 8081 TLS<br/>Mounts: /certs (TLS certificates)"]
+            GatewaySvc["Service: wasmbed-gateway<br/>Type: ClusterIP<br/>Ports: 8080, 8081"]
+        end
+        
+        subgraph "Controller Layer"
+            DeviceControllerPod["Pod: wasmbed-device-controller<br/>Container: device-controller<br/>Image: wasmbed/device-controller:latest"]
+            AppControllerPod["Pod: wasmbed-application-controller<br/>Container: application-controller<br/>Image: wasmbed/application-controller:latest"]
+            GatewayControllerPod["Pod: wasmbed-gateway-controller<br/>Container: gateway-controller<br/>Image: wasmbed/gateway-controller:latest"]
+        end
+        
+        subgraph "Kubernetes CRDs"
+            DeviceCRD["Device CRD<br/>Custom Resource<br/>Status: Pending/Enrolled/Connected"]
+            AppCRD["Application CRD<br/>Custom Resource<br/>Status: Pending/Running/Stopped"]
+            GatewayCRD["Gateway CRD<br/>Custom Resource<br/>Status: Pending/Running/Stopped"]
+        end
+        
+        subgraph "Kubernetes API"
+            K8sAPI["Kubernetes API Server<br/>Manages CRDs, Pods, Services"]
+        end
+    end
     
-    Dashboard --> APIServer
-    APIServer --> Gateway1
-    APIServer --> Gateway2
-    Gateway1 --> TCPBridge
-    Gateway2 --> TCPBridge
-    TCPBridge --> Device
+    subgraph "Docker Host (Node)"
+        subgraph "Renode Manager (in API Server Pod)"
+            RenodeManager["Renode Manager<br/>Rust Library<br/>Manages Docker containers"]
+        end
+        
+        subgraph "Docker Containers"
+            RenodeContainer1["Docker Container: renode-device-1<br/>Image: antmicro/renode:nightly<br/>Network: host<br/>Volume: firmware-device-1<br/>Port: 30450+"]
+            RenodeContainer2["Docker Container: renode-device-2<br/>Image: antmicro/renode:nightly<br/>Network: host<br/>Volume: firmware-device-2<br/>Port: 30451+"]
+        end
+        
+        subgraph "Docker Volumes"
+            FirmwareVol1["Docker Volume: firmware-device-1<br/>Contains: zephyr.elf"]
+            FirmwareVol2["Docker Volume: firmware-device-2<br/>Contains: zephyr.elf"]
+        end
+        
+        subgraph "TCP Bridge Processes"
+            TCPBridge1["TCP Bridge Process<br/>Port: 40000-40999<br/>Tunnels TLS to Gateway"]
+            TCPBridge2["TCP Bridge Process<br/>Port: 40000-40999<br/>Tunnels TLS to Gateway"]
+        end
+    end
+    
+    subgraph "Emulated Devices"
+        subgraph "Renode Device 1"
+            Renode1["Renode Emulator<br/>Platform: arduino_nano_33_ble<br/>CPU: ARM Cortex-M4"]
+            Zephyr1["Zephyr RTOS Firmware<br/>ELF: zephyr.elf<br/>Loaded from volume"]
+            WAMR1["WAMR Runtime<br/>WebAssembly Interpreter"]
+            Firmware1["Wasmbed Protocol Handler<br/>Reads gateway endpoint from memory<br/>Connects via TCP Bridge"]
+        end
+        
+        subgraph "Renode Device 2"
+            Renode2["Renode Emulator<br/>Platform: stm32f4_discovery<br/>CPU: ARM Cortex-M4"]
+            Zephyr2["Zephyr RTOS Firmware<br/>ELF: zephyr.elf<br/>Loaded from volume"]
+            WAMR2["WAMR Runtime<br/>WebAssembly Interpreter"]
+            Firmware2["Wasmbed Protocol Handler<br/>Reads gateway endpoint from memory<br/>Connects via TCP Bridge"]
+        end
+    end
+    
+    %% User Interface Layer connections
+    DashboardPod --> DashboardSvc
+    DashboardSvc -.HTTP.-> APIServerSvc
+    
+    %% API Layer connections
+    APIServerPod --> APIServerSvc
+    APIServerPod --> K8sAPI
+    APIServerPod --> GatewaySvc
+    APIServerPod --> RenodeManager
+    
+    %% Gateway Layer connections
+    GatewayPod --> GatewaySvc
+    GatewayPod --> K8sAPI
+    
+    %% Controller Layer connections
+    DeviceControllerPod --> K8sAPI
+    DeviceControllerPod --> APIServerSvc
+    AppControllerPod --> K8sAPI
+    AppControllerPod --> GatewaySvc
+    GatewayControllerPod --> K8sAPI
+    
+    %% CRD connections
+    K8sAPI --> DeviceCRD
+    K8sAPI --> AppCRD
+    K8sAPI --> GatewayCRD
+    
+    %% Renode Manager connections
+    RenodeManager -.Docker API.-> RenodeContainer1
+    RenodeManager -.Docker API.-> RenodeContainer2
+    RenodeManager -.Creates.-> TCPBridge1
+    RenodeManager -.Creates.-> TCPBridge2
+    
+    %% Docker container connections
+    RenodeContainer1 --> FirmwareVol1
+    RenodeContainer2 --> FirmwareVol2
+    RenodeContainer1 --> Renode1
+    RenodeContainer2 --> Renode2
+    
+    %% Emulated device connections
+    Renode1 --> Zephyr1
+    Zephyr1 --> WAMR1
+    Zephyr1 --> Firmware1
+    Firmware1 -.TLS/CBOR.-> TCPBridge1
+    TCPBridge1 -.TLS Tunnel.-> GatewaySvc
+    
+    Renode2 --> Zephyr2
+    Zephyr2 --> WAMR2
+    Zephyr2 --> Firmware2
+    Firmware2 -.TLS/CBOR.-> TCPBridge2
+    TCPBridge2 -.TLS Tunnel.-> GatewaySvc
+    
+    %% Styling
+    classDef podStyle fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    classDef svcStyle fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef crdStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef dockerStyle fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef deviceStyle fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    
+    class DashboardPod,APIServerPod,GatewayPod,DeviceControllerPod,AppControllerPod,GatewayControllerPod podStyle
+    class DashboardSvc,APIServerSvc,GatewaySvc svcStyle
+    class DeviceCRD,AppCRD,GatewayCRD crdStyle
+    class RenodeContainer1,RenodeContainer2,FirmwareVol1,FirmwareVol2,TCPBridge1,TCPBridge2 dockerStyle
+    class Renode1,Renode2,Zephyr1,Zephyr2,WAMR1,WAMR2,Firmware1,Firmware2 deviceStyle
 ```
 
 ### Communication Flow
 
-1. **Dashboard** → API Server: Device and application management
-2. **API Server** → Gateway: Configuration and deployment
-3. **Gateway** → Device (via TCP Bridge): TLS/CBOR communication
-4. **Device**: WASM execution via WAMR
+1. **User** → Dashboard (HTTP): Web UI access via LoadBalancer service
+2. **Dashboard** → API Server (HTTP): REST API calls via Kubernetes service DNS
+3. **API Server** → Kubernetes API: CRD operations (create/update Device/Application/Gateway)
+4. **Controllers** → Kubernetes API: Watch CRDs and reconcile desired state
+5. **API Server** → Renode Manager: Device emulation requests
+6. **Renode Manager** → Docker API: Create/manage Renode containers
+7. **Renode Manager** → TCP Bridge: Start TLS tunneling processes
+8. **Renode Container** → Firmware Volume: Load Zephyr ELF file
+9. **Zephyr Firmware** → TCP Bridge: Connect via TLS (reads endpoint from memory)
+10. **TCP Bridge** → Gateway Service: Tunnel TLS connection to Gateway pod
+11. **Gateway** → Device: Deploy WASM modules via TLS/CBOR
+12. **Device** → WAMR: Execute WebAssembly modules
 
 ## Components
 
