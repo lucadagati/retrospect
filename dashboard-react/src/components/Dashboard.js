@@ -114,12 +114,7 @@ const Dashboard = () => {
           active: gateways.filter(g => g.status === 'Running' || g.status === 'Active').length,
           inactive: gateways.filter(g => g.status === 'Stopped' || g.status === 'Failed' || g.status === 'Inactive').length
         },
-        infrastructure: {
-          ca_status: 'unknown',
-          secret_store_status: 'unknown',
-          monitoring_status: 'unknown',
-          logging_status: 'unknown'
-        },
+        infrastructure: infraStatus,
         uptime: Date.now(),
         last_update: new Date()
       });
