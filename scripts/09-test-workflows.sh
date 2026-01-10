@@ -368,7 +368,13 @@ fi
 # Verify Gateway pod exists and is running
 print_status "INFO" "Verifying Gateway pod exists..."
 # Gateway pods are typically named like: gateway-1-deployment-xxx-xxx
-GATEWAY_POD=$(kubectl get pods -n wasmbed -l app=gateway 2>/dev/null | grep "$GATEWAY_NAME" | awk '{print $1}' | head -1 || echo "")
+# First try to find by deployment name
+GATEWAY_DEPLOYMENT="${GATEWAY_NAME}-deployment"
+GATEWAY_POD=$(kubectl get pods -n wasmbed 2>/dev/null | grep "$GATEWAY_DEPLOYMENT" | awk '{print $1}' | head -1 || echo "")
+if [ -z "$GATEWAY_POD" ]; then
+    # Try by label
+    GATEWAY_POD=$(kubectl get pods -n wasmbed -l app=gateway 2>/dev/null | grep "$GATEWAY_NAME" | awk '{print $1}' | head -1 || echo "")
+fi
 if [ -z "$GATEWAY_POD" ]; then
     # Try alternative: look for pods with gateway name in the name
     GATEWAY_POD=$(kubectl get pods -n wasmbed 2>/dev/null | grep -i "gateway.*${GATEWAY_NAME}" | awk '{print $1}' | head -1 || echo "")
