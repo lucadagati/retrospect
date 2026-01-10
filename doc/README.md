@@ -552,22 +552,53 @@ cargo build --release
 ### Testing
 
 ```bash
-# Test complete workflow
-./scripts/09-test-workflows.sh
+# Run all tests (recommended)
+./scripts/run-all-tests.sh
 
-# Test dashboard
-./scripts/10-test-dashboard.sh
+# Individual test suites
+./scripts/test-dashboard-apis.sh        # Comprehensive API tests (45 endpoints)
+./scripts/04-check-system-status.sh     # System status check
+./scripts/test-firmware-complete.sh     # Firmware build and size tests
 
-# Test Renode
-./scripts/11-test-renode-dashboard.sh
+# Integration tests (require full deployment)
+./scripts/09-test-workflows.sh          # Complete workflow tests
+./scripts/10-test-dashboard.sh         # Dashboard integration tests
+./scripts/11-test-renode-dashboard.sh  # Renode dashboard integration tests
 ```
 
 ### Useful Scripts
 
-- `06-master-control.sh`: Main control (deploy/stop/status)
+**Setup:**
+- `setup-zephyr-workspace.sh`: Setup Zephyr workspace
 - `quick-setup.sh`: Quick complete setup
+- `setup-wamr-integration.sh`: Setup WAMR integration
+
+**Build:**
+- `02-build-components.sh`: Build all Rust components
 - `build-zephyr-app.sh`: Firmware compilation
-- `test-firmware-complete.sh`: Complete firmware test
+
+**Deploy:**
+- `03-deploy-infrastructure.sh`: Deploy complete infrastructure
+
+**Control:**
+- `06-master-control.sh`: Main control (deploy/stop/status)
+- `05-stop-services.sh`: Stop all services
+- `01-cleanup-environment.sh`: Cleanup environment
+
+**Status:**
+- `04-check-system-status.sh`: Check system status
+
+**Testing:**
+- `run-all-tests.sh`: Run all platform tests
+- `test-dashboard-apis.sh`: Comprehensive dashboard API tests (45 endpoints, kubectl verification)
+- `test-firmware-complete.sh`: Firmware build and size validation
+- `09-test-workflows.sh`: Complete workflow tests
+- `10-test-dashboard.sh`: Dashboard integration tests
+- `11-test-renode-dashboard.sh`: Renode dashboard integration tests
+
+**Utility:**
+- `check-download.sh`: Download verification utility
+- `99-ci-cd-pipeline.sh`: CI/CD pipeline script
 
 ## Communication
 
