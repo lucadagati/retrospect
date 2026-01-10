@@ -32,8 +32,6 @@ pub enum McuType {
     RenodeArduinoNano33Ble,
     /// Renode STM32F4 Discovery (ARM Cortex-M4) - Constrained device
     RenodeStm32F4Discovery,
-    /// Renode Arduino Uno R4 (ARM Cortex-M4) - Constrained device
-    RenodeArduinoUnoR4,
     /// Legacy: ARM MPS2-AN385 (ARM Cortex-M3) - Maps to RenodeArduinoNano33Ble
     #[serde(alias = "Mps2An385")]
     Mps2An385,
@@ -45,7 +43,6 @@ impl McuType {
         match self {
             McuType::RenodeArduinoNano33Ble => "arduino_nano_33_ble",
             McuType::RenodeStm32F4Discovery => "stm32f4_discovery",
-            McuType::RenodeArduinoUnoR4 => "arduino_uno_r4_minima",
             McuType::Mps2An385 => "arduino_nano_33_ble", // Map to Arduino Nano for compatibility
         }
     }
@@ -55,7 +52,6 @@ impl McuType {
         match self {
             McuType::RenodeArduinoNano33Ble => "cortex-m4",
             McuType::RenodeStm32F4Discovery => "cortex-m4",
-            McuType::RenodeArduinoUnoR4 => "cortex-m4",
             McuType::Mps2An385 => "cortex-m3",
         }
     }
@@ -65,7 +61,6 @@ impl McuType {
         match self {
             McuType::RenodeArduinoNano33Ble => "1M",
             McuType::RenodeStm32F4Discovery => "1M",
-            McuType::RenodeArduinoUnoR4 => "512K",
             McuType::Mps2An385 => "512K",
         }
     }
@@ -75,7 +70,6 @@ impl McuType {
         match self {
             McuType::RenodeArduinoNano33Ble => "Renode Arduino Nano 33 BLE (Cortex-M4)",
             McuType::RenodeStm32F4Discovery => "Renode STM32F4 Discovery (Cortex-M4)",
-            McuType::RenodeArduinoUnoR4 => "Renode Arduino Uno R4 (Cortex-M4)",
             McuType::Mps2An385 => "ARM MPS2-AN385 (Cortex-M3)",
         }
     }
@@ -85,7 +79,6 @@ impl McuType {
         match self {
             McuType::RenodeArduinoNano33Ble => Some("nrf52840-hal"),
             McuType::RenodeStm32F4Discovery => Some("stm32f4xx-hal"),
-            McuType::RenodeArduinoUnoR4 => Some("renesas-ra-hal"),
             McuType::Mps2An385 => None, // No specific HAL for MPS2-AN385
         }
     }
@@ -95,7 +88,6 @@ impl McuType {
         vec![
             McuType::RenodeArduinoNano33Ble,
             McuType::RenodeStm32F4Discovery,
-            McuType::RenodeArduinoUnoR4,
         ]
     }
 }
@@ -613,17 +605,6 @@ impl RenodeManager {
                     ))
                 }
             },
-            McuType::RenodeArduinoUnoR4 => {
-                if zephyr_firmware_stm32f4.exists() {
-                    Ok(zephyr_firmware_stm32f4)
-                } else {
-                    Err(std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        format!("Zephyr firmware not found for Arduino Uno R4. Expected: {}", 
-                            zephyr_firmware_stm32f4.display())
-                    ))
-                }
-            },
             McuType::Mps2An385 => {
                 if zephyr_firmware_nrf52840.exists() {
                     Ok(zephyr_firmware_nrf52840)
@@ -718,7 +699,6 @@ impl RenodeManager {
         let uart_name = match device.mcu_type {
             McuType::RenodeArduinoNano33Ble => "uart0",
             McuType::RenodeStm32F4Discovery => "usart1",
-            McuType::RenodeArduinoUnoR4 => "uart0",
             McuType::Mps2An385 => "uart0", // Map to Arduino Nano UART
         };
         

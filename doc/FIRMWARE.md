@@ -151,10 +151,6 @@ west build -b nrf52840dk/nrf52840 ../zephyr-app
 - **Renode platform**: `stm32f4_discovery`
 - **MCU**: STM32F407 (ARM Cortex-M4)
 
-### Arduino Uno R4
-
-- **Renode platform**: `arduino_uno_r4_minima`
-- **MCU**: RA4M1 (ARM Cortex-M4)
 
 ## Esecuzione in Renode
 

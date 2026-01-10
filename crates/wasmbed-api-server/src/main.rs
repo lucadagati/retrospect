@@ -1053,7 +1053,6 @@ spec:
         let mcu_type = match mcu_type_str {
             "RenodeArduinoNano33Ble" => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble,
             "RenodeStm32F4Discovery" => wasmbed_qemu_manager::McuType::RenodeStm32F4Discovery,
-            "RenodeArduinoUnoR4" => wasmbed_qemu_manager::McuType::RenodeArduinoUnoR4,
             _ => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble, // Default fallback
         };
         
@@ -1062,7 +1061,6 @@ spec:
         let crd_mcu_type = match mcu_type_str {
             "RenodeArduinoNano33Ble" => "Mps2An385", // Map to default ARM Cortex-M3
             "RenodeStm32F4Discovery" => "Stm32Vldiscovery", // Map to STM32 variant
-            "RenodeArduinoUnoR4" => "Mps2An386", // Map to ARM Cortex-M4 variant
             _ => "Mps2An385", // Default fallback
         };
         
@@ -1854,7 +1852,6 @@ spec:
                     let mcu_type = match device_info.mcu_type.as_deref() {
                         Some("RenodeArduinoNano33Ble") => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble,
                         Some("RenodeStm32F4Discovery") => wasmbed_qemu_manager::McuType::RenodeStm32F4Discovery,
-                        Some("RenodeArduinoUnoR4") => wasmbed_qemu_manager::McuType::RenodeArduinoUnoR4,
                         Some("Mps2An385") | Some("mps2-an385") => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble, // Map old format to Arduino Nano
                         _ => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble, // Default fallback
                     };

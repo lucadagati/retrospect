@@ -357,8 +357,7 @@ const DeviceManagement = () => {
       render: (mcuType) => {
         const mcuNames = {
           'RenodeArduinoNano33Ble': 'Arduino Nano 33 BLE',
-          'RenodeStm32F4Discovery': 'STM32F4 Discovery',
-          'RenodeArduinoUnoR4': 'Arduino Uno R4'
+          'RenodeStm32F4Discovery': 'STM32F4 Discovery'
         };
         return <Tag color="purple">{mcuNames[mcuType] || mcuType}</Tag>;
       },
@@ -658,7 +657,6 @@ const DeviceManagement = () => {
             <Select placeholder="Select MCU Type">
               <Option value="RenodeArduinoNano33Ble">Arduino Nano 33 BLE (Cortex-M4) - nRF52840, 1MB RAM, Bluetooth LE</Option>
               <Option value="RenodeStm32F4Discovery">STM32F4 Discovery (Cortex-M4) - STMicroelectronics, 1MB RAM, Audio codec</Option>
-              <Option value="RenodeArduinoUnoR4">Arduino Uno R4 (Cortex-M4) - Renesas RA4M1, 512KB RAM, WiFi/Bluetooth</Option>
             </Select>
           </Form.Item>
 

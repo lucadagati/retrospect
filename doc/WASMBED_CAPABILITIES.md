@@ -21,7 +21,6 @@ Wasmbed può emulare dispositivi embedded reali usando **Renode**:
 #### Dispositivi Supportati:
 - **Arduino Nano 33 BLE** (nRF52840 - ARM Cortex-M4)
 - **STM32F4 Discovery** (STM32F407 - ARM Cortex-M4)
-- **Arduino Uno R4** (RA4M1 - ARM Cortex-M4)
 
 #### Cosa Include l'Emulazione:
 - ✅ **CPU completa** (ARM Cortex-M4 con tutte le istruzioni)

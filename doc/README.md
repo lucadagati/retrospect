@@ -473,7 +473,6 @@ west build -b nrf52840dk/nrf52840 ../zephyr-app
 
 - **Arduino Nano 33 BLE** (nRF52840)
 - **STM32F4 Discovery**
-- **Arduino Uno R4**
 
 All platforms use Renode for emulation.
 
