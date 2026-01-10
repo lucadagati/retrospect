@@ -2484,7 +2484,47 @@ pub fn greet() {{
             Ok(result) => {
                 if result.status.success() {
                     let stdout = String::from_utf8_lossy(&result.stdout);
-                    let logs: Vec<&str> = stdout.lines().collect();
+                    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+                    
+                    // Parse logs and extract component, level, and message
+                    let logs: Vec<serde_json::Value> = stdout.lines()
+                        .enumerate()
+                        .map(|(idx, line)| {
+                            // Try to extract component from log line (e.g., "wasmbed-gateway", "wasmbed-api-server")
+                            let component = if line.contains("wasmbed-gateway") {
+                                "Gateway"
+                            } else if line.contains("wasmbed-api-server") || line.contains("api-server") {
+                                "API Server"
+                            } else if line.contains("device-controller") || line.contains("device") {
+                                "Device Controller"
+                            } else if line.contains("application-controller") || line.contains("application") {
+                                "Application Controller"
+                            } else if line.contains("gateway-controller") {
+                                "Gateway Controller"
+                            } else {
+                                "System"
+                            };
+                            
+                            // Try to extract log level
+                            let level = if line.to_uppercase().contains("ERROR") || line.to_uppercase().contains("ERR") {
+                                "ERROR"
+                            } else if line.to_uppercase().contains("WARN") || line.to_uppercase().contains("WARNING") {
+                                "WARN"
+                            } else if line.to_uppercase().contains("DEBUG") {
+                                "DEBUG"
+                            } else {
+                                "INFO"
+                            };
+                            
+                            serde_json::json!({
+                                "id": idx + 1,
+                                "timestamp": (now - (stdout.lines().count() - idx) as u64).to_string(),
+                                "level": level,
+                                "component": component,
+                                "message": line.trim()
+                            })
+                        })
+                        .collect();
                     
                     Ok(Json(serde_json::json!({
                         "logs": logs
@@ -2492,12 +2532,18 @@ pub fn greet() {{
                 } else {
                     let stderr = String::from_utf8_lossy(&result.stderr);
                     error!("kubectl logs failed: {}", stderr);
-                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                    // Return empty logs instead of error
+                    Ok(Json(serde_json::json!({
+                        "logs": []
+                    })))
                 }
             }
             Err(e) => {
                 error!("Failed to execute kubectl: {}", e);
-                Err(StatusCode::INTERNAL_SERVER_ERROR)
+                // Return empty logs instead of error
+                Ok(Json(serde_json::json!({
+                    "logs": []
+                })))
             }
         }
     }
@@ -2542,21 +2588,46 @@ pub fn greet() {{
         let output = tokio::process::Command::new("kubectl")
             .args(&["logs", "-n", "wasmbed", "-l", "app=wasmbed-infrastructure", "--tail=50"])
             .output()
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .await;
 
-        let logs = if output.status.success() {
-            String::from_utf8_lossy(&output.stdout).to_string()
-        } else {
-            "No logs available".to_string()
+        let logs = match output {
+            Ok(result) => {
+                if result.status.success() {
+                    let stdout = String::from_utf8_lossy(&result.stdout);
+                    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+                    
+                    stdout.lines()
+                        .enumerate()
+                        .map(|(idx, line)| {
+                            // Extract log level
+                            let level = if line.to_uppercase().contains("ERROR") || line.to_uppercase().contains("ERR") {
+                                "ERROR"
+                            } else if line.to_uppercase().contains("WARN") || line.to_uppercase().contains("WARNING") {
+                                "WARN"
+                            } else if line.to_uppercase().contains("DEBUG") {
+                                "DEBUG"
+                            } else {
+                                "INFO"
+                            };
+                            
+                            serde_json::json!({
+                                "id": idx + 1,
+                                "timestamp": (now - (stdout.lines().count() - idx) as u64).to_string(),
+                                "level": level,
+                                "component": "Infrastructure",
+                                "message": line.trim()
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                }
+            }
+            Err(_) => Vec::new()
         };
 
         Ok(Json(serde_json::json!({
-            "logs": logs.lines().map(|line| serde_json::json!({
-                "timestamp": SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                "level": "info",
-                "message": line
-            })).collect::<Vec<_>>()
+            "logs": logs
         })))
     }
 }

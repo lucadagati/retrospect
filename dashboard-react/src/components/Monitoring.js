@@ -144,64 +144,115 @@ const Monitoring = () => {
     try {
       // Try to fetch logs from infrastructure service first, then fallback to general logs
       const [infraLogsResponse, generalLogsResponse] = await Promise.all([
-        fetchWithTimeout('/api/v1/infrastructure/logs', {}, 5000),
-        fetchWithTimeout('/api/v1/logs', {}, 5000)
+        fetchWithTimeout('/api/v1/infrastructure/logs', {}, 5000).catch(() => ({ ok: false })),
+        fetchWithTimeout('/api/v1/logs', {}, 5000).catch(() => ({ ok: false }))
       ]);
       
+      let apiLogs = [];
+      
       if (infraLogsResponse.ok) {
-        const infraLogsData = await infraLogsResponse.json();
-        setLogs(infraLogsData.logs || []);
-      } else if (generalLogsResponse.ok) {
-        const logsData = await generalLogsResponse.json();
-        setLogs(logsData.logs || []);
-      } else {
-        // If no logs API available, create minimal logs from system state
-        const [devicesData, applicationsData, gatewaysData] = await apiAll([
-          '/api/v1/devices',
-          '/api/v1/applications',
-          '/api/v1/gateways'
-        ], 10000);
-
-        let devices = devicesData.devices || [];
-        let applications = applicationsData.applications || [];
-        let gateways = gatewaysData.gateways || [];
-
-        // Generate system status logs
-        const systemLogs = [];
-        
-        if (gateways.length > 0) {
-          systemLogs.push({
-            id: 1,
+        try {
+          const infraLogsData = await infraLogsResponse.json();
+          apiLogs = infraLogsData.logs || [];
+        } catch (e) {
+          console.warn('Failed to parse infrastructure logs:', e);
+        }
+      }
+      
+      if (apiLogs.length === 0 && generalLogsResponse.ok) {
+        try {
+          const logsData = await generalLogsResponse.json();
+          apiLogs = logsData.logs || [];
+        } catch (e) {
+          console.warn('Failed to parse general logs:', e);
+        }
+      }
+      
+      // Normalize log format (ensure all logs have required fields)
+      const normalizedLogs = apiLogs.map((log, idx) => {
+        // Handle both string and object formats
+        if (typeof log === 'string') {
+          return {
+            id: idx + 1,
             timestamp: new Date().toISOString(),
             level: 'INFO',
-            component: 'Gateway',
-            message: `${gateways.length} gateway(s) configured`
-          });
+            component: 'System',
+            message: log
+          };
         }
-
-        if (devices.length > 0) {
-          const connectedDevices = devices.filter(d => d.status === 'Connected').length;
-          systemLogs.push({
-            id: 2,
-            timestamp: new Date(Date.now() - 30000).toISOString(),
-            level: 'INFO',
-            component: 'Device Controller',
-            message: `${connectedDevices}/${devices.length} devices connected`
-          });
+        
+        // Ensure timestamp is ISO string
+        let timestamp = log.timestamp;
+        if (typeof timestamp === 'number') {
+          timestamp = new Date(timestamp * 1000).toISOString();
+        } else if (!timestamp) {
+          timestamp = new Date().toISOString();
         }
+        
+        return {
+          id: log.id || idx + 1,
+          timestamp: timestamp,
+          level: (log.level || 'INFO').toUpperCase(),
+          component: log.component || 'System',
+          message: log.message || log.toString()
+        };
+      });
+      
+      // If we have API logs, use them; otherwise generate system status logs
+      if (normalizedLogs.length > 0) {
+        setLogs(normalizedLogs);
+      } else {
+        // Generate system status logs as fallback
+        try {
+          const [devicesData, applicationsData, gatewaysData] = await apiAll([
+            '/api/v1/devices',
+            '/api/v1/applications',
+            '/api/v1/gateways'
+          ], 10000);
 
-        if (applications.length > 0) {
-          const runningApps = applications.filter(a => a.status === 'Running').length;
-          systemLogs.push({
-            id: 3,
-            timestamp: new Date(Date.now() - 60000).toISOString(),
-            level: 'INFO',
-            component: 'Application Controller',
-            message: `${runningApps}/${applications.length} applications running`
-          });
+          let devices = devicesData.devices || [];
+          let applications = applicationsData.applications || [];
+          let gateways = gatewaysData.gateways || [];
+
+          const systemLogs = [];
+          
+          if (gateways.length > 0) {
+            systemLogs.push({
+              id: 1,
+              timestamp: new Date().toISOString(),
+              level: 'INFO',
+              component: 'Gateway',
+              message: `${gateways.length} gateway(s) configured`
+            });
+          }
+
+          if (devices.length > 0) {
+            const connectedDevices = devices.filter(d => d.status === 'Connected').length;
+            systemLogs.push({
+              id: 2,
+              timestamp: new Date(Date.now() - 30000).toISOString(),
+              level: 'INFO',
+              component: 'Device Controller',
+              message: `${connectedDevices}/${devices.length} devices connected`
+            });
+          }
+
+          if (applications.length > 0) {
+            const runningApps = applications.filter(a => a.status === 'Running').length;
+            systemLogs.push({
+              id: 3,
+              timestamp: new Date(Date.now() - 60000).toISOString(),
+              level: 'INFO',
+              component: 'Application Controller',
+              message: `${runningApps}/${applications.length} applications running`
+            });
+          }
+
+          setLogs(systemLogs);
+        } catch (e) {
+          console.error('Failed to generate system logs:', e);
+          setLogs([]);
         }
-
-        setLogs(systemLogs);
       }
     } catch (error) {
       console.error('Error fetching logs:', error);
