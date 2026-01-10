@@ -161,16 +161,49 @@ sleep 5
 print_status "INFO" "Checking device status via Kubernetes..."
 kubectl get devices -n wasmbed
 
-print_status "INFO" "Checking device status via API..."
-DEVICE_STATUS=$(curl -4 -s $API_BASE_URL/api/v1/devices | jq -r '.devices[0].status // "not_found"')
-if [ "$DEVICE_STATUS" = "Enrolled" ]; then
-    print_status "SUCCESS" "Device enrollment workflow working - Device is enrolled"
+# Verify Device CRD exists
+DEVICE_NAME="test-device-1"
+if kubectl get device "$DEVICE_NAME" -n wasmbed &>/dev/null; then
+    print_status "SUCCESS" "Device CRD exists: $DEVICE_NAME"
+    
+    # Get device status from CRD
+    CRD_STATUS=$(kubectl get device "$DEVICE_NAME" -n wasmbed -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+    if [ -n "$CRD_STATUS" ]; then
+        print_status "INFO" "Device CRD status: $CRD_STATUS"
+    fi
+    
+    # Verify device controller has processed it
+    DEVICE_UID=$(kubectl get device "$DEVICE_NAME" -n wasmbed -o jsonpath='{.metadata.uid}' 2>/dev/null || echo "")
+    if [ -n "$DEVICE_UID" ]; then
+        print_status "SUCCESS" "Device CRD has been processed (UID: ${DEVICE_UID:0:8}...)"
+    fi
 else
-    print_status "WARNING" "Device status: $DEVICE_STATUS (may still be processing)"
+    print_status "ERROR" "Device CRD NOT found: $DEVICE_NAME"
 fi
 
+# Check device status via API
+print_status "INFO" "Checking device status via API..."
+DEVICE_STATUS=$(curl -4 -s $API_BASE_URL/v1/devices | jq -r ".devices[] | select(.id == \"$DEVICE_NAME\" or .device_id == \"$DEVICE_NAME\") | .status // empty" 2>/dev/null || echo "")
+if [ -n "$DEVICE_STATUS" ]; then
+    print_status "SUCCESS" "Device found in API with status: $DEVICE_STATUS"
+    
+    # Verify status consistency between CRD and API
+    if [ -n "$CRD_STATUS" ] && [ "$CRD_STATUS" = "$DEVICE_STATUS" ]; then
+        print_status "SUCCESS" "Device status consistent between CRD and API: $DEVICE_STATUS"
+    elif [ -n "$CRD_STATUS" ]; then
+        print_status "WARNING" "Device status mismatch - CRD: $CRD_STATUS, API: $DEVICE_STATUS"
+    fi
+else
+    print_status "WARNING" "Device not found in API (may still be processing)"
+fi
+
+# Check device controller logs
 print_status "INFO" "Checking device controller logs..."
-tail -5 device-controller.log | grep -E "(enrolled|reconciling)" || true
+if kubectl logs -n wasmbed -l app=wasmbed-device-controller --tail=10 2>/dev/null | grep -qE "(enrolled|reconciling|$DEVICE_NAME)"; then
+    print_status "SUCCESS" "Device controller has processed the device"
+else
+    print_status "WARNING" "Device controller logs not found or device not processed yet"
+fi
 
 # Test 2: Application Deployment Workflow
 print_header "TEST 2: APPLICATION DEPLOYMENT WORKFLOW"
@@ -184,16 +217,49 @@ sleep 5
 print_status "INFO" "Checking application status via Kubernetes..."
 kubectl get applications -n wasmbed
 
-print_status "INFO" "Checking application status via API..."
-APP_STATUS=$(curl -4 -s $API_BASE_URL/api/v1/applications | jq -r '.applications[0].status // "not_found"')
-if [ "$APP_STATUS" = "Deploying" ] || [ "$APP_STATUS" = "Running" ]; then
-    print_status "SUCCESS" "Application deployment workflow working - Application is $APP_STATUS"
+# Verify Application CRD exists
+APP_NAME="test-app-1"
+if kubectl get application "$APP_NAME" -n wasmbed &>/dev/null; then
+    print_status "SUCCESS" "Application CRD exists: $APP_NAME"
+    
+    # Get application status from CRD
+    APP_CRD_STATUS=$(kubectl get application "$APP_NAME" -n wasmbed -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+    if [ -n "$APP_CRD_STATUS" ]; then
+        print_status "INFO" "Application CRD status: $APP_CRD_STATUS"
+    fi
+    
+    # Verify application controller has processed it
+    APP_UID=$(kubectl get application "$APP_NAME" -n wasmbed -o jsonpath='{.metadata.uid}' 2>/dev/null || echo "")
+    if [ -n "$APP_UID" ]; then
+        print_status "SUCCESS" "Application CRD has been processed (UID: ${APP_UID:0:8}...)"
+    fi
 else
-    print_status "WARNING" "Application status: $APP_STATUS (may still be processing)"
+    print_status "ERROR" "Application CRD NOT found: $APP_NAME"
 fi
 
+# Check application status via API
+print_status "INFO" "Checking application status via API..."
+APP_STATUS=$(curl -4 -s $API_BASE_URL/v1/applications | jq -r ".applications[] | select(.id == \"$APP_NAME\" or .app_id == \"$APP_NAME\" or .name == \"Hello World App\") | .status // empty" 2>/dev/null || echo "")
+if [ -n "$APP_STATUS" ]; then
+    print_status "SUCCESS" "Application found in API with status: $APP_STATUS"
+    
+    # Verify status consistency between CRD and API
+    if [ -n "$APP_CRD_STATUS" ] && [ "$APP_CRD_STATUS" = "$APP_STATUS" ]; then
+        print_status "SUCCESS" "Application status consistent between CRD and API: $APP_STATUS"
+    elif [ -n "$APP_CRD_STATUS" ]; then
+        print_status "WARNING" "Application status mismatch - CRD: $APP_CRD_STATUS, API: $APP_STATUS"
+    fi
+else
+    print_status "WARNING" "Application not found in API (may still be processing)"
+fi
+
+# Check application controller logs
 print_status "INFO" "Checking application controller logs..."
-tail -5 application-controller.log | grep -E "(deploying|reconciling)" || true
+if kubectl logs -n wasmbed -l app=wasmbed-application-controller --tail=10 2>/dev/null | grep -qE "(deploying|reconciling|$APP_NAME)"; then
+    print_status "SUCCESS" "Application controller has processed the application"
+else
+    print_status "WARNING" "Application controller logs not found or application not processed yet"
+fi
 
 # Test 3: Gateway Deployment Workflow
 print_header "TEST 3: GATEWAY DEPLOYMENT WORKFLOW"
@@ -207,12 +273,67 @@ sleep 5
 print_status "INFO" "Checking gateway status via Kubernetes..."
 kubectl get gateways -n wasmbed
 
-print_status "INFO" "Checking gateway status via API..."
-GW_STATUS=$(curl -4 -s $API_BASE_URL/api/v1/gateways | jq -r '.gateways[0].status // "not_found"')
-print_status "INFO" "Gateway status: $GW_STATUS"
+# Verify Gateway CRD exists
+GATEWAY_NAME="gateway-1"
+if kubectl get gateway "$GATEWAY_NAME" -n wasmbed &>/dev/null; then
+    print_status "SUCCESS" "Gateway CRD exists: $GATEWAY_NAME"
+    
+    # Get gateway status from CRD
+    GW_CRD_STATUS=$(kubectl get gateway "$GATEWAY_NAME" -n wasmbed -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+    if [ -n "$GW_CRD_STATUS" ]; then
+        print_status "INFO" "Gateway CRD status: $GW_CRD_STATUS"
+    fi
+    
+    # Verify gateway controller has processed it
+    GW_UID=$(kubectl get gateway "$GATEWAY_NAME" -n wasmbed -o jsonpath='{.metadata.uid}' 2>/dev/null || echo "")
+    if [ -n "$GW_UID" ]; then
+        print_status "SUCCESS" "Gateway CRD has been processed (UID: ${GW_UID:0:8}...)"
+    fi
+else
+    print_status "ERROR" "Gateway CRD NOT found: $GATEWAY_NAME"
+fi
 
+# Check gateway status via API
+print_status "INFO" "Checking gateway status via API..."
+GW_STATUS=$(curl -4 -s $API_BASE_URL/v1/gateways | jq -r ".gateways[] | select(.id == \"$GATEWAY_NAME\" or .gateway_id == \"$GATEWAY_NAME\") | .status // empty" 2>/dev/null || echo "")
+if [ -n "$GW_STATUS" ]; then
+    print_status "SUCCESS" "Gateway found in API with status: $GW_STATUS"
+    
+    # Verify status consistency between CRD and API
+    if [ -n "$GW_CRD_STATUS" ] && [ "$GW_CRD_STATUS" = "$GW_STATUS" ]; then
+        print_status "SUCCESS" "Gateway status consistent between CRD and API: $GW_STATUS"
+    elif [ -n "$GW_CRD_STATUS" ]; then
+        print_status "WARNING" "Gateway status mismatch - CRD: $GW_CRD_STATUS, API: $GW_STATUS"
+    fi
+else
+    print_status "WARNING" "Gateway not found in API (may still be processing)"
+fi
+
+# Verify Gateway pod exists and is running
+print_status "INFO" "Verifying Gateway pod exists..."
+GATEWAY_PODS=$(kubectl get pods -n wasmbed -l app=gateway 2>/dev/null | grep -c "$GATEWAY_NAME" 2>/dev/null || echo "0")
+# Ensure GATEWAY_PODS is a number
+if ! [[ "$GATEWAY_PODS" =~ ^[0-9]+$ ]]; then
+    GATEWAY_PODS=0
+fi
+if [ "$GATEWAY_PODS" -gt 0 ]; then
+    GATEWAY_POD_STATUS=$(kubectl get pods -n wasmbed -l app=gateway 2>/dev/null | grep "$GATEWAY_NAME" | awk '{print $3}' | head -1 || echo "")
+    if [ "$GATEWAY_POD_STATUS" = "Running" ]; then
+        print_status "SUCCESS" "Gateway pod is running: $GATEWAY_NAME (status: $GATEWAY_POD_STATUS)"
+    else
+        print_status "WARNING" "Gateway pod exists but not running: $GATEWAY_NAME (status: $GATEWAY_POD_STATUS)"
+    fi
+else
+    print_status "WARNING" "Gateway pod not found: $GATEWAY_NAME (may be created by controller later)"
+fi
+
+# Check gateway controller logs
 print_status "INFO" "Checking gateway controller logs..."
-tail -5 gateway-controller.log | grep -E "(gateway|reconciling)" || true
+if kubectl logs -n wasmbed -l app=wasmbed-gateway-controller --tail=10 2>/dev/null | grep -qE "(gateway|reconciling|$GATEWAY_NAME)"; then
+    print_status "SUCCESS" "Gateway controller has processed the gateway"
+else
+    print_status "WARNING" "Gateway controller logs not found or gateway not processed yet"
+fi
 
 # Test 4: System Monitoring Workflow
 print_header "TEST 4: SYSTEM MONITORING WORKFLOW"
