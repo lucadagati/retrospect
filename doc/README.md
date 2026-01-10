@@ -70,6 +70,7 @@ A REST API server and Kubernetes controller orchestrator that manages the entire
 - Handles application compilation from Rust source code to WebAssembly
 
 **Where it resides:**
+- **Architecture location**: **Cloud** (Kubernetes cluster)
 - **Source code**: `crates/wasmbed-api-server/`
 - **Main entry point**: `crates/wasmbed-api-server/src/main.rs`
 - **Deployment**: Kubernetes Deployment in `k8s/deployments/api-server-deployment.yaml`
@@ -99,6 +100,7 @@ A TLS server that acts as the secure communication endpoint for embedded devices
 - Validates device certificates and manages authorization
 
 **Where it resides:**
+- **Architecture location**: **Cloud** (Kubernetes cluster)
 - **Source code**: `crates/wasmbed-gateway/`
 - **Main entry point**: `crates/wasmbed-gateway/src/main.rs`
 - **Modules**: 
@@ -135,6 +137,7 @@ A component that manages Renode emulation instances for embedded devices (previo
 - Handles Docker container operations for Renode instances
 
 **Where it resides:**
+- **Architecture location**: **Cloud** (Kubernetes cluster, executes within API Server)
 - **Source code**: `crates/wasmbed-qemu-manager/`
 - **Main entry point**: `crates/wasmbed-qemu-manager/src/lib.rs` (library, used by API Server)
 - **Integration**: Called by `wasmbed-api-server` for device management
@@ -159,6 +162,7 @@ A TCP tunneling component that bridges network connections between emulated devi
 - Handles connection lifecycle (establish, maintain, teardown)
 
 **Where it resides:**
+- **Architecture location**: **Cloud** (Kubernetes cluster, runs as separate process or sidecar)
 - **Source code**: `crates/wasmbed-tcp-bridge/`
 - **Main entry point**: `crates/wasmbed-tcp-bridge/src/main.rs`
 - **Integration**: Used by `wasmbed-qemu-manager` to establish network connections
@@ -183,6 +187,7 @@ A Kubernetes controller that watches Device CRD resources and reconciles device 
 - Handles device state transitions (Pending → Connected → Disconnected)
 
 **Where it resides:**
+- **Architecture location**: **Cloud** (Kubernetes cluster)
 - **Source code**: `crates/wasmbed-device-controller/`
 - **Main entry point**: `crates/wasmbed-device-controller/src/main.rs`
 - **Deployment**: Kubernetes Deployment in `k8s/deployments/wasmbed-deployments.yaml`
@@ -209,6 +214,7 @@ A Kubernetes controller that watches Application CRD resources and manages appli
 - Manages application lifecycle (Pending → Deployed → Running)
 
 **Where it resides:**
+- **Architecture location**: **Cloud** (Kubernetes cluster)
 - **Source code**: `crates/wasmbed-application-controller/`
 - **Main entry point**: `crates/wasmbed-application-controller/src/main.rs`
 - **Deployment**: Kubernetes Deployment in `k8s/deployments/wasmbed-deployments.yaml`
@@ -234,6 +240,7 @@ A Kubernetes controller that watches Gateway CRD resources and manages gateway i
 - Updates Gateway status based on gateway health
 
 **Where it resides:**
+- **Architecture location**: **Cloud** (Kubernetes cluster)
 - **Source code**: `crates/wasmbed-gateway-controller/`
 - **Main entry point**: `crates/wasmbed-gateway-controller/src/main.rs`
 - **Deployment**: Kubernetes Deployment in `k8s/deployments/wasmbed-deployments.yaml`
@@ -255,6 +262,7 @@ A React-based web application that provides a user interface for managing device
 - Provides WebSocket-based real-time updates
 
 **Where it resides:**
+- **Architecture location**: **Cloud** (Kubernetes cluster)
 - **Source code**: `dashboard-react/`
 - **Entry point**: `dashboard-react/src/App.js` or `dashboard-react/src/index.js`
 - **Build output**: `dashboard-react/build/` (static files)
@@ -285,6 +293,7 @@ The embedded firmware that runs on emulated devices, based on Zephyr RTOS with W
 - Sends execution results and status updates back to gateway
 
 **Where it resides:**
+- **Architecture location**: **End Device** (emulated in Renode, runs on ARM Cortex-M4 or other supported MCU)
 - **Source code**: `zephyr-app/`
 - **Main entry point**: `zephyr-app/src/main.c`
 - **Components**:
@@ -312,8 +321,9 @@ The embedded firmware that runs on emulated devices, based on Zephyr RTOS with W
 A library defining the CBOR-based communication protocol between devices and gateway.
 
 **Where it resides:**
+- **Architecture location**: **Cloud** (used by Gateway) and **End Device** (used by firmware)
 - **Source code**: `crates/wasmbed-protocol/`
-- **Usage**: Used by both `wasmbed-gateway` and firmware
+- **Usage**: Used by both `wasmbed-gateway` (Cloud) and firmware (End Device)
 
 #### Types Library (`wasmbed-types`)
 
@@ -321,6 +331,7 @@ A library defining the CBOR-based communication protocol between devices and gat
 Shared type definitions used across Wasmbed components.
 
 **Where it resides:**
+- **Architecture location**: **Cloud** (used by all cloud components)
 - **Source code**: `crates/wasmbed-types/`
 
 #### Kubernetes Resource Library (`wasmbed-k8s-resource`)
@@ -329,6 +340,7 @@ Shared type definitions used across Wasmbed components.
 Library defining Kubernetes Custom Resource Definitions (Device, Application, Gateway).
 
 **Where it resides:**
+- **Architecture location**: **Cloud** (used by all Kubernetes components)
 - **Source code**: `crates/wasmbed-k8s-resource/`
 - **CRD definitions**: `k8s/crds/`
 
@@ -338,6 +350,7 @@ Library defining Kubernetes Custom Resource Definitions (Device, Application, Ga
 Library for TLS certificate management and validation.
 
 **Where it resides:**
+- **Architecture location**: **Cloud** (used by Gateway and API Server)
 - **Source code**: `crates/wasmbed-cert/`
 - **Certificates**: `certs/` directory
 
@@ -347,6 +360,7 @@ Library for TLS certificate management and validation.
 Configuration management library.
 
 **Where it resides:**
+- **Architecture location**: **Cloud** (used by all cloud components)
 - **Source code**: `crates/wasmbed-config/`
 - **Config file**: `config/wasmbed-config.yaml`
 
