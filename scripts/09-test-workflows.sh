@@ -367,20 +367,32 @@ fi
 
 # Verify Gateway pod exists and is running
 print_status "INFO" "Verifying Gateway pod exists..."
-GATEWAY_PODS=$(kubectl get pods -n wasmbed -l app=gateway 2>/dev/null | grep -c "$GATEWAY_NAME" 2>/dev/null || echo "0")
-# Ensure GATEWAY_PODS is a number
-if ! [[ "$GATEWAY_PODS" =~ ^[0-9]+$ ]]; then
-    GATEWAY_PODS=0
+# Gateway pods are typically named like: gateway-1-deployment-xxx-xxx
+GATEWAY_POD=$(kubectl get pods -n wasmbed -l app=gateway 2>/dev/null | grep "$GATEWAY_NAME" | awk '{print $1}' | head -1 || echo "")
+if [ -z "$GATEWAY_POD" ]; then
+    # Try alternative: look for pods with gateway name in the name
+    GATEWAY_POD=$(kubectl get pods -n wasmbed 2>/dev/null | grep -i "gateway.*${GATEWAY_NAME}" | awk '{print $1}' | head -1 || echo "")
 fi
-if [ "$GATEWAY_PODS" -gt 0 ]; then
-    GATEWAY_POD_STATUS=$(kubectl get pods -n wasmbed -l app=gateway 2>/dev/null | grep "$GATEWAY_NAME" | awk '{print $3}' | head -1 || echo "")
+
+if [ -n "$GATEWAY_POD" ]; then
+    GATEWAY_POD_STATUS=$(kubectl get pod "$GATEWAY_POD" -n wasmbed -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
     if [ "$GATEWAY_POD_STATUS" = "Running" ]; then
-        print_status "SUCCESS" "Gateway pod is running: $GATEWAY_NAME (status: $GATEWAY_POD_STATUS)"
+        print_status "SUCCESS" "Gateway pod is running: $GATEWAY_POD (status: $GATEWAY_POD_STATUS)"
+        # Check if pod is ready
+        READY=$(kubectl get pod "$GATEWAY_POD" -n wasmbed -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+        if [ "$READY" = "true" ]; then
+            print_status "SUCCESS" "Gateway pod is ready"
+        else
+            print_status "WARNING" "Gateway pod is not ready yet"
+        fi
     else
-        print_status "WARNING" "Gateway pod exists but not running: $GATEWAY_NAME (status: $GATEWAY_POD_STATUS)"
+        print_status "WARNING" "Gateway pod exists but not running: $GATEWAY_POD (status: $GATEWAY_POD_STATUS)"
     fi
 else
-    print_status "WARNING" "Gateway pod not found: $GATEWAY_NAME (may be created by controller later)"
+    print_status "WARNING" "Gateway pod not found for: $GATEWAY_NAME (may be created by controller later)"
+    # List all gateway pods for debugging
+    ALL_GATEWAY_PODS=$(kubectl get pods -n wasmbed -l app=gateway --no-headers 2>/dev/null | wc -l || echo "0")
+    print_status "INFO" "Total gateway pods in cluster: $ALL_GATEWAY_PODS"
 fi
 
 # Check gateway controller logs
@@ -414,8 +426,9 @@ fi
 
 # Verify Gateway service is accessible
 print_status "INFO" "Verifying Gateway service is accessible..."
-GATEWAY_SVC=$(kubectl get svc -n wasmbed -l app=gateway 2>/dev/null | grep "$GATEWAY_NAME" | awk '{print $1}' | head -1 || echo "")
-if [ -n "$GATEWAY_SVC" ]; then
+# Gateway services are typically named like: gateway-1-service
+GATEWAY_SVC="${GATEWAY_NAME}-service"
+if kubectl get svc "$GATEWAY_SVC" -n wasmbed &>/dev/null; then
     print_status "SUCCESS" "Gateway service exists: $GATEWAY_SVC"
     # Check service endpoints
     ENDPOINTS=$(kubectl get endpoints "$GATEWAY_SVC" -n wasmbed -o jsonpath='{.subsets[0].addresses[*].ip}' 2>/dev/null || echo "")
@@ -424,8 +437,15 @@ if [ -n "$GATEWAY_SVC" ]; then
     else
         print_status "WARNING" "Gateway service has no endpoints yet"
     fi
+    # Get service type and ports
+    SVC_TYPE=$(kubectl get svc "$GATEWAY_SVC" -n wasmbed -o jsonpath='{.spec.type}' 2>/dev/null || echo "")
+    SVC_PORTS=$(kubectl get svc "$GATEWAY_SVC" -n wasmbed -o jsonpath='{.spec.ports[*].port}' 2>/dev/null || echo "")
+    print_status "INFO" "Gateway service type: $SVC_TYPE, ports: $SVC_PORTS"
 else
-    print_status "WARNING" "Gateway service not found for: $GATEWAY_NAME"
+    print_status "WARNING" "Gateway service not found: $GATEWAY_SVC (may use different naming)"
+    # List all gateway services for debugging
+    ALL_GATEWAY_SVCS=$(kubectl get svc -n wasmbed -l app=gateway --no-headers 2>/dev/null | wc -l || echo "0")
+    print_status "INFO" "Total gateway services in cluster: $ALL_GATEWAY_SVCS"
 fi
 
 # Verify Gateway pod is actually functional (can accept connections)
