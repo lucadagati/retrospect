@@ -10,6 +10,7 @@ Piattaforma Kubernetes-native per il deployment di applicazioni WebAssembly su d
 - [Setup e Deployment](#setup-e-deployment)
 - [Firmware](#firmware)
 - [Sviluppo](#sviluppo)
+- [Sequence Diagrams](#sequence-diagrams)
 
 ## Panoramica
 
@@ -324,6 +325,15 @@ Il protocollo di comunicazione utilizza:
 1. Verificare che WAMR sia inizializzato
 2. Controllare formato modulo WASM
 3. Verificare log firmware
+
+## Sequence Diagrams
+
+Per una descrizione dettagliata dei flussi di comunicazione e delle interazioni tra i componenti, consulta [SEQUENCE_DIAGRAMS.md](./SEQUENCE_DIAGRAMS.md).
+
+Il documento contiene sequence diagram in formato Mermaid per:
+- Device Enrollment (workflow completo, semplificato, inizializzazione, heartbeat)
+- Application Deployment (workflow completo, semplificato, compilazione, esecuzione)
+- Error Handling (gestione errori per enrollment, connessione, deployment, runtime)
 
 ## Licenza
 
