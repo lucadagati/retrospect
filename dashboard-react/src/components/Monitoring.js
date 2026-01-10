@@ -56,6 +56,30 @@ const Monitoring = () => {
       let applications = applicationsData.applications || [];
       let gateways = gatewaysData.gateways || [];
       
+      // Normalize device data - ensure consistent field names
+      // API returns devices with 'connected' (boolean) and 'device_id', not 'status' and 'id'
+      devices = devices.map(d => {
+        // Determine status from 'connected' boolean or existing 'status' field
+        let status = d.status;
+        if (!status) {
+          if (d.connected === true) {
+            status = 'Connected';
+          } else if (d.enrolled === true) {
+            status = 'Enrolled';
+          } else {
+            status = 'Pending';
+          }
+        }
+        
+        return {
+          ...d,
+          id: d.id || d.device_id || d.name,
+          device_id: d.device_id || d.id || d.name,
+          status: status,
+          enrolled: d.enrolled !== undefined ? d.enrolled : (status === 'Enrolled')
+        };
+      });
+      
       // Determine infrastructure status from new endpoints
       let infraStatus = 'unknown';
       let infraComponents = {
@@ -66,41 +90,82 @@ const Monitoring = () => {
       };
 
       if (infraHealthResponse.ok) {
-        const infraHealthData = await infraHealthResponse.json();
-        infraStatus = infraHealthData.status === 'healthy' ? 'active' : 'inactive';
+        try {
+          const infraHealthData = await infraHealthResponse.json();
+          infraStatus = infraHealthData.status === 'healthy' ? 'active' : 'inactive';
+        } catch (e) {
+          console.warn('Failed to parse infrastructure health:', e);
+        }
       }
 
       if (infraStatusResponse.ok) {
-        const infraStatusData = await infraStatusResponse.json();
-        infraComponents = {
-          ca: infraStatusData.components?.ca === 'healthy' ? 'active' : 'inactive',
-          secretStore: infraStatusData.components?.secret_store === 'healthy' ? 'active' : 'inactive',
-          monitoring: infraStatusData.components?.monitoring === 'healthy' ? 'active' : 'inactive',
-          logging: infraStatusData.components?.logging === 'healthy' ? 'active' : 'inactive'
-        };
+        try {
+          const infraStatusData = await infraStatusResponse.json();
+          // Map infrastructure components - handle different response formats
+          const components = infraStatusData.components || {};
+          infraComponents = {
+            // Try to map from actual response structure
+            ca: components.ca === 'healthy' || components.database === 'healthy' ? 'active' : 'inactive',
+            secretStore: components.secret_store === 'healthy' || components.database === 'healthy' ? 'active' : 'inactive',
+            monitoring: components.monitoring === 'healthy' ? 'active' : 'inactive',
+            logging: components.logging === 'healthy' || components.monitoring === 'healthy' ? 'active' : 'inactive'
+          };
+        } catch (e) {
+          console.warn('Failed to parse infrastructure status:', e);
+        }
       }
 
       // Calculate real metrics from API data
+      // Devices now have normalized 'status' field
       const activeDevices = devices.filter(d => d.status === 'Connected').length;
-      const enrolledDevices = devices.filter(d => d.status === 'Enrolled' || d.enrolled).length;
-      const pendingDevices = devices.filter(d => d.status === 'Pending' || d.status === 'Enrolling').length;
+      const enrolledDevices = devices.filter(d => d.status === 'Enrolled' || d.enrolled === true).length;
+      const pendingDevices = devices.filter(d => d.status === 'Pending' || d.status === 'Enrolling' || (!d.status && !d.enrolled)).length;
       const failedDevices = devices.filter(d => d.status === 'Failed' || d.status === 'Unreachable').length;
       
       const runningApplications = applications.filter(a => a.status === 'Running').length;
       const deployingApplications = applications.filter(a => a.status === 'Deploying' || a.status === 'Creating').length;
       const failedApplications = applications.filter(a => a.status === 'Failed').length;
       
-      // Gateway status: use 'Running' instead of 'Active'
-      const activeGateways = gateways.filter(g => g.status === 'Running' || g.status === 'Active').length;
-      const inactiveGateways = gateways.filter(g => g.status === 'Stopped' || g.status === 'Failed' || g.status === 'Inactive').length;
+      // Gateway status: handle both 'Running' and 'Active' status
+      const activeGateways = gateways.filter(g => {
+        const status = g.status || '';
+        return status === 'Running' || status === 'Active' || (g.enabled === true && status !== 'Stopped');
+      }).length;
       
-      // Calculate max connections from gateway configs (sum of maxDevices)
-      const maxConnections = gateways.reduce((sum, g) => sum + (g.maxDevices || 50), 0);
+      const inactiveGateways = gateways.filter(g => {
+        const status = g.status || '';
+        return status === 'Stopped' || status === 'Failed' || status === 'Inactive' || (g.enabled === false);
+      }).length;
+      
+      // Calculate max connections from gateway configs (sum of maxDevices or default 50)
+      const maxConnections = gateways.reduce((sum, g) => {
+        // Try to get maxDevices from config or use default
+        const maxDev = g.maxDevices || g.config?.maxDevices || 50;
+        return sum + maxDev;
+      }, 0);
       
       // Determine system health based on component status
+      // System is "Good" if CA and Secret Store are active AND at least one gateway is active
       const systemHealth = (infraComponents.ca === 'active' && 
                            infraComponents.secretStore === 'active' && 
                            activeGateways > 0) ? 'Good' : 'Degraded';
+      
+      // Debug logging
+      console.log('[Monitoring] Metrics calculated:', {
+        devices: devices.length,
+        activeDevices,
+        enrolledDevices,
+        pendingDevices,
+        failedDevices,
+        applications: applications.length,
+        runningApplications,
+        gateways: gateways.length,
+        activeGateways,
+        inactiveGateways,
+        maxConnections,
+        systemHealth,
+        infraComponents
+      });
 
       setMetrics({
         systemHealth: systemHealth,
@@ -267,13 +332,19 @@ const Monitoring = () => {
           }
 
           if (devices.length > 0) {
-            const connectedDevices = devices.filter(d => d.status === 'Connected').length;
+            // Normalize devices for log generation too
+            const normalizedDevices = devices.map(d => ({
+              ...d,
+              status: d.status || (d.connected === true ? 'Connected' : (d.enrolled === true ? 'Enrolled' : 'Pending'))
+            }));
+            const connectedDevices = normalizedDevices.filter(d => d.status === 'Connected' || d.connected === true).length;
+            const enrolledDevices = normalizedDevices.filter(d => d.status === 'Enrolled' || d.enrolled === true).length;
             systemLogs.push({
               id: 2,
               timestamp: new Date(Date.now() - 30000).toISOString(),
               level: 'INFO',
               component: 'Device Controller',
-              message: `${connectedDevices}/${devices.length} devices connected`
+              message: `${connectedDevices} connected, ${enrolledDevices} enrolled out of ${devices.length} total devices`
             });
           }
 
@@ -420,16 +491,17 @@ const Monitoring = () => {
               <Card>
                 <Statistic
                   title="System Health"
-                  value={metrics.systemHealth}
+                  value={metrics.systemHealth || 'Unknown'}
                   prefix={<CheckCircleOutlined />}
                   valueStyle={{ 
-                    color: metrics.systemHealth === 'Good' ? '#3f8600' : '#cf1322' 
+                    color: metrics.systemHealth === 'Good' ? '#3f8600' : 
+                           metrics.systemHealth === 'Degraded' ? '#faad14' : '#cf1322' 
                   }}
                 />
                 <Progress
-                  percent={metrics.systemHealth === 'Good' ? 100 : 60}
+                  percent={metrics.systemHealth === 'Good' ? 100 : metrics.systemHealth === 'Degraded' ? 60 : 0}
                   size="small"
-                  status={metrics.systemHealth === 'Good' ? 'success' : 'exception'}
+                  status={metrics.systemHealth === 'Good' ? 'success' : metrics.systemHealth === 'Degraded' ? 'exception' : 'exception'}
                 />
               </Card>
             </Col>
