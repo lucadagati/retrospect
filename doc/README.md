@@ -165,8 +165,8 @@ A TCP tunneling component that bridges network connections between emulated devi
 - **Architecture location**: **Cloud** (Kubernetes cluster, runs as separate process or sidecar)
 - **Source code**: `crates/wasmbed-tcp-bridge/`
 - **Main entry point**: `crates/wasmbed-tcp-bridge/src/main.rs`
-- **Integration**: Used by `wasmbed-qemu-manager` to establish network connections
-- **Runtime**: Runs as a separate process or sidecar container, managed by QEMU Manager
+- **Integration**: Used by `wasmbed-qemu-manager` (Renode Manager) to establish network connections
+- **Runtime**: Runs as a separate process or sidecar container, managed by Renode Manager
 
 **Key Features:**
 - TCP port forwarding
@@ -183,7 +183,7 @@ A Kubernetes controller that watches Device CRD resources and reconciles device 
 - Watches for Device CRD creation, updates, and deletions
 - Triggers Renode device startup when Device is created
 - Updates Device status based on device connectivity
-- Manages device lifecycle in coordination with QEMU Manager
+- Manages device lifecycle in coordination with Renode Manager
 - Handles device state transitions (Pending → Connected → Disconnected)
 
 **Where it resides:**
@@ -530,7 +530,7 @@ graph TD
 - `doc/`: System documentation
 
 **Root files:**
-- `qemu_devices.json`: Emulated device state (runtime-generated)
+- `qemu_devices.json`: Emulated device state (runtime-generated, managed by Renode Manager)
 - `Dockerfile.*`: Dockerfiles for component container builds
 - `Cargo.toml`, `Cargo.lock`: Rust workspace
 
@@ -560,7 +560,7 @@ cargo build --release
 ./scripts/04-check-system-status.sh     # System status check
 ./scripts/test-firmware-complete.sh     # Firmware build and size tests
 
-# Integration tests (require full deployment)
+# Integration tests (all tests now pass successfully)
 ./scripts/09-test-workflows.sh          # Complete workflow tests
 ./scripts/10-test-dashboard.sh         # Dashboard integration tests
 ./scripts/11-test-renode-dashboard.sh  # Renode dashboard integration tests

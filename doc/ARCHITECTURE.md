@@ -41,7 +41,7 @@ Wasmbed is a distributed platform that enables deployment and execution of WebAs
 - Deployment: Kubernetes Pod in `wasmbed` namespace
 - Service: Exposes TLS port (default 40029) and HTTP port (8080)
 
-### 3. QEMU Manager (`wasmbed-qemu-manager`)
+### 3. Renode Manager (`wasmbed-qemu-manager`)
 
 **Responsibilities:**
 - Renode instance management
