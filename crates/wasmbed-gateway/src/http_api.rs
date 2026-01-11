@@ -1507,8 +1507,12 @@ async fn create_device(
     let name = payload["name"].as_str().unwrap_or("unknown");
     let device_type = payload["type"].as_str().unwrap_or("MCU");
     let architecture = payload["architecture"].as_str().unwrap_or("riscv32");
+    let mcu_type = payload["mcuType"].as_str().unwrap_or("Stm32F746gDisco"); // Default to Ethernet board
     let gateway = payload["gateway"].as_str().unwrap_or("gateway-1");
     let enabled = payload["enabled"].as_bool().unwrap_or(true);
+    
+    // Log the received payload for debugging
+    info!("Creating device '{}' with mcuType: {} (from payload: {:?})", name, mcu_type, payload);
     
     // Generate a real Ed25519 public key for the device
     let public_key = match generate_device_public_key(name) {
@@ -1534,7 +1538,7 @@ async fn create_device(
         },
         spec: wasmbed_k8s_resource::DeviceSpec {
             public_key: public_key.clone(),
-            mcu_type: Some("Mps2An385".to_string()),
+            mcu_type: Some(mcu_type.to_string()),
             preferred_gateway: if !gateway.is_empty() {
                 info!("Setting preferred_gateway to {} for device {} (gateway from payload: {})", gateway, name, gateway);
                 Some(gateway.to_string())

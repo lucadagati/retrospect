@@ -1,214 +1,341 @@
-# Wasmbed Architecture
+# RETROSPECT Wasmbed Architecture
 
-## System Overview
+## Overview
 
-Wasmbed is a distributed platform that enables deployment and execution of WebAssembly applications on embedded devices emulated via Renode.
+RETROSPECT Wasmbed is a distributed system for managing WebAssembly applications on embedded devices across the Cloud-Fog-Edge computing continuum. The system uses Kubernetes for orchestration, Renode for hardware emulation, and Zephyr RTOS for device firmware.
 
-## Main Components
+## System Components
 
-### 1. API Server (`wasmbed-api-server`)
+### 1. Control Plane (Kubernetes)
 
-**Responsibilities:**
-- Exposes REST API for device/application management
-- Kubernetes controllers for CRDs
-- Coordination between components
+#### Gateway
+- **Location**: Kubernetes Pod (wasmbed namespace)
+- **IP**: Dynamic (e.g., 10.42.0.12)
+- **Ports**:
+  - 8080: HTTP API
+  - 8081: TLS (secure device connections)
+- **Responsibilities**:
+  - Device enrollment and authentication
+  - TLS certificate management
+  - Message routing between devices and applications
+  - WebAssembly module deployment
 
-**Interfaces:**
-- REST API (port 8080)
-- Kubernetes API (CRDs)
-- Communication with Gateway
+#### API Server
+- **Location**: Kubernetes Pod (wasmbed namespace)
+- **Port**: 3001
+- **Responsibilities**:
+  - RESTful API for device/application management
+  - Kubernetes CRD management (Device, Application, Gateway)
+  - Renode container orchestration
+  - Firmware deployment
 
-**Location:**
-- Source: `crates/wasmbed-api-server/`
-- Deployment: Kubernetes Pod in `wasmbed` namespace
-- Service: Exposes port 8080
+#### Dashboard
+- **Location**: Kubernetes Pod (wasmbed namespace)
+- **Port**: 3000 (exposed via port-forward)
+- **Responsibilities**:
+  - Web UI for system monitoring
+  - Network topology visualization
+  - Device status and logs
+  - Application deployment interface
 
-### 2. Gateway (`wasmbed-gateway`)
+#### Infrastructure Service
+- **Location**: Kubernetes Pod (wasmbed namespace)
+- **Port**: 30460
+- **Responsibilities**:
+  - Certificate Authority (CA)
+  - Secret storage
+  - System monitoring
 
-**Responsibilities:**
-- TLS server for devices
-- Device-to-gateway connection management
-- WASM module deployment
-- Heartbeat monitoring
+### 2. Device Emulation (Host Docker)
 
-**Protocol:**
-- TLS 1.3 with client authentication
-- CBOR serialization
-- Message-based communication
+#### Renode Containers
+- **Location**: Host Docker (one container per device)
+- **Network**: `--net=host` (shares host network)
+- **Volumes**: Device-specific firmware volumes
+- **Responsibilities**:
+  - Hardware emulation (CPU, memory, peripherals)
+  - Loads and executes Zephyr firmware
+  - Provides UART analyzer for logs
 
-**Location:**
-- Source: `crates/wasmbed-gateway/`
-- Deployment: Kubernetes Pod in `wasmbed` namespace
-- Service: Exposes TLS port (default 40029) and HTTP port (8080)
+#### Zephyr RTOS Firmware
+- **Location**: Runs inside Renode container
+- **Boards Supported**:
+  - **nRF52840 DK** (Official Zephyr board) - Recommended
+  - **STM32F4 Discovery** (Official Zephyr board)
+  - Arduino Nano 33 BLE (Legacy)
+- **Components**:
+  - Network stack (TCP/IP, TLS)
+  - WAMR (WebAssembly Micro Runtime)
+  - Wasmbed protocol handler
+- **Responsibilities**:
+  - Reads gateway endpoint from memory (0x20001000)
+  - Establishes TLS connection to gateway
+  - Executes WebAssembly modules
+  - Sends telemetry and receives commands
 
-### 3. Renode Manager (`wasmbed-qemu-manager`)
-
-**Responsibilities:**
-- Renode instance management
-- Start/stop emulated devices
-- TCP bridge configuration
-- Firmware loading
-
-**Integration:**
-- Docker for Renode containerization
-- TCP bridge for tunneling
-- Renode scripts (.resc)
-
-**Location:**
-- Source: `crates/wasmbed-qemu-manager/`
-- Runtime: Executes as part of API Server process
-
-### 4. TCP Bridge (`wasmbed-tcp-bridge`)
-
-**Responsibilities:**
-- TCP tunneling between device and gateway
-- Multiple connection management
-- TLS data forwarding
-
-**Location:**
-- Source: `crates/wasmbed-tcp-bridge/`
-- Runtime: Separate process or sidecar container
-
-### 5. Zephyr Firmware (`zephyr-app`)
-
-**Stack:**
-- Zephyr RTOS (v4.3.0)
-- Network stack (TCP/TLS)
-- WAMR runtime (v2.4.3)
-- Wasmbed protocol handler
-
-**Functionality:**
-- Network initialization
-- TLS connection to gateway
-- WASM module execution
-- Wasmbed protocol management
-
-**Location:**
-- Source: `zephyr-app/`
-- Build output: `zephyr-workspace/build/<board>/zephyr/zephyr.elf`
-- Runtime: Loaded into Renode emulation
-
-## Deployment Flow
+## Network Architecture
 
 ```mermaid
-sequenceDiagram
-    participant User
-    participant Dashboard
-    participant APIServer
-    participant DeviceController
-    participant RenodeManager
-    participant Gateway
-    participant Device
-    
-    User->>Dashboard: Create Device
-    Dashboard->>APIServer: POST /devices
-    APIServer->>DeviceController: Create Device CRD
-    DeviceController->>RenodeManager: Start Renode
-    RenodeManager->>Device: Configure TCP bridge
-    Device->>Gateway: TLS Connection
-    Gateway->>APIServer: Register device
-    
-    User->>Dashboard: Deploy Application
-    Dashboard->>APIServer: POST /applications
-    APIServer->>Gateway: Deploy WASM
-    Gateway->>Device: Send WASM module
-    Device->>Device: WAMR loads and executes
-```
-
-## Communication
-
-### Device ↔ Gateway
-
-```mermaid
-sequenceDiagram
-    participant Device
-    participant Gateway
-    
-    Device->>Gateway: Enrollment (TLS 1.3 + CBOR)
-    Gateway->>Device: Enrollment Response
-    loop Heartbeat
-        Device->>Gateway: Heartbeat
-        Gateway->>Device: Heartbeat ACK
+graph TB
+    subgraph "Cloud Layer - Kubernetes Cluster (K3S)"
+        Gateway["Gateway Pod<br/>IP: 10.42.0.44<br/>Ports: 8080 HTTP, 8081 TLS"]
+        APIServer["API Server Pod<br/>Port: 3001"]
+        Dashboard["Dashboard Pod<br/>Port: 3000"]
     end
-    Gateway->>Device: Deployment (WASM module)
-    Device->>Gateway: Execution Results
-```
-
-**Protocol:**
-- **Transport**: TLS 1.3
-- **Format**: CBOR
-- **Messages**: Enrollment, Heartbeat, Deployment, Execution results
-
-### API Server ↔ Gateway
-
-```mermaid
-sequenceDiagram
-    participant APIServer
-    participant Gateway
     
-    APIServer->>Gateway: Device Registration (HTTP/JSON)
-    Gateway->>APIServer: Registration ACK
-    APIServer->>Gateway: Application Deployment
-    Gateway->>APIServer: Status Updates
+    subgraph "Fog Layer - Host Docker"
+        RenodeCont["Renode Container<br/>Network: host<br/>Volume: firmware-{device-id}"]
+    end
+    
+    subgraph "Edge Layer - Emulated Device"
+        Zephyr["Zephyr RTOS<br/>Network Stack + TLS"]
+        WAMR["WAMR Runtime<br/>WebAssembly"]
+    end
+    
+    Dashboard -->|HTTP| APIServer
+    APIServer -->|Manages| RenodeCont
+    Zephyr -->|TLS 1.3| Gateway
+    Zephyr -->|Executes| WAMR
+    RenodeCont -->|Runs| Zephyr
 ```
 
-**Protocol:**
-- **Transport**: HTTP/gRPC
-- **Format**: JSON/Protobuf
-- **Operations**: Device registration, Application deployment, Status updates
+## TLS Connection Flow
 
-## Storage
+1. **Device Startup**:
+   - Renode container starts with firmware volume
+   - Renode writes gateway endpoint to memory (0x20001000)
+   - Format: `"10.42.0.12:8081"` (15 bytes)
 
-### Kubernetes Resources
+2. **Zephyr Initialization**:
+   - Zephyr boots and initializes network stack
+   - Reads gateway endpoint from memory address 0x20001000
+   - Parses host IP and port
 
-- **Device CRD**: Device state
-- **Application CRD**: Application configuration
-- **Gateway CRD**: Gateway configuration
+3. **TLS Connection**:
+   - Zephyr calls `network_connect_tls(host, port)`
+   - Creates TCP socket with TLS options
+   - Performs TLS handshake with gateway
+   - Connection is persistent until device stops
 
-### Local Cache
+4. **Communication**:
+   - Device sends enrollment request
+   - Gateway authenticates using public key
+   - Device receives WebAssembly modules
+   - WAMR executes modules
+   - Device sends telemetry data
 
-- Gateway maintains local cache for performance
-- Periodic synchronization with API Server
+## Gateway Endpoint Resolution
+
+### Problem Solved
+Previously, devices used a TCP bridge at `127.0.0.1:40029`. Now they connect directly to the gateway pod IP.
+
+### Resolution Process
+
+1. **API Server** (in Pod):
+   ```rust
+   // When starting device emulation
+   let gateway_endpoint = if is_local_address(endpoint) {
+       // Resolve to actual gateway pod IP
+       kubectl get pods -n wasmbed -l app=wasmbed-gateway \
+           -o jsonpath='{.items[0].status.podIP}'
+       // Returns: "10.42.0.12"
+   }
+   let tls_port = 8081; // Gateway TLS port
+   let full_endpoint = format!("{}:{}", gateway_endpoint, tls_port);
+   ```
+
+2. **Renode Script Generation**:
+   ```bash
+   # Write endpoint to memory (called before Zephyr starts)
+   sysbus WriteDoubleWord 0x20001000 0x0000000f  # Length: 15
+   sysbus WriteDoubleWord 0x20001004 0x342e3031  # "10.4"
+   sysbus WriteDoubleWord 0x20001008 0x2e302e32  # "2.0."
+   sysbus WriteDoubleWord 0x2000100c 0x383a3231  # "12:8"
+   sysbus WriteDoubleWord 0x20001010 0x00313830  # "081"
+   ```
+
+3. **Zephyr Reading**:
+   ```c
+   #define GATEWAY_ENDPOINT_ADDR 0x20001000
+   
+   uint32_t *length_ptr = (uint32_t *)GATEWAY_ENDPOINT_ADDR;
+   uint32_t length = *length_ptr; // 15
+   
+   char *endpoint_ptr = (char *)(GATEWAY_ENDPOINT_ADDR + 4);
+   memcpy(gateway_endpoint, endpoint_ptr, length);
+   gateway_endpoint[length] = '\0';
+   // Result: "10.42.0.12:8081"
+   ```
+
+### Persistence
+- The endpoint is resolved once at device creation
+- Stored in device CRD status
+- Reused on subsequent Renode restarts
+- No more `127.0.0.1` fallback
+
+## Supported MCU Types
+
+See [MCU_SUPPORT.md](MCU_SUPPORT.md) for complete list of supported MCU types.
+
+### Ethernet-Enabled Boards (Recommended)
+
+1. **STM32F746G Discovery** (`Stm32F746gDisco`) - **Default**
+   - CPU: ARM Cortex-M7 @ 216 MHz
+   - RAM: 320 KB
+   - Flash: 1 MB
+   - Network: Ethernet 10/100 Mbps
+   - Renode platform: `stm32f7_discovery-bb.repl`
+
+2. **FRDM-K64F** (`FrdmK64f`)
+   - CPU: ARM Cortex-M4 @ 120 MHz
+   - RAM: 256 KB
+   - Flash: 1 MB
+   - Network: Ethernet 10/100 Mbps
+   - Renode platform: `frdm_k64f.repl`
+
+### WiFi-Enabled Boards
+
+3. **ESP32 DevKitC** (`Esp32DevkitC`)
+   - CPU: Xtensa LX6 @ 240 MHz
+   - RAM: 520 KB
+   - Flash: 4 MB
+   - Network: WiFi 802.11 b/g/n
+   - Renode platform: `esp32.repl`
+
+### Other Supported Boards
+
+- **nRF52840 DK** (`Nrf52840DK`) - BLE only
+- **STM32F4 Discovery** (`Stm32F4Disco`) - No network
+- **Arduino Nano 33 BLE** (`RenodeArduinoNano33Ble`) - Legacy
+- **MPS2-AN385** (`Mps2An385`) - Legacy
+- And more (see [MCU_SUPPORT.md](MCU_SUPPORT.md))
+
+## Data Flow
+
+### Device Enrollment
+
+```
+1. Device boots → Zephyr reads endpoint from memory
+2. Zephyr → TLS connect → Gateway:8081
+3. Gateway ← Enrollment request (with public key)
+4. Gateway → Verify public key
+5. Gateway → Store device in Kubernetes CRD
+6. Gateway → Respond with enrollment confirmation
+```
+
+### Application Deployment
+
+```
+1. User → Dashboard → Upload WASM module
+2. Dashboard → API Server → Create Application CRD
+3. Gateway watches CRD → Detects new application
+4. Gateway → Device (via TLS): Deploy application
+5. Device → WAMR → Load and execute WASM
+6. Device → Gateway: Send execution results
+```
 
 ## Security
 
-### TLS
+### TLS Configuration
+- **Gateway**: Generates self-signed certificate
+- **Devices**: Skip certificate verification (development mode)
+- **Production**: Use proper CA and certificate validation
 
-- Client certificates for device authentication
-- Server certificates for gateway
-- CA chain for validation
+### Authentication
+- Devices authenticated by Ed25519 public keys
+- Keys stored in Kubernetes CRD
+- Gateway validates signatures on messages
 
-### Authorization
+## Storage
 
-- Public key authentication
-- Device enrollment with pairing
-- Gateway authorization
+### Kubernetes CRDs
+- **Device**: Device metadata, status, public key
+- **Application**: WASM module metadata, binary
+- **Gateway**: Gateway configuration, endpoints
 
-## Scalability
+### Docker Volumes
+- **Firmware volumes**: One per device (e.g., `firmware-nrf52840-device`)
+- Contains: `zephyr.elf` (firmware binary)
+- Mounted read-only in Renode container
 
-### Gateway
+### File System (API Server Pod)
+- `/tmp/`: Renode scripts, debug logs
+- `/app/zephyr-workspace/`: Firmware binaries
+- `/app/qemu_devices.json`: In-memory device cache
 
-- Multiple gateway instances supported
-- Load balancing via Kubernetes Service
-- Configurable HPA (Horizontal Pod Autoscaler)
+## Deployment
 
-### Devices
+### Prerequisites
+- K3S cluster running (or compatible Kubernetes 1.24+)
+- Docker daemon accessible
+- Zephyr firmware compiled for target boards (optional for basic deployment)
 
-- Each gateway manages multiple connections
-- TCP bridge for isolation
-- Configurable resource limits
+### Components Startup Order
+1. Infrastructure service (CA, secrets)
+2. Gateway
+3. API Server
+4. Dashboard
+5. Device CRDs creation
+6. Renode containers (on-demand)
+
+### Port Forwarding
+- Dashboard: `kubectl port-forward -n wasmbed svc/wasmbed-dashboard 3000:3000`
+- API Server: `kubectl port-forward -n wasmbed svc/wasmbed-api-server 3001:3001`
+- Gateway HTTP: `kubectl port-forward -n wasmbed svc/wasmbed-gateway 8080:8080`
+- Gateway TLS: `kubectl port-forward -n wasmbed svc/wasmbed-gateway 8081:8081`
 
 ## Monitoring
 
-### Metrics
+### Dashboard Views
+- **Network Topology**: Visual graph of devices and gateways
+- **Device Status**: Real-time status of all devices
+- **System Health**: Infrastructure component health
+- **Logs**: Aggregated logs from all components
 
-- Device status
-- Application execution
-- Network connectivity
-- Resource usage
+### Health Endpoints
+- Gateway: `http://gateway:8080/health`
+- API Server: `http://api-server:3001/health`
+- Infrastructure: `http://infrastructure:30460/api/v1/infrastructure/health`
 
-### Logging
+## Troubleshooting
 
-- Structured logging (tracing)
-- Configurable log levels
-- Centralized logging via Kubernetes
+### Device Not Connecting
+1. Check gateway pod IP: `kubectl get pods -n wasmbed -l app=wasmbed-gateway -o wide`
+2. Verify endpoint in memory: Check API server logs for "Writing gateway endpoint"
+3. Test TLS port: `curl -k https://10.42.0.12:8081/health`
+
+### Renode Container Exits Immediately
+1. Check firmware volume: `docker run --rm -v firmware-DEVICE:/firmware alpine ls -la /firmware`
+2. Verify firmware path in API server logs
+3. Check Renode script: `kubectl exec -n wasmbed API_POD -- cat /tmp/renode_prewrite_DEVICE.resc`
+
+### Dashboard Shows "UNKNOWN" Status
+1. Check API endpoints in NetworkTopology.js
+2. Verify infrastructure service is running
+3. Check browser console for errors
+
+## Deployment Locations
+
+### Cloud Layer
+- **API Server**: Kubernetes Pod - Centralized control plane
+- **Gateway**: Kubernetes Pod - Centralized security and certificate management
+- **Dashboard**: Kubernetes Pod - Centralized access, no local installation
+- **Controllers**: Kubernetes Pods - Kubernetes-native lifecycle management
+
+### Fog Layer
+- **Renode Containers**: Host Docker - Close to edge, efficient resource usage, isolated per device
+- **Renode Manager**: Inside API Server Pod - Direct Docker API access
+
+### Edge Layer
+- **Zephyr RTOS**: Inside Renode - Represents actual embedded device behavior
+- **WAMR Runtime**: Inside Zephyr - Executes applications in constrained environment
+- **WASM Applications**: Loaded into WAMR - Actual edge computing workload
+
+## Future Improvements
+
+1. **Certificate Management**: Implement proper CA with certificate rotation
+2. **Device Persistence**: Store device state in persistent volumes
+3. **Scalability**: Support multiple gateway instances with load balancing
+4. **Real Hardware Support**: Complete integration guide for physical devices (see [REAL_DEVICE_INTEGRATION.md](REAL_DEVICE_INTEGRATION.md))
+5. **Performance Optimization**: Optimize Renode startup time and API response times
+6. **Monitoring**: Enhanced metrics collection and distributed tracing

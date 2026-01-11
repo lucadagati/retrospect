@@ -21,7 +21,7 @@ spec:
       serviceAccountName: wasmbed-device-controller
       containers:
       - name: device-controller
-        image: wasmbed/device-controller:latest
+        image: localhost:5000/wasmbed/device-controller:latest
         imagePullPolicy: IfNotPresent
         env:
         - name: RUST_LOG
@@ -47,7 +47,7 @@ spec:
       serviceAccountName: wasmbed-application-controller
       containers:
       - name: application-controller
-        image: wasmbed/application-controller:latest
+        image: localhost:5000/wasmbed/application-controller:latest
         imagePullPolicy: IfNotPresent
         env:
         - name: RUST_LOG
@@ -73,7 +73,7 @@ spec:
       serviceAccountName: wasmbed-gateway-controller
       containers:
       - name: gateway-controller
-        image: wasmbed/gateway-controller:latest
+        image: localhost:5000/wasmbed/gateway-controller:latest
         imagePullPolicy: IfNotPresent
         env:
         - name: RUST_LOG
@@ -97,8 +97,8 @@ spec:
       serviceAccountName: wasmbed-gateway
       containers:
       - name: gateway
-        image: wasmbed/gateway:latest
-        imagePullPolicy: Never
+        image: localhost:5000/wasmbed/gateway:latest
+        imagePullPolicy: Always
         command:
         - /usr/local/bin/wasmbed-gateway
         - --bind-addr

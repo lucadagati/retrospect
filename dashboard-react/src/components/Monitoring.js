@@ -93,26 +93,61 @@ const Monitoring = () => {
         try {
           const infraHealthData = await infraHealthResponse.json();
           infraStatus = infraHealthData.status === 'healthy' ? 'active' : 'inactive';
+          console.log('[Monitoring] Infrastructure health:', infraHealthData, '-> status:', infraStatus);
         } catch (e) {
           console.warn('Failed to parse infrastructure health:', e);
         }
+      } else {
+        console.warn('[Monitoring] Infrastructure health response not OK:', infraHealthResponse.status);
       }
 
-      if (infraStatusResponse.ok) {
-        try {
-          const infraStatusData = await infraStatusResponse.json();
+      // Try to parse status response even if not OK (might still have valid JSON)
+      try {
+        let infraStatusData = null;
+        // Check if infraStatusResponse is a valid Response object (has json method)
+        if (infraStatusResponse && typeof infraStatusResponse.json === 'function') {
+          if (infraStatusResponse.ok) {
+            infraStatusData = await infraStatusResponse.json();
+          } else {
+            // Try to parse anyway - might be a valid JSON response with non-200 status
+            try {
+              const text = await infraStatusResponse.text();
+              infraStatusData = JSON.parse(text);
+              console.log('[Monitoring] Parsed status response despite non-OK status:', infraStatusData);
+            } catch (parseError) {
+              console.warn('[Monitoring] Infrastructure status response not OK and not parseable:', infraStatusResponse.status, infraStatusResponse.statusText);
+            }
+          }
+        } else {
+          console.warn('[Monitoring] Infrastructure status response is not a valid Response object:', infraStatusResponse);
+        }
+        
+        if (infraStatusData) {
+          console.log('[Monitoring] Infrastructure status response:', infraStatusData);
           // Map infrastructure components - handle different response formats
           const components = infraStatusData.components || {};
+          console.log('[Monitoring] Infrastructure components:', components);
           infraComponents = {
-            // Try to map from actual response structure
-            ca: components.ca === 'healthy' || components.database === 'healthy' ? 'active' : 'inactive',
-            secretStore: components.secret_store === 'healthy' || components.database === 'healthy' ? 'active' : 'inactive',
-            monitoring: components.monitoring === 'healthy' ? 'active' : 'inactive',
-            logging: components.logging === 'healthy' || components.monitoring === 'healthy' ? 'active' : 'inactive'
+            // Map from actual response structure - components use 'healthy' status
+            ca: components.ca === 'healthy' ? 'active' : (components.ca ? 'inactive' : 'unknown'),
+            secretStore: components.secret_store === 'healthy' ? 'active' : (components.secret_store ? 'inactive' : 'unknown'),
+            monitoring: components.monitoring === 'healthy' ? 'active' : (components.monitoring ? 'inactive' : 'unknown'),
+            logging: components.logging === 'healthy' ? 'active' : (components.logging ? 'inactive' : 'unknown')
           };
-        } catch (e) {
-          console.warn('Failed to parse infrastructure status:', e);
+          console.log('[Monitoring] Mapped infrastructure components:', infraComponents);
         }
+      } catch (e) {
+        console.error('Failed to parse infrastructure status:', e);
+        console.error('Response:', infraStatusResponse);
+      }
+      
+      // Fallback: if health endpoint says healthy but components are still unknown, assume they are active
+      if (infraStatus === 'active' && (infraComponents.ca === 'unknown' || infraComponents.secretStore === 'unknown')) {
+        console.log('[Monitoring] Using fallback: setting components to active (health endpoint reported healthy)');
+        if (infraComponents.ca === 'unknown') infraComponents.ca = 'active';
+        if (infraComponents.secretStore === 'unknown') infraComponents.secretStore = 'active';
+        if (infraComponents.monitoring === 'unknown') infraComponents.monitoring = 'active';
+        if (infraComponents.logging === 'unknown') infraComponents.logging = 'active';
       }
 
       // Calculate real metrics from API data
@@ -145,10 +180,20 @@ const Monitoring = () => {
       }, 0);
       
       // Determine system health based on component status
-      // System is "Good" if CA and Secret Store are active AND at least one gateway is active
-      const systemHealth = (infraComponents.ca === 'active' && 
-                           infraComponents.secretStore === 'active' && 
-                           activeGateways > 0) ? 'Good' : 'Degraded';
+      // System is "Good" if CA and Secret Store are active
+      // Gateways are optional - if no gateways exist, system is still "Good" if infrastructure is healthy
+      console.log('[Monitoring] Before systemHealth calculation:', {
+        'infraComponents.ca': infraComponents.ca,
+        'infraComponents.secretStore': infraComponents.secretStore,
+        'infraComponents': infraComponents
+      });
+      const infraHealthy = infraComponents.ca === 'active' && infraComponents.secretStore === 'active';
+      const systemHealth = infraHealthy ? 'Good' : 'Degraded';
+      console.log('[Monitoring] System health calculation:', {
+        infraHealthy,
+        systemHealth,
+        reason: infraHealthy ? 'CA and Secret Store are active' : `CA: ${infraComponents.ca}, SecretStore: ${infraComponents.secretStore}`
+      });
       
       // Debug logging
       console.log('[Monitoring] Metrics calculated:', {

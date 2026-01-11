@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: dashboard
-        image: wasmbed/dashboard:latest
+        image: localhost:5000/wasmbed/dashboard:latest
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3000

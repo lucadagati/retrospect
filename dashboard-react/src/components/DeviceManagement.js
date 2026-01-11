@@ -103,7 +103,7 @@ const DeviceManagement = () => {
         name: deviceName,
         type: 'MCU', // Fixed to MCU only
         architecture: 'ARM_CORTEX_M', // Fixed architecture for QEMU
-        mcuType: values.mcuType || 'RenodeArduinoNano33Ble', // MCU type selection (default to Arduino Nano 33 BLE)
+        mcuType: values.mcuType || 'Stm32F746gDisco', // MCU type selection (default to STM32F746G Discovery with Ethernet)
         gatewayId: values.gateway || 'gateway-1', // Use selected gateway
         qemuEnabled: true // Enable QEMU emulation
       }, 60000); // Increased timeout to 60 seconds for device creation (gateway + K8s CRD creation)
@@ -114,8 +114,8 @@ const DeviceManagement = () => {
         message.error(`Device creation failed: ${errorMsg}`);
         
         // Check if it's a gateway connection error
-        if (errorMsg.includes('Connection refused') || errorMsg.includes('localhost:8080')) {
-          message.warning('Gateway is not reachable. Please ensure port-forward is active: kubectl port-forward -n wasmbed svc/gateway-1-service 8080:8080');
+        if (errorMsg.includes('Connection refused') || errorMsg.includes('localhost:8080') || errorMsg.includes('Cannot connect to gateway')) {
+          message.warning('Gateway connection failed. This is expected if device enrollment API is not working. The device can still be created via kubectl.');
         }
         
         console.error('Device creation failed:', response);
@@ -138,8 +138,8 @@ const DeviceManagement = () => {
       message.error(`Failed to create device: ${errorMsg}`);
       
       // Check if it's a gateway connection error
-      if (errorMsg.includes('Connection refused') || errorMsg.includes('localhost:8080')) {
-        message.warning('Gateway is not reachable. Please ensure port-forward is active: kubectl port-forward -n wasmbed svc/gateway-1-service 8080:8080');
+      if (errorMsg.includes('Connection refused') || errorMsg.includes('localhost:8080') || errorMsg.includes('Cannot connect to gateway')) {
+        message.warning('Gateway connection failed. This is expected if device enrollment API is not working. The device can still be created via kubectl.');
       }
       
       // Still close modal on error/timeout so user can try again
@@ -356,8 +356,14 @@ const DeviceManagement = () => {
       key: 'mcuType',
       render: (mcuType) => {
         const mcuNames = {
-          'RenodeArduinoNano33Ble': 'Arduino Nano 33 BLE',
-          'RenodeStm32F4Discovery': 'STM32F4 Discovery'
+          'Stm32F746gDisco': '🌐 STM32F746G Discovery',
+          'FrdmK64f': '🌐 FRDM-K64F',
+          'Esp32DevkitC': '📡 ESP32 DevKit C',
+          'Nrf52840DK': '📡 nRF52840 DK',
+          'Stm32F4Disco': 'STM32F4 Discovery',
+          'RenodeArduinoNano33Ble': 'Arduino Nano 33 BLE (Legacy)',
+          'RenodeStm32F4Discovery': 'STM32F4 Discovery (Legacy)',
+          'Mps2An385': 'MPS2-AN385 (Legacy)'
         };
         return <Tag color="purple">{mcuNames[mcuType] || mcuType}</Tag>;
       },
@@ -655,8 +661,19 @@ const DeviceManagement = () => {
             rules={[{ required: true, message: 'Please select an MCU type!' }]}
           >
             <Select placeholder="Select MCU Type">
-              <Option value="RenodeArduinoNano33Ble">Arduino Nano 33 BLE (Cortex-M4) - nRF52840, 1MB RAM, Bluetooth LE</Option>
-              <Option value="RenodeStm32F4Discovery">STM32F4 Discovery (Cortex-M4) - STMicroelectronics, 1MB RAM, Audio codec</Option>
+              <Option value="Stm32F746gDisco">STM32F746G Discovery (Cortex-M7) - 🌐 Ethernet, 340MHz, 1MB Flash</Option>
+              <Option value="FrdmK64f">FRDM-K64F (Cortex-M4) - 🌐 Ethernet, 120MHz, 1MB Flash</Option>
+              <Option value="Esp32DevkitC">ESP32 DevKit C (Xtensa LX6) - 📡 WiFi, 240MHz, 4MB Flash</Option>
+              <Option value="Nrf52840DK">nRF52840 DK (Cortex-M4) - 📡 Bluetooth LE, 64MHz, 1MB Flash</Option>
+              <Option value="Stm32F4Disco">STM32F4 Discovery (Cortex-M4) - 168MHz, 1MB Flash, Audio</Option>
+              <Option value="Mps2An385">MPS2-AN385 (Cortex-M3) - Legacy</Option>
+              <Option value="Mps2An386">MPS2-AN386 (Cortex-M3) - Legacy</Option>
+              <Option value="Mps2An500">MPS2-AN500 (Cortex-M33) - Legacy</Option>
+              <Option value="Mps2An505">MPS2-AN505 (Cortex-M33) - Legacy</Option>
+              <Option value="Stm32Vldiscovery">STM32VL Discovery (Cortex-M3) - Legacy</Option>
+              <Option value="OlimexStm32H405">Olimex STM32-H405 (Cortex-M4) - Legacy</Option>
+              <Option value="RenodeArduinoNano33Ble">Arduino Nano 33 BLE (Cortex-M4) - Legacy</Option>
+              <Option value="RenodeStm32F4Discovery">STM32F4 Discovery (Legacy)</Option>
             </Select>
           </Form.Item>
 

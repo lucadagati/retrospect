@@ -78,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
             let mcu_type_enum = match mcu_type.as_str() {
                 "RenodeArduinoNano33Ble" => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble,
                 "RenodeStm32F4Discovery" => wasmbed_qemu_manager::McuType::RenodeStm32F4Discovery,
-                "RenodeArduinoUnoR4" => wasmbed_qemu_manager::McuType::RenodeArduinoUnoR4,
+                // "RenodeArduinoUnoR4" => wasmbed_qemu_manager::McuType::RenodeArduinoUnoR4, // Removed
                 _ => {
                     println!("Unknown MCU type: {}. Using default RenodeArduinoNano33Ble", mcu_type);
                     wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble

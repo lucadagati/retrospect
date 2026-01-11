@@ -1048,12 +1048,26 @@ spec:
         
         let mcu_type_str = request.get("mcuType")
             .and_then(|v| v.as_str())
-            .unwrap_or("RenodeArduinoNano33Ble");
+            .unwrap_or("Stm32F746gDisco"); // Default to Ethernet-enabled board
         
         let mcu_type = match mcu_type_str {
+            // Ethernet boards (recommended)
+            "Stm32F746gDisco" | "Stm32f746gDisco" | "stm32f746g_disco" => wasmbed_qemu_manager::McuType::Stm32F746gDisco,
+            "FrdmK64f" | "frdm_k64f" => wasmbed_qemu_manager::McuType::FrdmK64f,
+            
+            // WiFi boards
+            "Esp32DevkitC" | "esp32_devkitc_wroom" => wasmbed_qemu_manager::McuType::Esp32DevkitC,
+            
+            // No network boards
+            "Stm32F4Disco" | "stm32f4_discovery" => wasmbed_qemu_manager::McuType::Stm32F4Disco,
+            "Nrf52840DK" | "nrf52840dk_nrf52840" => wasmbed_qemu_manager::McuType::Nrf52840DK,
+            
+            // Legacy boards
             "RenodeArduinoNano33Ble" => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble,
             "RenodeStm32F4Discovery" => wasmbed_qemu_manager::McuType::RenodeStm32F4Discovery,
-            _ => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble, // Default fallback
+            "Mps2An385" | "mps2-an385" => wasmbed_qemu_manager::McuType::Mps2An385,
+            
+            _ => wasmbed_qemu_manager::McuType::Stm32F746gDisco, // Default to Ethernet board
         };
         
         // Map Renode MCU types to CRD-compatible values
@@ -1087,6 +1101,7 @@ spec:
                         "name": name,
                         "type": device_type,
                         "architecture": "ARM_CORTEX_M",
+                        "mcuType": mcu_type_str, // Pass MCU type to gateway
                         "gateway": gateway_id, // This will be saved as preferred_gateway in DeviceSpec
                         "enabled": true
                     });
@@ -1848,12 +1863,24 @@ spec:
                 None => {
                     let endpoint = format!("127.0.0.1:{}", 30450 + device_id.len() as u16);
                     // Get MCU type from device info or use default
-                    // Handle both old format (Mps2An385) and new format (RenodeArduinoNano33Ble)
                     let mcu_type = match device_info.mcu_type.as_deref() {
+                        // Ethernet boards (recommended)
+                        Some("Stm32F746gDisco") | Some("Stm32f746gDisco") | Some("stm32f746g_disco") => wasmbed_qemu_manager::McuType::Stm32F746gDisco,
+                        Some("FrdmK64f") | Some("frdm_k64f") => wasmbed_qemu_manager::McuType::FrdmK64f,
+                        
+                        // WiFi boards
+                        Some("Esp32DevkitC") | Some("esp32_devkitc_wroom") => wasmbed_qemu_manager::McuType::Esp32DevkitC,
+                        
+                        // No network boards
+                        Some("Stm32F4Disco") | Some("stm32f4_discovery") => wasmbed_qemu_manager::McuType::Stm32F4Disco,
+                        Some("Nrf52840DK") | Some("nrf52840dk_nrf52840") => wasmbed_qemu_manager::McuType::Nrf52840DK,
+                        
+                        // Legacy boards
                         Some("RenodeArduinoNano33Ble") => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble,
                         Some("RenodeStm32F4Discovery") => wasmbed_qemu_manager::McuType::RenodeStm32F4Discovery,
-                        Some("Mps2An385") | Some("mps2-an385") => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble, // Map old format to Arduino Nano
-                        _ => wasmbed_qemu_manager::McuType::RenodeArduinoNano33Ble, // Default fallback
+                        Some("Mps2An385") | Some("mps2-an385") => wasmbed_qemu_manager::McuType::Mps2An385,
+                        
+                        _ => wasmbed_qemu_manager::McuType::Stm32F746gDisco, // Default to Ethernet board
                     };
                     
                     match state.renode_manager.create_device(
@@ -1878,8 +1905,9 @@ spec:
             };
 
         // Get gateway endpoint from device status in Kubernetes
+        // Always use gateway name to construct the endpoint (don't use device.status.gateway.endpoint which may be old TCP bridge)
         let gateway_endpoint = {
-            // Fetch device from Kubernetes to get gateway endpoint
+            // Fetch device from Kubernetes to get gateway name
             let output = tokio::process::Command::new("kubectl")
                 .args(&["get", "device", &device_id, "-n", "wasmbed", "-o", "json"])
                 .output()
@@ -1889,24 +1917,15 @@ spec:
                 Ok(output) if output.status.success() => {
                     let stdout = String::from_utf8_lossy(&output.stdout);
                     if let Ok(k8s_device) = serde_json::from_str::<serde_json::Value>(&stdout) {
-                        // Try to get endpoint from device.status.gateway.endpoint
-                        if let Some(endpoint) = k8s_device["status"]["gateway"]["endpoint"].as_str() {
-                            // Extract gateway host from endpoint
-                            let gateway_host = endpoint
-                                .replace("http://", "")
-                                .replace("https://", "")
-                                .split(':')
-                                .next()
-                                .unwrap_or(endpoint)
-                                .to_string();
-                            
-                            // Get TLS port dynamically
+                        // Always use gateway name to construct the endpoint (not device.status.gateway.endpoint)
+                        // This ensures we get the correct Kubernetes service DNS name
+                        if let Some(gateway_name) = k8s_device["status"]["gateway"]["name"].as_str() {
+                            let gateway_host = format!("{}-service.wasmbed.svc.cluster.local", gateway_name);
                             let gateway_tls_port = Self::get_gateway_tls_port(&gateway_host).await.unwrap_or(8081);
-                            let tls_endpoint = format!("{}:{}", gateway_host, gateway_tls_port);
-                            Some(tls_endpoint)
+                            Some(format!("{}:{}", gateway_host, gateway_tls_port))
                         } else {
-                            // Fallback: construct from gateway name
-                            if let Some(gateway_name) = k8s_device["status"]["gateway"]["name"].as_str() {
+                            // Fallback: try to get from spec
+                            if let Some(gateway_name) = k8s_device["spec"]["preferredGateway"].as_str() {
                                 let gateway_host = format!("{}-service.wasmbed.svc.cluster.local", gateway_name);
                                 let gateway_tls_port = Self::get_gateway_tls_port(&gateway_host).await.unwrap_or(8081);
                                 Some(format!("{}:{}", gateway_host, gateway_tls_port))
@@ -1980,7 +1999,7 @@ spec:
                 device_id.clone(),
                 "ARM_CORTEX_M".to_string(),
                 "MCU".to_string(),
-                McuType::RenodeArduinoNano33Ble,
+                McuType::Stm32F746gDisco, // Use Ethernet board as default
                 Some(placeholder_endpoint),
             ).await {
                 error!("Failed to auto-create Renode device {}: {}", device_id, e);
@@ -1988,8 +2007,11 @@ spec:
             }
         }
 
-        // TODO: Make gateway endpoint configurable per device
-        let gateway_endpoint = Some("http://127.0.0.1:40029".to_string());
+        // Get gateway endpoint from environment or use Kubernetes service
+        let gateway_endpoint = Some(
+            std::env::var("WASMBED_API_SERVER_GATEWAY_ENDPOINT")
+                .unwrap_or_else(|_| "http://wasmbed-gateway.wasmbed.svc.cluster.local:8080".to_string())
+        );
 
         match state.renode_manager.start_device(&device_id, gateway_endpoint).await {
             Ok(_) => {
@@ -2229,7 +2251,7 @@ pub fn greet() {{
             "kubectl get pods -n wasmbed",
             "kubectl get devices -n wasmbed",
             "kubectl get applications -n wasmbed",
-            "kubectl get gateways -n wasmbed",
+            "kubectl get gateways.wasmbed.github.io -n wasmbed",
             "kubectl get svc -n wasmbed",
             "kubectl top pods -n wasmbed",
             "kubectl logs -n wasmbed --tail=50",
@@ -2248,7 +2270,7 @@ pub fn greet() {{
             "kubectl get roles -n wasmbed",
             "kubectl get devices -n wasmbed -o wide",
             "kubectl get applications -n wasmbed -o wide",
-            "kubectl get gateways -n wasmbed -o wide",
+            "kubectl get gateways.wasmbed.github.io -n wasmbed -o wide",
             "kubectl get events -n wasmbed --sort-by=.metadata.creationTimestamp",
             "kubectl get certificates -n wasmbed",
             "kubectl get all -n wasmbed",

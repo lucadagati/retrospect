@@ -21,8 +21,8 @@ spec:
                 type: string
               mcuType:
                 type: string
-                enum: ["Mps2An385", "Mps2An386", "Mps2An500", "Mps2An505", "Stm32Vldiscovery", "OlimexStm32H405"]
-                default: "Mps2An385"
+                enum: ["Mps2An385", "Mps2An386", "Mps2An500", "Mps2An505", "Stm32Vldiscovery", "OlimexStm32H405", "Nrf52840DK", "Stm32F4Disco", "Stm32F746gDisco", "FrdmK64f", "Esp32DevkitC", "RenodeArduinoNano33Ble", "RenodeStm32F4Discovery"]
+                default: "Stm32F746gDisco"
               deviceType:
                 type: string
                 enum: ["MCU", "SENSOR", "ACTUATOR"]

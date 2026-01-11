@@ -13,8 +13,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
 # Build API server
-WORKDIR /build/crates/wasmbed-api-server
-RUN cargo build --release
+RUN cargo build --release --bin wasmbed-api-server
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -83,13 +82,15 @@ COPY --from=builder /build/target/release/wasmbed-api-server /usr/local/bin/wasm
 
 # Create directory structure for firmware
 RUN mkdir -p /app/zephyr-workspace/build/nrf52840dk/nrf52840/zephyr && \
-    mkdir -p /app/zephyr-workspace/build/stm32f4/zephyr
+    mkdir -p /app/zephyr-workspace/build/stm32f4/zephyr && \
+    mkdir -p /app/zephyr-workspace/build/stm32f746g_disco/zephyr
 
 # Copy Zephyr firmware (if available)
 # Note: Firmware should be built before building this Docker image
 # Correct path: nrf52840dk/nrf52840 (with slash, not underscore)
 COPY zephyr-workspace/build/nrf52840dk/nrf52840/zephyr/zephyr.elf* /app/zephyr-workspace/build/nrf52840dk/nrf52840/zephyr/
 COPY zephyr-workspace/build/stm32f4/zephyr/zephyr.elf* /app/zephyr-workspace/build/stm32f4/zephyr/
+COPY zephyr-workspace/build/stm32f746g_disco/zephyr/zephyr.elf* /app/zephyr-workspace/build/stm32f746g_disco/zephyr/
 
 # Expose port
 EXPOSE 3001

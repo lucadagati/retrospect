@@ -1,103 +1,107 @@
-# Wasmbed: Capacità e Funzionalità Dettagliate
+# RETROSPECT Wasmbed: Capabilities and Features
 
-## Cos'è Wasmbed?
+## What is RETROSPECT Wasmbed?
 
-**Wasmbed** è una piattaforma Kubernetes-native completa per il deployment, la gestione e l'esecuzione di applicazioni **WebAssembly (WASM)** su dispositivi embedded emulati tramite **Renode**. 
+**RETROSPECT Wasmbed** is a complete Kubernetes-native platform for deploying, managing, and executing **WebAssembly (WASM)** applications on embedded devices using **Renode** emulation and **Zephyr RTOS**.
 
-È progettata per:
-- **Sviluppo e test** di applicazioni IoT senza hardware fisico
-- **Deployment remoto** di codice su dispositivi embedded
-- **Gestione centralizzata** di flotte di dispositivi
-- **Esecuzione sicura** di codice non fidato tramite WebAssembly
-
----
-
-## Cosa Può Fare Wasmbed?
-
-### 1. 🖥️ **Emulazione Completa di Dispositivi Embedded**
-
-Wasmbed può emulare dispositivi embedded reali usando **Renode**:
-
-#### Dispositivi Supportati:
-- **Arduino Nano 33 BLE** (nRF52840 - ARM Cortex-M4)
-- **STM32F4 Discovery** (STM32F407 - ARM Cortex-M4)
-
-#### Cosa Include l'Emulazione:
-- ✅ **CPU completa** (ARM Cortex-M4 con tutte le istruzioni)
-- ✅ **Memoria** (RAM e FLASH configurate per ogni dispositivo)
-- ✅ **Periferiche** (UART, GPIO, ADC, ecc.)
-- ✅ **Network stack** (TCP/IP completo)
-- ✅ **TLS support** (mbedTLS integrato)
-
-**Vantaggio**: Puoi sviluppare e testare firmware senza possedere hardware fisico!
+It is designed for:
+- **Development and testing** of IoT applications without physical hardware
+- **Remote deployment** of code to embedded devices
+- **Centralized management** of device fleets
+- **Secure execution** of untrusted code via WebAssembly
 
 ---
 
-### 2. 📦 **Deployment di Applicazioni WebAssembly**
+## What Can RETROSPECT Wasmbed Do?
 
-Wasmbed può compilare e distribuire applicazioni WASM ai dispositivi:
+### 1. Complete Embedded Device Emulation
 
-#### Workflow Completo:
+RETROSPECT Wasmbed can emulate real embedded devices using **Renode**:
 
-1. **Scrittura del Codice**
-   - Scrivi codice in **Rust**, **C/C++**, o **AssemblyScript**
-   - Esempio Rust:
+#### Supported Devices:
+- **STM32F746G Discovery** (STM32F746 - ARM Cortex-M7) - Ethernet enabled
+- **FRDM-K64F** (K64F - ARM Cortex-M4) - Ethernet enabled
+- **ESP32 DevKitC** (ESP32 - Xtensa LX6) - WiFi enabled
+- **nRF52840 DK** (nRF52840 - ARM Cortex-M4) - BLE only
+- **STM32F4 Discovery** (STM32F407 - ARM Cortex-M4) - No network
+- And more (see [MCU_SUPPORT.md](MCU_SUPPORT.md))
+
+#### What Emulation Includes:
+- Complete CPU (ARM Cortex-M with all instructions)
+- Memory (RAM and FLASH configured per device)
+- Peripherals (UART, GPIO, ADC, Ethernet, etc.)
+- Network stack (TCP/IP complete)
+- TLS support (mbedTLS integrated)
+
+**Advantage**: Develop and test firmware without physical hardware!
+
+---
+
+### 2. WebAssembly Application Deployment
+
+RETROSPECT Wasmbed can compile and deploy WASM applications to devices:
+
+#### Complete Workflow:
+
+1. **Code Writing**
+   - Write code in **Rust**, **C/C++**, or **AssemblyScript**
+   - Example Rust:
    ```rust
    pub fn main() {
        println!("Hello from Wasmbed!");
-       // La tua logica qui
+       // Your logic here
    }
    ```
 
-2. **Compilazione Automatica**
-   - Il dashboard compila automaticamente il codice in WASM
-   - Validazione del formato WASM
-   - Ottimizzazione per dispositivi embedded
+2. **Automatic Compilation**
+   - Dashboard automatically compiles code to WASM
+   - WASM format validation
+   - Optimization for embedded devices
 
 3. **Deployment**
-   - Selezioni i dispositivi target dalla dashboard
-   - Il sistema distribuisce il WASM a tutti i dispositivi selezionati
-   - Il firmware carica ed esegue il WASM automaticamente
+   - Select target devices from dashboard
+   - System distributes WASM to all selected devices
+   - Firmware automatically loads and executes WASM
 
-4. **Esecuzione**
-   - WAMR runtime esegue il codice WASM sul dispositivo
-   - I risultati vengono inviati al gateway
-   - Monitoraggio in tempo reale dello stato
+4. **Execution**
+   - WAMR runtime executes WASM code on device
+   - Results sent to gateway
+   - Real-time status monitoring
 
-#### Caratteristiche del Deployment:
-- ✅ **Multi-device deployment**: Distribuisci a centinaia di dispositivi simultaneamente
-- ✅ **Rolling updates**: Aggiorna dispositivi senza interruzioni
-- ✅ **Versioning**: Gestisci versioni diverse delle applicazioni
-- ✅ **Rollback**: Torna a versioni precedenti se necessario
-
----
-
-### 3. 🔐 **Sicurezza End-to-End**
-
-Wasmbed implementa sicurezza a più livelli:
-
-#### TLS 1.3 con Autenticazione Mutua:
-- ✅ **Certificati client**: Ogni dispositivo ha un certificato unico
-- ✅ **Certificati server**: Gateway autenticato
-- ✅ **CA chain**: Validazione completa della catena di certificati
-- ✅ **Cifratura**: Tutti i dati in transito sono cifrati
-
-#### Isolamento WebAssembly:
-- ✅ **Sandboxing**: WASM esegue in un ambiente isolato
-- ✅ **Memory safety**: WAMR previene accessi alla memoria non autorizzati
-- ✅ **Resource limits**: Limiti su CPU, memoria e I/O
-- ✅ **No system calls diretti**: WASM non può accedere direttamente al sistema
-
-#### Autenticazione Dispositivi:
-- ✅ **Enrollment**: Dispositivi devono registrarsi prima di connettersi
-- ✅ **Public key authentication**: Autenticazione basata su chiavi pubbliche Ed25519
-- ✅ **Device pairing**: Processo di pairing sicuro per nuovi dispositivi
+#### Deployment Features:
+- Multi-device deployment: Deploy to hundreds of devices simultaneously
+- Rolling updates: Update devices without interruption
+- Versioning: Manage different application versions
+- Rollback: Revert to previous versions if needed
 
 ---
 
-### 4. 📊 **Gestione Centralizzata via Kubernetes**
+### 3. End-to-End Security
 
-Wasmbed usa Kubernetes come sistema di orchestrazione:
+RETROSPECT Wasmbed implements multi-layer security:
+
+#### TLS 1.3 with Mutual Authentication:
+- Client certificates: Each device has unique certificate
+- Server certificates: Gateway authenticated
+- CA chain: Complete certificate chain validation
+- Encryption: All data in transit encrypted
+
+#### WebAssembly Isolation:
+- Sandboxing: WASM executes in isolated environment
+- Memory safety: WAMR prevents unauthorized memory access
+- Resource limits: Limits on CPU, memory, and I/O
+- No direct system calls: WASM cannot directly access system
+
+#### Device Authentication:
+- Enrollment: Devices must register before connecting
+- Public key authentication: Ed25519 public key-based authentication
+- Device pairing: Secure pairing process for new devices
+
+---
+
+### 4. Centralized Management via Kubernetes
+
+RETROSPECT Wasmbed uses Kubernetes as orchestration system:
 
 #### Custom Resource Definitions (CRDs):
 
@@ -150,285 +154,285 @@ status:
   connectedDevices: 5
 ```
 
-#### Vantaggi Kubernetes:
-- ✅ **Scalabilità**: Aggiungi gateway e dispositivi facilmente
-- ✅ **High Availability**: Repliche automatiche dei componenti
-- ✅ **Self-healing**: Riavvio automatico di componenti falliti
-- ✅ **Resource management**: Limiti CPU/memoria per ogni componente
-- ✅ **Service discovery**: Comunicazione automatica tra servizi
+#### Kubernetes Benefits:
+- **Scalability**: Easily add gateways and devices
+- **High Availability**: Automatic component replication
+- **Self-healing**: Automatic restart of failed components
+- **Resource management**: CPU/memory limits per component
+- **Service discovery**: Automatic communication between services
 
 ---
 
-### 5. 🌐 **Dashboard Web Completo**
+### 5. Complete Web Dashboard
 
-Wasmbed include una dashboard React moderna per gestire tutto:
+RETROSPECT Wasmbed includes a modern React dashboard for managing everything:
 
-#### Funzionalità Dashboard:
+#### Dashboard Features:
 
 **Device Management**:
-- ✅ Crea, visualizza, elimina dispositivi
-- ✅ Monitora stato in tempo reale (Connected, Enrolled, Disconnected)
-- ✅ Visualizza statistiche (heartbeat, uptime, errori)
-- ✅ Gestisci emulazione Renode (start/stop)
-- ✅ Visualizza chiavi pubbliche dei dispositivi
+- Create, view, delete devices
+- Monitor real-time status (Connected, Enrolled, Disconnected)
+- View statistics (heartbeat, uptime, errors)
+- Manage Renode emulation (start/stop)
+- View device public keys
 
 **Application Management**:
-- ✅ Crea applicazioni da codice sorgente (Rust/C/C++)
-- ✅ Compila automaticamente in WASM
-- ✅ Deploy su dispositivi selezionati
-- ✅ Monitora stato deployment (Running, Deploying, Failed)
-- ✅ Stop/restart applicazioni
-- ✅ Visualizza statistiche per dispositivo
+- Create applications from source code (Rust/C/C++)
+- Automatic compilation to WASM
+- Deploy to selected devices
+- Monitor deployment status (Running, Deploying, Failed)
+- Stop/restart applications
+- View statistics per device
 
 **Gateway Management**:
-- ✅ Crea e configura gateway
-- ✅ Monitora connessioni attive
-- ✅ Configura heartbeat interval, timeouts
-- ✅ Toggle gateway on/off
-- ✅ Visualizza metriche per gateway
+- Create and configure gateways
+- Monitor active connections
+- Configure heartbeat interval, timeouts
+- Toggle gateway on/off
+- View metrics per gateway
 
 **Monitoring**:
-- ✅ Metriche sistema in tempo reale
-- ✅ Log aggregati da tutti i componenti
-- ✅ Health status di infrastruttura
-- ✅ Grafici e statistiche
-- ✅ Alert e notifiche
+- Real-time system metrics
+- Aggregated logs from all components
+- Infrastructure health status
+- Graphs and statistics
+- Alerts and notifications
 
 **Guided Deployment**:
-- ✅ Wizard step-by-step per deployment
-- ✅ Template applicazioni pre-costruiti
-- ✅ Validazione automatica
-- ✅ Preview prima del deployment
+- Step-by-step deployment wizard
+- Pre-built application templates
+- Automatic validation
+- Preview before deployment
 
 ---
 
-### 6. 🔄 **Comunicazione Real-Time**
+### 6. Real-Time Communication
 
-Wasmbed supporta comunicazione bidirezionale in tempo reale:
+RETROSPECT Wasmbed supports bidirectional real-time communication:
 
 #### Heartbeat Monitoring:
-- ✅ Dispositivi inviano heartbeat ogni 30 secondi (configurabile)
-- ✅ Gateway rileva dispositivi disconnessi automaticamente
-- ✅ Dashboard aggiorna stato in tempo reale
-- ✅ Alert automatici per dispositivi offline
+- Devices send heartbeat every 30 seconds (configurable)
+- Gateway automatically detects disconnected devices
+- Dashboard updates status in real-time
+- Automatic alerts for offline devices
 
 #### WebSocket Support:
-- ✅ Dashboard riceve aggiornamenti in tempo reale
-- ✅ Nessun polling necessario
-- ✅ Bassa latenza per notifiche
-- ✅ Efficiente uso di risorse
+- Dashboard receives real-time updates
+- No polling required
+- Low latency for notifications
+- Efficient resource usage
 
 #### Message-Based Communication:
-- ✅ Protocollo CBOR per messaggi compatti
-- ✅ Tipi di messaggio: Enrollment, Heartbeat, Deployment, Execution Results
-- ✅ Parsing efficiente su dispositivi embedded
-- ✅ Estendibile per nuovi tipi di messaggio
+- CBOR protocol for compact messages
+- Message types: Enrollment, Heartbeat, Deployment, Execution Results
+- Efficient parsing on embedded devices
+- Extensible for new message types
 
 ---
 
-### 7. 🛠️ **Compilazione e Build System**
+### 7. Compilation and Build System
 
-Wasmbed include un sistema di compilazione completo:
+RETROSPECT Wasmbed includes a complete compilation system:
 
-#### Compilazione Rust → WASM:
-- ✅ Compilazione automatica da codice sorgente
-- ✅ Target `wasm32-unknown-unknown`
-- ✅ Ottimizzazione per dimensioni (importante per embedded)
-- ✅ Validazione formato WASM
-- ✅ Gestione errori di compilazione
+#### Rust to WASM Compilation:
+- Automatic compilation from source code
+- Target `wasm32-unknown-unknown`
+- Size optimization (important for embedded)
+- WASM format validation
+- Compilation error handling
 
-#### Template Pre-costruiti:
-- ✅ **Hello World**: Applicazione base
-- ✅ **LED Blinker**: Controllo GPIO
-- ✅ **Sensor Reader**: Lettura ADC
-- ✅ **Network Test**: Test connettività
+#### Pre-built Templates:
+- **Hello World**: Basic application
+- **LED Blinker**: GPIO control
+- **Sensor Reader**: ADC reading
+- **Network Test**: Connectivity testing
 
 #### Build Pipeline:
-1. Codice sorgente → Compilatore → WASM binary
-2. Validazione formato
-3. Ottimizzazione dimensioni
-4. Preparazione per deployment
+1. Source code → Compiler → WASM binary
+2. Format validation
+3. Size optimization
+4. Preparation for deployment
 
 ---
 
-### 8. 🧪 **Testing e Debugging**
+### 8. Testing and Debugging
 
-Wasmbed fornisce strumenti per test e debug:
+RETROSPECT Wasmbed provides tools for testing and debugging:
 
 #### Testing:
-- ✅ Test automatici di tutti gli endpoint API (45 test passati)
-- ✅ Verifica operazioni con kubectl
-- ✅ Test di integrazione end-to-end
-- ✅ Script di test per workflow completi
+- Automatic tests for all API endpoints (45 tests passed)
+- Verification of operations with kubectl
+- End-to-end integration tests
+- Test scripts for complete workflows
 
 #### Debugging:
-- ✅ Log UART in Renode per debugging firmware
-- ✅ Log strutturati (tracing) per tutti i componenti
-- ✅ Log aggregati in dashboard
-- ✅ Metriche dettagliate per performance analysis
+- UART logs in Renode for firmware debugging
+- Structured logs (tracing) for all components
+- Aggregated logs in dashboard
+- Detailed metrics for performance analysis
 
 #### Monitoring:
-- ✅ Health checks automatici
-- ✅ Status di tutti i componenti
-- ✅ Metriche CPU, memoria, network
-- ✅ Alert per problemi
+- Automatic health checks
+- Status of all components
+- CPU, memory, network metrics
+- Alerts for problems
 
 ---
 
-### 9. 📈 **Scalabilità e Performance**
+### 9. Scalability and Performance
 
-Wasmbed è progettato per scalare:
+RETROSPECT Wasmbed is designed to scale:
 
-#### Scalabilità Orizzontale:
-- ✅ **Multi-gateway**: Aggiungi gateway per gestire più dispositivi
-- ✅ **Load balancing**: Kubernetes distribuisce il carico
-- ✅ **Auto-scaling**: HPA (Horizontal Pod Autoscaler) configurabile
-- ✅ **Resource limits**: Gestione efficiente delle risorse
+#### Horizontal Scalability:
+- **Multi-gateway**: Add gateways to manage more devices
+- **Load balancing**: Kubernetes distributes load
+- **Auto-scaling**: Configurable HPA (Horizontal Pod Autoscaler)
+- **Resource limits**: Efficient resource management
 
 #### Performance:
-- ✅ **Local cache**: Gateway mantiene cache locale per performance
-- ✅ **Connection pooling**: Riutilizzo connessioni TCP
-- ✅ **Efficient serialization**: CBOR più efficiente di JSON
-- ✅ **Async operations**: Operazioni asincrone per non bloccare
+- **Local cache**: Gateway maintains local cache for performance
+- **Connection pooling**: TCP connection reuse
+- **Efficient serialization**: CBOR more efficient than JSON
+- **Async operations**: Asynchronous operations to avoid blocking
 
-#### Limiti Pratici:
-- **Dispositivi per gateway**: Centinaia (dipende da risorse)
-- **Gateway per cluster**: Illimitati (Kubernetes gestisce)
-- **Applicazioni per dispositivo**: Multiple (WAMR supporta multi-module)
-- **Dimensione WASM**: Limitata dalla RAM del dispositivo (tipicamente 64KB-1MB)
+#### Practical Limits:
+- **Devices per gateway**: Hundreds (depends on resources)
+- **Gateways per cluster**: Unlimited (Kubernetes manages)
+- **Applications per device**: Multiple (WAMR supports multi-module)
+- **WASM size**: Limited by device RAM (typically 64KB-1MB)
 
 ---
 
-### 10. 🔌 **Integrazione e Estendibilità**
+### 10. Integration and Extensibility
 
-Wasmbed è progettato per essere estendibile:
+RETROSPECT Wasmbed is designed to be extensible:
 
-#### API REST Completa:
-- ✅ 45+ endpoint API documentati e testati
-- ✅ RESTful design
-- ✅ JSON responses
-- ✅ Error handling standardizzato
-- ✅ Versioning API (`/api/v1/`)
+#### Complete REST API:
+- 45+ documented and tested API endpoints
+- RESTful design
+- JSON responses
+- Standardized error handling
+- API versioning (`/api/v1/`)
 
 #### Kubernetes Integration:
-- ✅ CRDs per estendere risorse
-- ✅ Controllers per logica custom
-- ✅ RBAC per sicurezza
-- ✅ Service discovery automatico
+- CRDs to extend resources
+- Controllers for custom logic
+- RBAC for security
+- Automatic service discovery
 
-#### Protocollo Estendibile:
-- ✅ CBOR message format
-- ✅ Nuovi tipi di messaggio facilmente aggiungibili
-- ✅ Versioning protocollo
-- ✅ Backward compatibility
-
----
-
-## Casi d'Uso Pratici
-
-### 1. **Sviluppo IoT senza Hardware**
-**Scenario**: Vuoi sviluppare un'applicazione IoT ma non hai il dispositivo fisico.
-
-**Soluzione Wasmbed**:
-1. Crea un dispositivo emulato dalla dashboard
-2. Scrivi codice Rust per la tua applicazione
-3. Compila e deploy automaticamente
-4. Testa e debug in Renode
-5. Quando pronto, deploy su hardware reale (stesso codice!)
-
-### 2. **Deployment Remoto di Aggiornamenti**
-**Scenario**: Hai 100 dispositivi IoT distribuiti e vuoi aggiornare il firmware.
-
-**Soluzione Wasmbed**:
-1. Compila nuova versione dell'applicazione
-2. Seleziona tutti i 100 dispositivi
-3. Deploy con un click
-4. Monitora progresso in tempo reale
-5. Rollback automatico se qualcosa va storto
-
-### 3. **Testing A/B su Dispositivi**
-**Scenario**: Vuoi testare due versioni di un algoritmo su dispositivi diversi.
-
-**Soluzione Wasmbed**:
-1. Crea due applicazioni (versione A e B)
-2. Deploy versione A su metà dispositivi
-3. Deploy versione B sull'altra metà
-4. Confronta metriche e risultati
-5. Scegli la versione migliore
-
-### 4. **Edge Computing con WebAssembly**
-**Scenario**: Vuoi eseguire elaborazione dati sul dispositivo invece che nel cloud.
-
-**Soluzione Wasmbed**:
-1. Scrivi algoritmo di elaborazione in Rust
-2. Compila in WASM (piccolo e efficiente)
-3. Deploy su dispositivi edge
-4. Esegui elaborazione localmente
-5. Invia solo risultati al cloud (risparmio bandwidth)
-
-### 5. **Multi-tenant IoT Platform**
-**Scenario**: Fornisci una piattaforma IoT a più clienti.
-
-**Soluzione Wasmbed**:
-1. Crea namespace Kubernetes per ogni cliente
-2. Isola dispositivi e applicazioni per cliente
-3. Gateway separati per sicurezza
-4. Dashboard multi-tenant
-5. Billing basato su utilizzo
+#### Extensible Protocol:
+- CBOR message format
+- New message types easily addable
+- Protocol versioning
+- Backward compatibility
 
 ---
 
-## Limitazioni e Considerazioni
+## Practical Use Cases
 
-### Limitazioni Attuali:
+### 1. IoT Development without Hardware
+**Scenario**: You want to develop an IoT application but don't have the physical device.
 
-1. **Emulazione vs Hardware Reale**:
-   - Renode emula CPU e periferiche base
-   - Alcune periferiche specifiche potrebbero non essere emulate perfettamente
-   - Performance in emulazione ≠ performance hardware reale
+**RETROSPECT Wasmbed Solution**:
+1. Create an emulated device from the dashboard
+2. Write Rust code for your application
+3. Automatic compilation and deployment
+4. Test and debug in Renode
+5. When ready, deploy to real hardware (same code!)
 
-2. **Risorse Embedded**:
-   - Memoria limitata (tipicamente 64KB-1MB RAM)
-   - CPU limitata (ARM Cortex-M4 a 64MHz)
-   - Network dipende da configurazione Renode
+### 2. Remote Deployment of Updates
+**Scenario**: You have 100 distributed IoT devices and want to update the firmware.
+
+**RETROSPECT Wasmbed Solution**:
+1. Compile new version of the application
+2. Select all 100 devices
+3. Deploy with one click
+4. Monitor progress in real-time
+5. Automatic rollback if something goes wrong
+
+### 3. A/B Testing on Devices
+**Scenario**: You want to test two versions of an algorithm on different devices.
+
+**RETROSPECT Wasmbed Solution**:
+1. Create two applications (version A and B)
+2. Deploy version A to half of devices
+3. Deploy version B to the other half
+4. Compare metrics and results
+5. Choose the best version
+
+### 4. Edge Computing with WebAssembly
+**Scenario**: You want to execute data processing on the device instead of in the cloud.
+
+**RETROSPECT Wasmbed Solution**:
+1. Write processing algorithm in Rust
+2. Compile to WASM (small and efficient)
+3. Deploy to edge devices
+4. Execute processing locally
+5. Send only results to cloud (bandwidth savings)
+
+### 5. Multi-tenant IoT Platform
+**Scenario**: You provide an IoT platform to multiple customers.
+
+**RETROSPECT Wasmbed Solution**:
+1. Create Kubernetes namespace for each customer
+2. Isolate devices and applications per customer
+3. Separate gateways for security
+4. Multi-tenant dashboard
+5. Usage-based billing
+
+---
+
+## Limitations and Considerations
+
+### Current Limitations:
+
+1. **Emulation vs Real Hardware**:
+   - Renode emulates CPU and basic peripherals
+   - Some specific peripherals may not be perfectly emulated
+   - Emulation performance ≠ real hardware performance
+
+2. **Embedded Resources**:
+   - Limited memory (typically 64KB-1MB RAM)
+   - Limited CPU (ARM Cortex-M4 at 64MHz)
+   - Network depends on Renode configuration
 
 3. **WebAssembly Constraints**:
-   - WASM non può accedere direttamente a periferiche
-   - Alcune operazioni richiedono supporto firmware
-   - Dimensioni WASM limitate dalla RAM disponibile
+   - WASM cannot directly access peripherals
+   - Some operations require firmware support
+   - WASM size limited by available RAM
 
 4. **Network Requirements**:
-   - Dispositivi emulati richiedono TCP bridge
-   - Connessione stabile necessaria
-   - Latency dipende da configurazione network
+   - Emulated devices require direct TLS connection to gateway
+   - Stable connection necessary
+   - Latency depends on network configuration
 
 ### Best Practices:
 
-1. **Dimensioni WASM**: Mantieni applicazioni WASM piccole (< 100KB quando possibile)
-2. **Memory Management**: Usa allocazione memoria efficiente
-3. **Error Handling**: Gestisci errori gracefully (dispositivi embedded hanno risorse limitate)
-4. **Testing**: Testa sempre in emulazione prima di deploy su hardware reale
-5. **Monitoring**: Monitora metriche per identificare problemi presto
+1. **WASM Size**: Keep WASM applications small (< 100KB when possible)
+2. **Memory Management**: Use efficient memory allocation
+3. **Error Handling**: Handle errors gracefully (embedded devices have limited resources)
+4. **Testing**: Always test in emulation before deploying to real hardware
+5. **Monitoring**: Monitor metrics to identify problems early
 
 ---
 
-## Conclusione
+## Conclusion
 
-**Wasmbed è una piattaforma completa e production-ready** per:
+**RETROSPECT Wasmbed is a complete and production-ready platform** for:
 
-✅ **Sviluppo** di applicazioni IoT senza hardware fisico  
-✅ **Deployment** remoto e gestione di flotte di dispositivi  
-✅ **Esecuzione sicura** di codice via WebAssembly  
-✅ **Scalabilità** orizzontale tramite Kubernetes  
-✅ **Sicurezza** end-to-end con TLS e autenticazione  
-✅ **Monitoring** e debugging completo  
-✅ **Estendibilità** per casi d'uso custom  
+- **Development** of IoT applications without physical hardware
+- **Remote deployment** and management of device fleets
+- **Secure execution** of code via WebAssembly
+- **Horizontal scalability** through Kubernetes
+- **End-to-end security** with TLS and authentication
+- **Complete monitoring** and debugging
+- **Extensibility** for custom use cases
 
-È ideale per:
-- Sviluppatori IoT che vogliono testare senza hardware
-- Aziende che gestiscono flotte di dispositivi
-- Piattaforme IoT multi-tenant
-- Progetti che richiedono deployment remoto sicuro
-- Sistemi che necessitano isolamento e sicurezza
+It is ideal for:
+- IoT developers who want to test without hardware
+- Companies managing device fleets
+- Multi-tenant IoT platforms
+- Projects requiring secure remote deployment
+- Systems needing isolation and security
 
-**Wasmbed trasforma lo sviluppo IoT da un processo complesso e costoso in un'esperienza moderna, sicura e scalabile.**
+**RETROSPECT Wasmbed transforms IoT development from a complex and expensive process into a modern, secure, and scalable experience.**

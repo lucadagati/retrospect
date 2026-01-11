@@ -25,13 +25,40 @@ pub struct QemuDevice {
     pub wasm_runtime: Option<WasmRuntime>,
 }
 
-/// Supported MCU types with Renode compatibility for constrained devices
+/// Supported MCU types with Renode compatibility
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub enum McuType {
-    /// Renode Arduino Nano 33 BLE (ARM Cortex-M4) - Constrained device
+    // ===== Official Zephyr Boards with Ethernet (Recommended) =====
+    /// STM32F746G Discovery (ARM Cortex-M7, Ethernet) - Best for network testing
+    #[serde(alias = "Stm32f746gDisco", alias = "stm32f746g_disco")]
+    Stm32F746gDisco,
+    
+    /// FRDM-K64F (ARM Cortex-M4, Ethernet) - Well supported
+    #[serde(alias = "FrdmK64f", alias = "frdm_k64f")]
+    FrdmK64f,
+    
+    // ===== Official Zephyr Boards with WiFi =====
+    /// ESP32 DevKitC (Xtensa LX6, WiFi/BLE) - WiFi support
+    #[serde(alias = "Esp32DevkitC", alias = "esp32_devkitc_wroom")]
+    Esp32DevkitC,
+    
+    // ===== Official Zephyr Boards (No Ethernet/WiFi) =====
+    /// STM32F4 Discovery (ARM Cortex-M4) - No network
+    #[serde(alias = "Stm32F4Disco", alias = "stm32f4_discovery")]
+    Stm32F4Disco,
+    
+    /// nRF52840 DK (ARM Cortex-M4, BLE only) - No Ethernet/WiFi
+    #[serde(alias = "Nrf52840DK", alias = "nrf52840dk_nrf52840")]
+    Nrf52840DK,
+    
+    // ===== Legacy Boards =====
+    /// Legacy: Renode Arduino Nano 33 BLE (ARM Cortex-M4)
     RenodeArduinoNano33Ble,
-    /// Renode STM32F4 Discovery (ARM Cortex-M4) - Constrained device
+    
+    /// Legacy: Renode STM32F4 Discovery (ARM Cortex-M4)
     RenodeStm32F4Discovery,
+    
     /// Legacy: ARM MPS2-AN385 (ARM Cortex-M3) - Maps to RenodeArduinoNano33Ble
     #[serde(alias = "Mps2An385")]
     Mps2An385,
@@ -41,17 +68,41 @@ impl McuType {
     /// Get Renode platform name for this MCU
     pub fn renode_platform(&self) -> &'static str {
         match self {
+            // Official Zephyr boards with Ethernet
+            McuType::Stm32F746gDisco => "stm32f7_discovery-bb",
+            McuType::FrdmK64f => "frdm_k64f",
+            
+            // Official Zephyr boards with WiFi
+            McuType::Esp32DevkitC => "esp32",
+            
+            // Official Zephyr boards (no network)
+            McuType::Stm32F4Disco => "stm32f4_discovery",
+            McuType::Nrf52840DK => "nrf52840dk_nrf52840",
+            
+            // Legacy boards
             McuType::RenodeArduinoNano33Ble => "arduino_nano_33_ble",
             McuType::RenodeStm32F4Discovery => "stm32f4_discovery",
-            McuType::Mps2An385 => "arduino_nano_33_ble", // Map to Arduino Nano for compatibility
+            McuType::Mps2An385 => "arduino_nano_33_ble",
         }
     }
 
     /// Get CPU architecture for this MCU
     pub fn cpu_architecture(&self) -> &'static str {
         match self {
+            // Cortex-M7 (high performance)
+            McuType::Stm32F746gDisco => "cortex-m7",
+            
+            // Cortex-M4 (standard)
+            McuType::FrdmK64f => "cortex-m4",
+            McuType::Stm32F4Disco => "cortex-m4",
+            McuType::Nrf52840DK => "cortex-m4",
             McuType::RenodeArduinoNano33Ble => "cortex-m4",
             McuType::RenodeStm32F4Discovery => "cortex-m4",
+            
+            // Xtensa (ESP32)
+            McuType::Esp32DevkitC => "xtensa-lx6",
+            
+            // Cortex-M3 (legacy)
             McuType::Mps2An385 => "cortex-m3",
         }
     }
@@ -59,8 +110,20 @@ impl McuType {
     /// Get memory size for this MCU
     pub fn memory_size(&self) -> &'static str {
         match self {
-            McuType::RenodeArduinoNano33Ble => "1M",
-            McuType::RenodeStm32F4Discovery => "1M",
+            // High-end MCUs
+            McuType::Stm32F746gDisco => "320K", // 320KB RAM
+            McuType::FrdmK64f => "256K", // 256KB RAM
+            McuType::Esp32DevkitC => "520K", // 520KB SRAM
+            
+            // Mid-range MCUs
+            McuType::Nrf52840DK => "256K",
+            McuType::RenodeArduinoNano33Ble => "256K",
+            
+            // Standard MCUs
+            McuType::Stm32F4Disco => "192K",
+            McuType::RenodeStm32F4Discovery => "192K",
+            
+            // Legacy
             McuType::Mps2An385 => "512K",
         }
     }
@@ -68,27 +131,124 @@ impl McuType {
     /// Get display name for UI
     pub fn display_name(&self) -> &'static str {
         match self {
-            McuType::RenodeArduinoNano33Ble => "Renode Arduino Nano 33 BLE (Cortex-M4)",
-            McuType::RenodeStm32F4Discovery => "Renode STM32F4 Discovery (Cortex-M4)",
-            McuType::Mps2An385 => "ARM MPS2-AN385 (Cortex-M3)",
+            // Ethernet boards (recommended)
+            McuType::Stm32F746gDisco => "STM32F746G Discovery (Ethernet)",
+            McuType::FrdmK64f => "FRDM-K64F (Ethernet)",
+            
+            // WiFi boards
+            McuType::Esp32DevkitC => "ESP32 DevKitC (WiFi)",
+            
+            // No network boards
+            McuType::Stm32F4Disco => "STM32F4 Discovery",
+            McuType::Nrf52840DK => "nRF52840 DK (BLE)",
+            
+            // Legacy
+            McuType::RenodeArduinoNano33Ble => "Arduino Nano 33 BLE (Renode)",
+            McuType::RenodeStm32F4Discovery => "STM32F4 Discovery (Renode)",
+            McuType::Mps2An385 => "ARM MPS2-AN385 (Legacy)",
         }
     }
 
     /// Get Rust HAL crate name (if available)
     pub fn rust_hal_crate(&self) -> Option<&'static str> {
         match self {
-            McuType::RenodeArduinoNano33Ble => Some("nrf52840-hal"),
+            // STM32 boards
+            McuType::Stm32F746gDisco => Some("stm32f7xx-hal"),
+            McuType::Stm32F4Disco => Some("stm32f4xx-hal"),
             McuType::RenodeStm32F4Discovery => Some("stm32f4xx-hal"),
-            McuType::Mps2An385 => None, // No specific HAL for MPS2-AN385
+            
+            // NXP/Freescale boards
+            McuType::FrdmK64f => Some("kinetis-hal"),
+            
+            // Nordic boards
+            McuType::Nrf52840DK => Some("nrf52840-hal"),
+            McuType::RenodeArduinoNano33Ble => Some("nrf52840-hal"),
+            
+            // ESP32
+            McuType::Esp32DevkitC => Some("esp32-hal"),
+            
+            // Legacy
+            McuType::Mps2An385 => None,
+        }
+    }
+
+    /// Get firmware path for this MCU type (relative to zephyr-workspace)
+    pub fn get_firmware_path(&self) -> &'static str {
+        match self {
+            // Ethernet boards (recommended)
+            McuType::Stm32F746gDisco => "build/stm32f746g_disco/zephyr/zephyr.elf",
+            McuType::FrdmK64f => "build/frdm_k64f/zephyr/zephyr.elf",
+            
+            // WiFi boards
+            McuType::Esp32DevkitC => "build/esp32_devkitc_wroom/zephyr/zephyr.elf",
+            
+            // No network boards
+            McuType::Stm32F4Disco => "build/stm32f4/zephyr/zephyr.elf",
+            McuType::Nrf52840DK => "build/nrf52840dk/nrf52840/zephyr/zephyr.elf",
+            
+            // Legacy
+            McuType::RenodeArduinoNano33Ble => "build/arduino_nano_33_ble/zephyr/zephyr.elf",
+            McuType::RenodeStm32F4Discovery => "build/stm32f4_discovery/zephyr/zephyr.elf",
+            McuType::Mps2An385 => "build/mps2_an385/zephyr/zephyr.elf",
+        }
+    }
+
+    /// Get UART peripheral name for this MCU type
+    pub fn get_uart_name(&self) -> &'static str {
+        match self {
+            // STM32 boards use USART
+            McuType::Stm32F746gDisco => "usart1",
+            McuType::Stm32F4Disco => "usart2",
+            McuType::RenodeStm32F4Discovery => "usart2",
+            
+            // NXP/Freescale boards
+            McuType::FrdmK64f => "uart0",
+            
+            // Nordic boards
+            McuType::Nrf52840DK => "uart0",
+            McuType::RenodeArduinoNano33Ble => "uart0",
+            
+            // ESP32
+            McuType::Esp32DevkitC => "uart0",
+            
+            // Legacy
+            McuType::Mps2An385 => "uart0",
         }
     }
 
     /// Get all supported MCU types
     pub fn all_types() -> Vec<McuType> {
         vec![
+            // Ethernet boards (recommended for network testing)
+            McuType::Stm32F746gDisco,
+            McuType::FrdmK64f,
+            
+            // WiFi boards
+            McuType::Esp32DevkitC,
+            
+            // No network boards
+            McuType::Stm32F4Disco,
+            McuType::Nrf52840DK,
+            
+            // Legacy boards
             McuType::RenodeArduinoNano33Ble,
             McuType::RenodeStm32F4Discovery,
         ]
+    }
+    
+    /// Check if this MCU type has Ethernet support
+    pub fn has_ethernet(&self) -> bool {
+        matches!(self, McuType::Stm32F746gDisco | McuType::FrdmK64f)
+    }
+    
+    /// Check if this MCU type has WiFi support
+    pub fn has_wifi(&self) -> bool {
+        matches!(self, McuType::Esp32DevkitC)
+    }
+    
+    /// Check if this MCU type has network support (Ethernet or WiFi)
+    pub fn has_network(&self) -> bool {
+        self.has_ethernet() || self.has_wifi()
     }
 }
 
@@ -197,10 +357,102 @@ impl RenodeManager {
         let _ = std::fs::write(&debug_log_path, format!("start_device called for: {}\n", device_id));
         eprintln!("DEBUG: start_device called for: {}", device_id);
         
+        // ALWAYS load device from Kubernetes CRD first (CRD is source of truth)
+        // This ensures we always have the correct mcuType even if device exists in memory with old data
+        println!("Loading device {} from Kubernetes CRD (always, to ensure correct mcuType)", device_id);
+        eprintln!("Loading device {} from Kubernetes CRD (always, to ensure correct mcuType)", device_id);
+        
+        let device_from_crd = {
+            // Try to get device from Kubernetes
+            let output = tokio::process::Command::new("kubectl")
+                .args(&["get", "device", device_id, "-n", "wasmbed", "-o", "json"])
+                .output()
+                .await;
+            
+            if let Ok(output) = output {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    if let Ok(device_json) = serde_json::from_str::<serde_json::Value>(&stdout) {
+                        let spec = &device_json["spec"];
+                        let metadata = &device_json["metadata"];
+                        
+                        let mcu_type_str = spec["mcuType"].as_str().unwrap_or("Stm32F746gDisco");
+                        let mcu_type = match mcu_type_str {
+                            "Stm32F746gDisco" => McuType::Stm32F746gDisco,
+                            "FrdmK64f" => McuType::FrdmK64f,
+                            "Esp32DevkitC" => McuType::Esp32DevkitC,
+                            "Nrf52840DK" => McuType::Nrf52840DK,
+                            "Stm32F4Disco" => McuType::Stm32F4Disco,
+                            "RenodeArduinoNano33Ble" => McuType::RenodeArduinoNano33Ble,
+                            "RenodeStm32F4Discovery" => McuType::RenodeStm32F4Discovery,
+                            "Mps2An385" => McuType::Mps2An385,
+                            _ => {
+                                eprintln!("Unknown MCU type '{}' for device {}, using Stm32F746gDisco as default", mcu_type_str, device_id);
+                                McuType::Stm32F746gDisco
+                            }
+                        };
+                        
+                        let device_name = metadata["name"].as_str().unwrap_or(device_id).to_string();
+                        let device_type = spec["deviceType"].as_str().unwrap_or("MCU").to_string();
+                        let architecture = spec["architecture"].as_str().unwrap_or("ARM_CORTEX_M").to_string();
+                        
+                        println!("✅ Loaded device {} from CRD with mcuType: {:?}", device_id, mcu_type);
+                        eprintln!("✅ Loaded device {} from CRD with mcuType: {:?}", device_id, mcu_type);
+                        
+                        Some(QemuDevice {
+                            id: device_id.to_string(),
+                            name: device_name,
+                            architecture,
+                            device_type,
+                            mcu_type,
+                            status: QemuDeviceStatus::Stopped,
+                            process_id: None,
+                            endpoint: format!("127.0.0.1:{}", self.base_port),
+                            gateway_endpoint: None,
+                            wasm_runtime: None,
+                        })
+                    } else {
+                        eprintln!("Failed to parse device JSON from Kubernetes for {}", device_id);
+                        None
+                    }
+                } else {
+                    eprintln!("Device {} not found in Kubernetes CRD", device_id);
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        
         let mut devices = self.devices.lock().await;
         
+        // Update device in memory with data from CRD (always, to ensure correct mcuType)
+        if let Some(device_from_crd) = device_from_crd {
+            let existing_status = devices.get(device_id).map(|d| d.status.clone());
+            let existing_process_id = devices.get(device_id).and_then(|d| d.process_id);
+            let existing_endpoint = devices.get(device_id).map(|d| d.endpoint.clone());
+            
+            // Preserve existing status and process_id if device is running
+            let mut device = device_from_crd;
+            if let Some(status) = existing_status {
+                device.status = status;
+            }
+            if let Some(pid) = existing_process_id {
+                device.process_id = Some(pid);
+            }
+            if let Some(ep) = existing_endpoint {
+                device.endpoint = ep;
+            }
+            
+            println!("✅ Updating device {} in memory with data from CRD (mcuType: {:?})", device_id, device.mcu_type);
+            eprintln!("✅ Updating device {} in memory with data from CRD (mcuType: {:?})", device_id, device.mcu_type);
+            devices.insert(device_id.to_string(), device);
+        } else if !devices.contains_key(device_id) {
+            return Err(anyhow::anyhow!("Device {} not found in Kubernetes CRD and not in memory", device_id));
+        }
+        
         let device = devices.get_mut(device_id)
-            .ok_or_else(|| anyhow::anyhow!("Device {} not found", device_id))?;
+            .ok_or_else(|| anyhow::anyhow!("Device {} not found after loading from CRD", device_id))?;
 
         // Check if Docker container already exists and is running
         let use_docker = std::env::var("RENODE_USE_DOCKER").unwrap_or_else(|_| "true".to_string()) == "true";
@@ -239,51 +491,258 @@ impl RenodeManager {
             return Err(anyhow::anyhow!("Device is already running"));
         }
 
+        // Store current gateway_endpoint from device (might be old TCP bridge endpoint)
+        let existing_gateway_endpoint = device.gateway_endpoint.clone();
+        
         // Update gateway endpoint if provided (use reference to avoid moving option)
-        if let Some(ref gateway_ep) = gateway_endpoint {
-            device.gateway_endpoint = Some(gateway_ep.clone());
-        }
+        // But don't save it yet - we'll resolve it first
+        let endpoint_to_resolve = if let Some(ref gateway_ep) = gateway_endpoint {
+            Some(gateway_ep.clone())
+        } else {
+            // If no endpoint provided, use existing one (might be old TCP bridge)
+            existing_gateway_endpoint
+        };
         
         // Drop lock before performing any other async operations to keep future Send
         drop(devices);
         
-        // Start TCP bridge outside of device lock to avoid holding non-Send guard across await
-        if let Some(gateway_ep) = gateway_endpoint {
-            // Start TCP bridge for real TCP connections
-            // Convert gateway HTTP endpoint (port 8080) to TLS endpoint (port 8443)
-            let gateway_tls_endpoint = if gateway_ep.contains(":8080") {
-                gateway_ep.replace(":8080", ":8443")
-            } else if !gateway_ep.contains(":8443") {
-                format!("{}:8443", gateway_ep.trim_end_matches('/'))
+        // Resolve gateway endpoint to pod IP (firmware can connect directly with TLS, no TCP bridge needed)
+        // The firmware uses network_connect_tls() which can connect directly to the gateway pod IP
+        println!("DEBUG: start_device - gateway_endpoint parameter = {:?}", gateway_endpoint);
+        eprintln!("DEBUG: start_device - gateway_endpoint parameter = {:?}", gateway_endpoint);
+        println!("DEBUG: start_device - endpoint_to_resolve = {:?}", endpoint_to_resolve);
+        eprintln!("DEBUG: start_device - endpoint_to_resolve = {:?}", endpoint_to_resolve);
+        if let Some(gateway_ep) = endpoint_to_resolve {
+            println!("DEBUG: start_device - Processing gateway endpoint: {}", gateway_ep);
+            eprintln!("DEBUG: start_device - Processing gateway endpoint: {}", gateway_ep);
+            
+            // Extract host part first (remove http:// or https:// prefix and port)
+            let host_part = gateway_ep
+                .replace("http://", "")
+                .replace("https://", "")
+                .split(':')
+                .next()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| gateway_ep.clone());
+            
+            // Check if endpoint is a local address (old TCP bridge) - if so, directly use first available gateway pod
+            let gateway_name = if host_part == "127.0.0.1" || host_part == "localhost" {
+                // Old TCP bridge endpoint - use first available gateway pod directly
+                eprintln!("Warning: Gateway endpoint {} is a local address (old TCP bridge), will use first available gateway pod", gateway_ep);
+                String::new() // Empty string to trigger fallback to first available pod
+            } else if host_part.chars().all(|c| c.is_ascii_digit() || c == '.') && host_part.matches('.').count() == 3 {
+                // It's a non-local IP address - try to get gateway name from device CRD
+                eprintln!("Gateway endpoint {} is an IP address, trying to get gateway name from device CRD", gateway_ep);
+                let device_crd_output = Command::new("kubectl")
+                    .args(&["get", "device", device_id, "-n", "wasmbed", "-o", "jsonpath={.status.gateway.name}"])
+                    .output();
+                
+                if let Ok(output) = device_crd_output {
+                    if output.status.success() {
+                        let gateway_name_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                        if !gateway_name_str.is_empty() {
+                            gateway_name_str
+                        } else {
+                            eprintln!("Warning: Could not get gateway name from device CRD, will use first available gateway pod");
+                            String::new() // Empty string to trigger fallback to first available pod
+                        }
+                    } else {
+                        eprintln!("Warning: Failed to get gateway name from device CRD, will use first available gateway pod");
+                        String::new() // Empty string to trigger fallback to first available pod
+                    }
+                } else {
+                    eprintln!("Warning: Failed to execute kubectl to get gateway name, will use first available gateway pod");
+                    String::new() // Empty string to trigger fallback to first available pod
+                }
             } else {
-                gateway_ep.clone()
+                // It's a hostname - extract gateway name
+                host_part
+                    .split('.')
+                    .next()
+                    .unwrap_or(&host_part)
+                    .replace("-service", "")
             };
             
-            // Use a unique bridge port for each device (hash of device_id)
-            use std::collections::hash_map::DefaultHasher;
-            use std::hash::{Hash, Hasher};
-            let mut hasher = DefaultHasher::new();
-            device_id.hash(&mut hasher);
-            let device_hash = hasher.finish();
-            let bridge_port = 40000 + (device_hash % 1000) as u16; // Port between 40000-40999
-            
-            let bridge = TcpBridge::new(gateway_tls_endpoint, bridge_port);
-            // Ensure bridge can safely move across await points
-            fn assert_send<T: Send + Sync>(_: &T) {}
-            assert_send(&bridge);
-            if let Err(e) = bridge.start() {
-                eprintln!("Failed to start TCP bridge for device {}: {}", device_id, e);
+            // Get TLS port (default 8081 - gateway uses 8081 for TLS, 8080 for HTTP)
+            let tls_port = if gateway_ep.contains(":8081") {
+                8081
+            } else if gateway_ep.contains(":8443") {
+                8443
+            } else if gateway_ep.contains(":8080") {
+                // HTTP port specified, use TLS port 8081
+                8081
             } else {
-                let bridge_endpoint = format!("127.0.0.1:{}", bridge_port);
-                println!("TCP bridge started for device {} on port {} (endpoint: {})", device_id, bridge_port, bridge_endpoint);
+                // Try to get from gateway CRD
+                let gateway_crd_output = Command::new("kubectl")
+                    .args(&["get", "gateway", &gateway_name, "-n", "wasmbed", "-o", "jsonpath={.spec.tlsPort}"])
+                    .output();
                 
-                // Store bridge endpoint in device for later use
-                // The bridge endpoint will be passed to firmware via memory
-                let mut bridges = self.tcp_bridges.lock().await;
-                bridges.insert(device_id.to_string(), bridge);
+                if let Ok(crd_output) = gateway_crd_output {
+                    if crd_output.status.success() {
+                        let port_str = String::from_utf8_lossy(&crd_output.stdout).trim().to_string();
+                        if !port_str.is_empty() {
+                            port_str.parse::<u16>().unwrap_or(8081)
+                        } else {
+                            8081
+                        }
+                    } else {
+                        8081
+                    }
+                } else {
+                    8081
+                }
+            };
+            
+            // Get gateway pod IP using kubectl
+            // Strategy:
+            // 1. If gateway_name is specific (not empty), try to find pod by name pattern
+            // 2. Otherwise, get first available gateway pod
+            // 3. Pods are labeled with app=wasmbed-gateway, not gateway={name}
+            eprintln!("Resolving gateway pod IP for gateway_name: '{}'", gateway_name);
+            let pod_ip_output = if !gateway_name.is_empty() {
+                // Try to find pod by name pattern first (e.g., gateway-2 -> wasmbed-gateway-*)
+                // Get all gateway pods and find one that matches the gateway name pattern
+                let all_pods_output = Command::new("kubectl")
+                    .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-gateway", "-o", "jsonpath={.items[*].metadata.name}"])
+                    .output();
                 
-                // Store bridge endpoint in device (we'll write it to memory in build_renode_args)
-                // For now, we'll use the bridge endpoint instead of gateway endpoint in memory
+                if let Ok(output) = all_pods_output {
+                    if output.status.success() {
+                        let pod_names = String::from_utf8_lossy(&output.stdout);
+                        let pod_names_vec: Vec<&str> = pod_names.trim().split_whitespace().collect();
+                        eprintln!("Found gateway pods: {:?}", pod_names_vec);
+                        
+                        // Try to find a pod that contains the gateway name
+                        let matching_pod = pod_names_vec.iter().find(|name| {
+                            name.contains(&gateway_name) || gateway_name.contains(name.trim_start_matches("wasmbed-gateway-").split('-').next().unwrap_or(""))
+                        });
+                        
+                        if let Some(pod_name) = matching_pod {
+                            eprintln!("Found matching pod by name: {}", pod_name);
+                            // Get IP of specific pod
+                            Command::new("kubectl")
+                                .args(&["get", "pod", pod_name.trim(), "-n", "wasmbed", "-o", "jsonpath={.status.podIP}"])
+                                .output()
+                        } else {
+                            eprintln!("No matching pod found by name, using first available pod");
+                            // Fallback: get first available gateway pod
+                            Command::new("kubectl")
+                                .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-gateway", "-o", "jsonpath={.items[0].status.podIP}"])
+                                .output()
+                        }
+                    } else {
+                        eprintln!("Failed to list gateway pods, using first available pod");
+                        Command::new("kubectl")
+                            .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-gateway", "-o", "jsonpath={.items[0].status.podIP}"])
+                            .output()
+                    }
+                } else {
+                    eprintln!("Failed to execute kubectl to list pods, using first available pod");
+                    Command::new("kubectl")
+                        .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-gateway", "-o", "jsonpath={.items[0].status.podIP}"])
+                        .output()
+                }
+            } else {
+                // Use first available gateway pod
+                eprintln!("Using first available gateway pod (gateway_name is fallback or empty)");
+                Command::new("kubectl")
+                    .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-gateway", "-o", "jsonpath={.items[0].status.podIP}"])
+                    .output()
+            };
+            
+            if let Ok(output) = pod_ip_output {
+                if output.status.success() {
+                    let pod_ip = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !pod_ip.is_empty() {
+                        let gateway_pod_endpoint = format!("{}:{}", pod_ip, tls_port);
+                        println!("Resolved gateway endpoint for device {}: {} (pod IP: {}, TLS port: {})", device_id, gateway_pod_endpoint, pod_ip, tls_port);
+                        eprintln!("Resolved gateway endpoint for device {}: {} (pod IP: {}, TLS port: {})", device_id, gateway_pod_endpoint, pod_ip, tls_port);
+                        // Also write to a file for debugging
+                        let _ = std::fs::write(
+                            std::env::temp_dir().join(format!("gateway_endpoint_{}.txt", device_id)),
+                            format!("Resolved gateway endpoint for device {}: {} (pod IP: {}, TLS port: {})", device_id, gateway_pod_endpoint, pod_ip, tls_port)
+                        );
+                        
+                        // Store the resolved endpoint in device for later use in build_renode_args
+                        let mut devices = self.devices.lock().await;
+                        if let Some(device) = devices.get_mut(device_id) {
+                            device.gateway_endpoint = Some(gateway_pod_endpoint);
+                        }
+                        drop(devices);
+                    } else {
+                        eprintln!("Warning: Could not resolve gateway pod IP for device {} (empty response), will use fallback", device_id);
+                    }
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    eprintln!("Warning: Failed to get gateway pod IP for device {}: {} (status: {})", device_id, stderr, output.status);
+                }
+            } else {
+                eprintln!("Warning: Failed to execute kubectl to get gateway pod IP for device {}, will use fallback", device_id);
+            }
+        } else {
+            // No gateway endpoint provided - try to get from device CRD
+            eprintln!("No gateway endpoint provided, getting gateway name from device CRD");
+            let device_crd_output = Command::new("kubectl")
+                .args(&["get", "device", device_id, "-n", "wasmbed", "-o", "jsonpath={.status.gateway.name}"])
+                .output();
+            
+            if let Ok(output) = device_crd_output {
+                if output.status.success() {
+                    let gateway_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !gateway_name.is_empty() {
+                        // Get TLS port from gateway CRD (default 8081)
+                        let tls_port = {
+                            let gateway_crd_output = Command::new("kubectl")
+                                .args(&["get", "gateway", &gateway_name, "-n", "wasmbed", "-o", "jsonpath={.spec.tlsPort}"])
+                                .output();
+                            
+                            if let Ok(crd_output) = gateway_crd_output {
+                                if crd_output.status.success() {
+                                    let port_str = String::from_utf8_lossy(&crd_output.stdout).trim().to_string();
+                                    if !port_str.is_empty() {
+                                        port_str.parse::<u16>().unwrap_or(8081)
+                                    } else {
+                                        8081
+                                    }
+                                } else {
+                                    8081
+                                }
+                            } else {
+                                8081
+                            }
+                        };
+                        
+                        // Get gateway pod IP
+                        // Pods are labeled with app=wasmbed-gateway, not gateway={name}
+                        eprintln!("Resolving gateway pod IP for gateway_name: {}", gateway_name);
+                        let pod_ip_output = Command::new("kubectl")
+                            .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-gateway", "-o", "jsonpath={.items[0].status.podIP}"])
+                            .output();
+                        
+                        if let Ok(output) = pod_ip_output {
+                            if output.status.success() {
+                                let pod_ip = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                                if !pod_ip.is_empty() {
+                                    let gateway_pod_endpoint = format!("{}:{}", pod_ip, tls_port);
+                                    println!("Resolved gateway endpoint for device {}: {} (pod IP: {}, TLS port: {})", device_id, gateway_pod_endpoint, pod_ip, tls_port);
+                                    eprintln!("Resolved gateway endpoint for device {}: {} (pod IP: {}, TLS port: {})", device_id, gateway_pod_endpoint, pod_ip, tls_port);
+                                    // Also write to a file for debugging
+                                    let _ = std::fs::write(
+                                        std::env::temp_dir().join(format!("gateway_endpoint_{}.txt", device_id)),
+                                        format!("Resolved gateway endpoint for device {}: {} (pod IP: {}, TLS port: {})", device_id, gateway_pod_endpoint, pod_ip, tls_port)
+                                    );
+                                    
+                                    // Store the resolved endpoint in device for later use in build_renode_args
+                                    let mut devices = self.devices.lock().await;
+                                    if let Some(device) = devices.get_mut(device_id) {
+                                        device.gateway_endpoint = Some(gateway_pod_endpoint);
+                                    }
+                                    drop(devices);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         
@@ -291,6 +750,18 @@ impl RenodeManager {
         let mut devices = self.devices.lock().await;
         let device = devices.get_mut(device_id)
             .ok_or_else(|| anyhow::anyhow!("Device {} not found", device_id))?;
+
+        // CRITICAL: Log the device.mcu_type to verify it's correct before build_renode_args
+        println!("DEBUG: Before build_renode_args - device.mcu_type = {:?}, device.id = {}", device.mcu_type, device.id);
+        eprintln!("DEBUG: Before build_renode_args - device.mcu_type = {:?}, device.id = {}", device.mcu_type, device.id);
+        
+        // Log the device.gateway_endpoint after resolution
+        println!("DEBUG: After resolution - device.gateway_endpoint = {:?}", device.gateway_endpoint);
+        eprintln!("DEBUG: After resolution - device.gateway_endpoint = {:?}", device.gateway_endpoint);
+        let _ = std::fs::write(
+            std::env::temp_dir().join(format!("after_resolution_gateway_endpoint_{}.txt", device_id)),
+            format!("device.gateway_endpoint = {:?}", device.gateway_endpoint)
+        );
 
         device.status = QemuDeviceStatus::Starting;
 
@@ -581,6 +1052,57 @@ impl RenodeManager {
         let zephyr_firmware_arduino_nano = zephyr_workspace.join("build/nrf52840dk/nrf52840/zephyr/zephyr.elf");
         
         match mcu_type {
+            // Ethernet boards
+            McuType::Stm32F746gDisco => {
+                let firmware_path = zephyr_workspace.join(mcu_type.get_firmware_path());
+                if firmware_path.exists() {
+                    Ok(firmware_path)
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("Zephyr firmware not found for STM32F746G Discovery. Expected: {}", firmware_path.display())
+                    ))
+                }
+            },
+            McuType::FrdmK64f => {
+                let firmware_path = zephyr_workspace.join(mcu_type.get_firmware_path());
+                if firmware_path.exists() {
+                    Ok(firmware_path)
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("Zephyr firmware not found for FRDM-K64F. Expected: {}", firmware_path.display())
+                    ))
+                }
+            },
+            
+            // WiFi boards
+            McuType::Esp32DevkitC => {
+                let firmware_path = zephyr_workspace.join(mcu_type.get_firmware_path());
+                if firmware_path.exists() {
+                    Ok(firmware_path)
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("Zephyr firmware not found for ESP32 DevKitC. Expected: {}", firmware_path.display())
+                    ))
+                }
+            },
+            
+            // No network boards
+            McuType::Nrf52840DK | McuType::Stm32F4Disco => {
+                let firmware_path = zephyr_workspace.join(mcu_type.get_firmware_path());
+                if firmware_path.exists() {
+                    Ok(firmware_path)
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("Zephyr firmware not found for {}. Expected: {}", mcu_type.display_name(), firmware_path.display())
+                    ))
+                }
+            },
+            
+            // Legacy boards
             McuType::RenodeArduinoNano33Ble => {
                 if zephyr_firmware_arduino_nano.exists() {
                     Ok(zephyr_firmware_arduino_nano)
@@ -616,16 +1138,104 @@ impl RenodeManager {
                     ))
                 }
             },
+            McuType::Nrf52840DK => {
+                // Official Zephyr nRF52840 DK firmware
+                if zephyr_firmware_nrf52840.exists() {
+                    Ok(zephyr_firmware_nrf52840)
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("Zephyr firmware not found for nRF52840 DK. Expected: {}", 
+                            zephyr_firmware_nrf52840.display())
+                    ))
+                }
+            },
+            McuType::Stm32F4Disco => {
+                // Official Zephyr STM32F4 Discovery firmware
+                if zephyr_firmware_stm32f4.exists() {
+                    Ok(zephyr_firmware_stm32f4)
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("Zephyr firmware not found for STM32F4 Discovery. Expected: {}", 
+                            zephyr_firmware_stm32f4.display())
+                    ))
+                }
+            },
         }
     }
 
     fn build_renode_args(&self, device: &QemuDevice, device_id: &str) -> Result<Vec<String>, std::io::Error> {
         // CRITICAL: Write to file immediately to verify function is called
         let function_entry_log = std::env::temp_dir().join(format!("build_renode_args_entry_{}.log", device_id));
-        let _ = std::fs::write(&function_entry_log, format!("build_renode_args called for device: {}\ndevice.id: {}\n", device_id, device.id));
+        let _ = std::fs::write(&function_entry_log, format!("build_renode_args called for device: {}\ndevice.id: {}\ndevice.mcu_type: {:?}\n", device_id, device.id, device.mcu_type));
         
-        println!("DEBUG: build_renode_args called for device: {} (device.id: {})", device_id, device.id);
-        eprintln!("DEBUG: build_renode_args called for device: {} (device.id: {})", device_id, device.id);
+        println!("DEBUG: build_renode_args called for device: {} (device.id: {}, device.mcu_type: {:?})", device_id, device.id, device.mcu_type);
+        eprintln!("DEBUG: build_renode_args called for device: {} (device.id: {}, device.mcu_type: {:?})", device_id, device.id, device.mcu_type);
+        
+        // CRITICAL: ALWAYS read mcuType from CRD - this is the source of truth
+        println!("🔍🔍🔍 CRITICAL: Reading mcuType from CRD for device {} 🔍🔍🔍", device_id);
+        eprintln!("🔍🔍🔍 CRITICAL: Reading mcuType from CRD for device {} 🔍🔍🔍", device_id);
+        
+        let crd_mcu_type = std::process::Command::new("kubectl")
+            .args(&["get", "device", device_id, "-n", "wasmbed", "-o", "jsonpath={.spec.mcuType}"])
+            .output();
+        
+        let final_mcu_type = match crd_mcu_type {
+            Ok(output) if output.status.success() => {
+                let mcu_type_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                println!("✅ CRITICAL: Read mcuType from CRD: '{}'", mcu_type_str);
+                eprintln!("✅ CRITICAL: Read mcuType from CRD: '{}'", mcu_type_str);
+                
+                match mcu_type_str.as_str() {
+                    "Stm32F746gDisco" => {
+                        println!("✅✅✅ OVERRIDING to Stm32F746gDisco ✅✅✅");
+                        eprintln!("✅✅✅ OVERRIDING to Stm32F746gDisco ✅✅✅");
+                        McuType::Stm32F746gDisco
+                    },
+                    "FrdmK64f" => {
+                        println!("✅ OVERRIDING to FrdmK64f");
+                        eprintln!("✅ OVERRIDING to FrdmK64f");
+                        McuType::FrdmK64f
+                    },
+                    "Esp32DevkitC" => {
+                        println!("✅ OVERRIDING to Esp32DevkitC");
+                        eprintln!("✅ OVERRIDING to Esp32DevkitC");
+                        McuType::Esp32DevkitC
+                    },
+                    "Nrf52840DK" => {
+                        println!("✅ OVERRIDING to Nrf52840DK");
+                        eprintln!("✅ OVERRIDING to Nrf52840DK");
+                        McuType::Nrf52840DK
+                    },
+                    "Stm32F4Disco" => {
+                        println!("✅ OVERRIDING to Stm32F4Disco");
+                        eprintln!("✅ OVERRIDING to Stm32F4Disco");
+                        McuType::Stm32F4Disco
+                    },
+                    _ => {
+                        println!("⚠️ Unknown mcuType '{}', using device.mcu_type: {:?}", mcu_type_str, device.mcu_type);
+                        eprintln!("⚠️ Unknown mcuType '{}', using device.mcu_type: {:?}", mcu_type_str, device.mcu_type);
+                        device.mcu_type.clone()
+                    }
+                }
+            },
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                println!("⚠️ kubectl failed (status: {}): {}, using device.mcu_type: {:?}", output.status, stderr, device.mcu_type);
+                eprintln!("⚠️ kubectl failed (status: {}): {}, using device.mcu_type: {:?}", output.status, stderr, device.mcu_type);
+                device.mcu_type.clone()
+            },
+            Err(e) => {
+                println!("⚠️ kubectl error: {:?}, using device.mcu_type: {:?}", e, device.mcu_type);
+                eprintln!("⚠️ kubectl error: {:?}, using device.mcu_type: {:?}", e, device.mcu_type);
+                device.mcu_type.clone()
+            }
+        };
+        
+        let final_platform = final_mcu_type.renode_platform();
+        println!("✅✅✅ FINAL PLATFORM: {} (mcu_type: {:?}) ✅✅✅", final_platform, final_mcu_type);
+        eprintln!("✅✅✅ FINAL PLATFORM: {} (mcu_type: {:?}) ✅✅✅", final_platform, final_mcu_type);
         
         // Check if we should use Docker (more reliable and isolate than portable)
         let use_docker = std::env::var("RENODE_USE_DOCKER").unwrap_or_else(|_| "true".to_string()) == "true";
@@ -677,8 +1287,8 @@ impl RenodeManager {
             }
         };
         
-        // Get firmware path using helper method
-        let firmware_path = self.get_firmware_path(&device.mcu_type)?;
+        // Get firmware path using helper method - use final_mcu_type from CRD
+        let firmware_path = self.get_firmware_path(&final_mcu_type)?;
         let firmware_path_str = firmware_path.to_string_lossy().to_string();
         let firmware_filename = firmware_path
             .file_name()
@@ -696,11 +1306,8 @@ impl RenodeManager {
         // 4. Load device runtime firmware (use absolute path)
         // 5. Set PC/SP if needed (for nRF52840)
         // 6. Start execution
-        let uart_name = match device.mcu_type {
-            McuType::RenodeArduinoNano33Ble => "uart0",
-            McuType::RenodeStm32F4Discovery => "usart1",
-            McuType::Mps2An385 => "uart0", // Map to Arduino Nano UART
-        };
+        // Use final_mcu_type (from CRD) instead of device.mcu_type
+        let uart_name = final_mcu_type.get_uart_name();
         
         // For Docker, use Docker volume mount (firmware-{device_id} volume)
         // The firmware is copied to the volume in start_device before calling build_renode_args
@@ -712,18 +1319,31 @@ impl RenodeManager {
         };
         
         // Renode command format: mach add "name" (not mach create "name")
-        // For nRF52840, we need to set PC and SP after loading firmware
-        // For STM32F4, configure Ethernet interface
-        let ethernet_config = if device.mcu_type == McuType::RenodeStm32F4Discovery {
-            // STM32F4 has built-in Ethernet MAC (Network.SynopsysEthernetMAC) - configure it
-            // Ethernet is already defined in stm32f4.repl at sysbus 0x40028000
-            // Create network switch and TAP interface for host connection
-            "; emulation CreateSwitch \"ethernet_switch\"; emulation CreateTap \"tap0\" \"ethernet_tap\"; sysbus.ethernet MAC \"00:11:22:33:44:55\"; connector Connect sysbus.ethernet ethernet_switch; connector Connect host.ethernet_tap ethernet_switch; host.ethernet_tap Start"
+        // For boards with Ethernet/WiFi, configure network interface
+        // Use final_mcu_type (from CRD) instead of device.mcu_type
+        let ethernet_config = if final_mcu_type.has_ethernet() {
+            // Configure Ethernet for boards that support it
+            match final_mcu_type {
+                McuType::Stm32F746gDisco => {
+                    // STM32F746G Discovery has Ethernet MAC
+                    "\nemulation CreateSwitch \"ethernet_switch\"\nemulation CreateTap \"tap0\" \"ethernet_tap\"\nsysbus.ethernet MAC \"00:11:22:33:44:55\"\nconnector Connect sysbus.ethernet ethernet_switch\nconnector Connect host.ethernet_tap ethernet_switch\nhost.ethernet_tap Start"
+                },
+                McuType::FrdmK64f => {
+                    // FRDM-K64F has Ethernet MAC
+                    "\nemulation CreateSwitch \"ethernet_switch\"\nemulation CreateTap \"tap0\" \"ethernet_tap\"\nsysbus.ethernet MAC \"00:11:22:33:44:66\"\nconnector Connect sysbus.ethernet ethernet_switch\nconnector Connect host.ethernet_tap ethernet_switch\nhost.ethernet_tap Start"
+                },
+                _ => ""
+            }
+        } else if final_mcu_type.has_wifi() {
+            // Configure WiFi for ESP32 (if supported by Renode)
+            "\n# WiFi configuration for ESP32 (if supported)"
         } else {
             ""
         };
         
-        let pc_sp_commands = if device.mcu_type == McuType::RenodeArduinoNano33Ble {
+        let pc_sp_commands = if final_mcu_type == McuType::RenodeArduinoNano33Ble {
+            // Only set PC/SP for Arduino Nano (legacy)
+            // For official Zephyr boards, let ELF loader set PC/SP automatically
             "\nsysbus.cpu PC 0x866b\nsysbus.cpu SP 0x20020000"
         } else {
             ""
@@ -736,11 +1356,17 @@ impl RenodeManager {
         } else {
             format!("sysbus LoadELF @\"{}\"", firmware_path_in_container)
         };
+        
+        // Use final_mcu_type and final_platform that were already determined from CRD above
+        let final_uart = final_mcu_type.get_uart_name();
+        println!("✅ FINAL: Using platform = {}, uart = {}, mcu_type = {:?}", final_platform, final_uart, final_mcu_type);
+        eprintln!("✅ FINAL: Using platform = {}, uart = {}, mcu_type = {:?}", final_platform, final_uart, final_mcu_type);
+        
         let mut renode_commands = format!(
-            "mach add \"{id}\"\ninclude @platforms/boards/{platform}.repl\nshowAnalyzer sysbus.{uart}\n{loadelf}\nmach set \"{id}\"\n{ethernet}{pc_sp}\n# Enable detailed logging\nlogLevel 0\nsysbus.cpu LogFunctionNames true true\n# Configure CPU to continue on faults (for debugging)\nsysbus.cpu ExecutionMode SingleStepBlocking\n# Start machine\nstart\n# Keep machine running - Renode will stay active after start command",
+            "mach add \"{id}\"\ninclude @platforms/boards/{platform}.repl\nshowAnalyzer sysbus.{uart}\n{loadelf}\nmach set \"{id}\"\n{ethernet}{pc_sp}\n# Enable detailed logging\nlogLevel -1\n# Start machine\nstart\n# Keep machine running - Renode will stay active after start command",
             id = device.id,
-            platform = device.mcu_type.renode_platform(),
-            uart = uart_name,
+            platform = final_platform,
+            uart = final_uart,
             loadelf = loadelf_cmd,
             ethernet = if ethernet_config.is_empty() {
                 "".to_string()
@@ -772,26 +1398,52 @@ impl RenodeManager {
         
         // Get bridge endpoint if TCP bridge is running for this device
         // Calculate bridge port using same hash as in start_device
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        device_id.hash(&mut hasher);
-        let device_hash = hasher.finish();
-        let bridge_port = 40000 + (device_hash % 1000) as u16;
-        let bridge_endpoint = format!("127.0.0.1:{}", bridge_port);
-        
-        // Use bridge endpoint if gateway_endpoint is set (bridge is running)
-        // Otherwise, fallback to gateway endpoint directly
-        let endpoint_str = if device.gateway_endpoint.is_some() {
-            // Use bridge endpoint (firmware connects to bridge, bridge connects to gateway)
-            bridge_endpoint
+        // Firmware can connect directly to gateway pod IP with TLS (no TCP bridge needed)
+        // The gateway_endpoint should already contain the pod IP:port from start_device (format: "10.42.0.12:8081")
+        println!("DEBUG: build_renode_args - device.gateway_endpoint = {:?}", device.gateway_endpoint);
+        eprintln!("DEBUG: build_renode_args - device.gateway_endpoint = {:?}", device.gateway_endpoint);
+        let _ = std::fs::write(
+            std::env::temp_dir().join(format!("build_renode_args_gateway_endpoint_{}.txt", device_id)),
+            format!("device.gateway_endpoint = {:?}", device.gateway_endpoint)
+        );
+        let gateway_endpoint_str = if let Some(ref gateway_ep) = device.gateway_endpoint {
+            // Use the resolved gateway pod IP endpoint (format: "10.42.0.62:8443")
+            println!("DEBUG: Using device.gateway_endpoint: {}", gateway_ep);
+            eprintln!("DEBUG: Using device.gateway_endpoint: {}", gateway_ep);
+            gateway_ep.clone()
         } else {
-            // Fallback to default endpoint
-            "127.0.0.1:8443".to_string()
+            // Fallback: try to resolve gateway pod IP now
+            // Extract gateway name from device or use default
+            let gateway_name = "gateway-1"; // Default, could be improved to get from device spec
+            
+            // Pods are labeled with app=wasmbed-gateway, not gateway={name}
+            let pod_ip_output = Command::new("kubectl")
+                .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-gateway", "-o", "jsonpath={.items[0].status.podIP}"])
+                .output();
+            
+            if let Ok(output) = pod_ip_output {
+                if output.status.success() {
+                    let pod_ip = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !pod_ip.is_empty() {
+                        format!("{}:8081", pod_ip)
+                    } else {
+                        "127.0.0.1:8081".to_string()
+                    }
+                } else {
+                    "127.0.0.1:8081".to_string()
+                }
+            } else {
+                "127.0.0.1:8081".to_string()
+            }
         };
         
-        // Use endpoint_str for memory write
-        let gateway_endpoint_str = endpoint_str;
+        println!("Writing gateway endpoint to memory for device {}: {}", device_id, gateway_endpoint_str);
+        eprintln!("Writing gateway endpoint to memory for device {}: {}", device_id, gateway_endpoint_str);
+        // Also write to a file for debugging
+        let _ = std::fs::write(
+            std::env::temp_dir().join(format!("gateway_endpoint_memory_{}.txt", device_id)),
+            format!("Writing gateway endpoint to memory for device {}: {}", device_id, gateway_endpoint_str)
+        );
         
         // Append gateway endpoint configuration to Renode commands
         // The endpoint will be written to memory address 0x20001000 (in RAM)
@@ -801,7 +1453,7 @@ impl RenodeManager {
         
         // Write endpoint string to memory starting at 0x20001000
         // First write the length, then the string bytes
-        endpoint_write_commands.push_str(&format!("; sysbus WriteDoubleWord 0x20001000 0x{:08x}", endpoint_bytes.len()));
+        endpoint_write_commands.push_str(&format!("\nsysbus WriteDoubleWord 0x20001000 0x{:08x}", endpoint_bytes.len()));
         
         // Write endpoint bytes (4 bytes at a time)
         for (i, chunk) in endpoint_bytes.chunks(4).enumerate() {
@@ -809,7 +1461,7 @@ impl RenodeManager {
             for (j, &byte) in chunk.iter().enumerate() {
                 word |= (byte as u32) << (j * 8);
             }
-            endpoint_write_commands.push_str(&format!("; sysbus WriteDoubleWord 0x{:08x} 0x{:08x}", 
+            endpoint_write_commands.push_str(&format!("\nsysbus WriteDoubleWord 0x{:08x} 0x{:08x}", 
                 0x20001004 + (i as u32 * 4), word));
         }
         

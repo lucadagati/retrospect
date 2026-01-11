@@ -1,21 +1,21 @@
 # Deployment Guide
 
-## Prerequisiti
+## Prerequisites
 
-### Software Richiesto
+### Software Required
 
-- **Kubernetes**: Cluster Kubernetes 1.24+
-- **Docker**: Per build e containerizzazione
-- **kubectl**: Configurato per accedere al cluster
-- **Rust**: Toolchain 1.88.0+
-- **Zephyr SDK**: Per compilazione firmware (opzionale per deployment)
+- **Kubernetes**: Kubernetes cluster 1.24+ (K3S recommended)
+- **Docker**: For building and containerization
+- **kubectl**: Configured to access the cluster
+- **Rust**: Toolchain 1.70+ (for building components)
+- **Zephyr SDK**: For firmware compilation (optional for basic deployment)
 
-### Hardware/Emulazione
+### Hardware/Emulation
 
-- **Renode**: Per emulazione dispositivi (via Docker)
-- **Risorse cluster**: Minimo 4 CPU, 8GB RAM
+- **Renode**: For device emulation (via Docker)
+- **Cluster Resources**: Minimum 4 CPU, 8GB RAM
 
-## Setup Iniziale
+## Initial Setup
 
 ### 1. Clone Repository
 
@@ -24,38 +24,52 @@ git clone <repository-url>
 cd retrospect
 ```
 
-### 2. Setup Zephyr Workspace
+### 2. Install K3S (if not already installed)
+
+```bash
+curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
+mkdir -p ~/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo chown $(id -u):$(id -g) ~/.kube/config
+```
+
+### 3. Deploy System
+
+The easiest way to deploy is using the automated script:
+
+```bash
+./scripts/deploy-k3s.sh
+```
+
+This script will:
+- Build all Docker images
+- Set up local Docker registry
+- Deploy all Kubernetes components
+- Generate TLS certificates
+- Create initial Gateway CRD
+
+### 4. Setup Zephyr Workspace (Optional, for firmware compilation)
 
 ```bash
 ./scripts/setup-zephyr-workspace.sh
 ```
 
-Questo script:
-- Clona Zephyr RTOS
-- Configura ambiente
-- Setup WAMR (se non presente)
+This script:
+- Clones Zephyr RTOS
+- Configures environment
+- Sets up WAMR (if not present)
 
-### 3. Build Componenti
-
-```bash
-./scripts/02-build-components.sh
-```
-
-Build di tutti i componenti Rust:
-- API Server
-- Gateway
-- Controllers
-- Utilities
-
-### 4. Build Firmware (Opzionale)
+### 5. Build Firmware (Optional)
 
 ```bash
 ./scripts/build-zephyr-app.sh
 ```
 
-Compila il firmware Zephyr per le piattaforme supportate.
+Compiles Zephyr firmware for supported platforms.
 
-## Deployment Kubernetes
+## Manual Deployment (Alternative to deploy-k3s.sh)
+
+If you prefer manual deployment or need to customize the process:
 
 ### 1. Deploy Namespace
 
@@ -70,9 +84,9 @@ kubectl apply -f k8s/crds/
 ```
 
 Custom Resource Definitions:
-- Device
-- Application
-- Gateway
+- Device (`devices.wasmbed.github.io`)
+- Application (`applications.wasmbed.github.io`)
+- Gateway (`gateways.wasmbed.io`)
 
 ### 3. Deploy RBAC
 
@@ -80,27 +94,62 @@ Custom Resource Definitions:
 kubectl apply -f k8s/rbac/
 ```
 
-Permessi per controllers.
+Permissions for controllers and API server.
 
-### 4. Deploy Components
+### 4. Generate TLS Certificates
 
 ```bash
-./scripts/03-deploy-infrastructure.sh
+# Generate CA certificate
+openssl genrsa -out certs/ca-key.pem 4096
+openssl req -new -x509 -days 365 -key certs/ca-key.pem -out certs/ca-cert.pem -subj "/CN=wasmbed-ca"
+
+# Generate server certificate
+openssl genrsa -out certs/server-key.pem 4096
+openssl req -new -key certs/server-key.pem -out certs/server-csr.pem -subj "/CN=wasmbed-gateway"
+openssl x509 -req -days 365 -in certs/server-csr.pem -CA certs/ca-cert.pem -CAkey certs/ca-key.pem -CAcreateserial -out certs/server-cert.pem
+
+# Create Kubernetes secret
+kubectl create secret generic gateway-certificates -n wasmbed \
+  --from-file=ca-cert.pem=certs/ca-cert.pem \
+  --from-file=server-cert.pem=certs/server-cert.pem \
+  --from-file=server-key.pem=certs/server-key.pem
 ```
 
-Deploy di:
+### 5. Build and Push Docker Images
+
+```bash
+# Build images
+docker build -t localhost:5000/wasmbed/api-server:latest -f Dockerfile.api-server .
+docker build -t localhost:5000/wasmbed/gateway:latest -f Dockerfile.gateway .
+docker build -t localhost:5000/wasmbed/dashboard:latest -f Dockerfile.dashboard .
+# ... build other images
+
+# Push to local registry
+docker push localhost:5000/wasmbed/api-server:latest
+docker push localhost:5000/wasmbed/gateway:latest
+docker push localhost:5000/wasmbed/dashboard:latest
+# ... push other images
+```
+
+### 6. Deploy Components
+
+```bash
+kubectl apply -f k8s/deployments/
+```
+
+Deploys:
 - API Server
 - Gateway
-- Controllers
+- Controllers (Device, Application, Gateway)
 - Dashboard
 
-### 5. Verifica Deployment
+### 7. Verify Deployment
 
 ```bash
-./scripts/04-check-system-status.sh
+kubectl get pods -n wasmbed
+kubectl get svc -n wasmbed
+kubectl get crds | grep wasmbed
 ```
-
-Verifica stato di tutti i componenti.
 
 ## Configurazione
 
@@ -136,159 +185,269 @@ Componenti principali utilizzano variabili d'ambiente:
 - `WASMBED_GATEWAY_CERTIFICATE`
 - `WASMBED_GATEWAY_CLIENT_CA`
 
-## Accesso Servizi
+## Accessing Services
 
 ### Dashboard
 
 ```bash
-kubectl port-forward -n wasmbed svc/dashboard 3000:3000
+kubectl port-forward -n wasmbed svc/wasmbed-dashboard 3000:3000
 ```
 
-Accesso: http://localhost:3000
+Access: http://localhost:3000
 
 ### API Server
 
 ```bash
-kubectl port-forward -n wasmbed svc/api-server 8080:8080
+kubectl port-forward -n wasmbed svc/wasmbed-api-server 3001:3001
 ```
 
-API: http://localhost:8080
+API: http://localhost:3001
 
 ### Gateway
 
 ```bash
-kubectl port-forward -n wasmbed svc/gateway 40029:40029
+# HTTP API
+kubectl port-forward -n wasmbed svc/wasmbed-gateway 8080:8080
+
+# TLS endpoint for devices
+kubectl port-forward -n wasmbed svc/wasmbed-gateway 8081:8081
 ```
 
-TLS endpoint per dispositivi.
+## Device Management
 
-## Gestione Dispositivi
+### Create Device
 
-### Creare Device
-
-Via Dashboard:
-1. Navigare a "Devices"
+**Via Dashboard**:
+1. Navigate to "Device Management"
 2. Click "Create Device"
-3. Inserire nome e tipo MCU
-4. Submit
+3. Enter device name
+4. Select MCU type (e.g., `Stm32F746gDisco`)
+5. Select target gateway
+6. Click "Create"
 
-Via API:
+**Via API**:
 ```bash
-curl -X POST http://localhost:8080/api/v1/devices \
+curl -X POST http://localhost:3001/api/v1/devices \
   -H "Content-Type: application/json" \
   -d '{
     "name": "test-device",
-    "mcu_type": "RenodeArduinoNano33Ble"
+    "deviceType": "MCU",
+    "mcuType": "Stm32F746gDisco",
+    "gatewayId": "gateway-1"
   }'
 ```
 
-### Verificare Status
+**Via Kubernetes CRD**:
+```yaml
+apiVersion: wasmbed.github.io/v0
+kind: Device
+metadata:
+  name: test-device
+  namespace: wasmbed
+spec:
+  deviceType: MCU
+  architecture: ARM_CORTEX_M
+  mcuType: Stm32F746gDisco
+  preferredGateway: gateway-1
+```
+
+### Start Device Emulation
+
+```bash
+curl -X POST http://localhost:3001/api/v1/devices/test-device/renode/start
+```
+
+### Check Device Status
 
 ```bash
 kubectl get devices -n wasmbed
+kubectl describe device test-device -n wasmbed
 ```
 
-### Log Dispositivo
+### View Device Logs
 
 ```bash
-kubectl logs -n wasmbed -l app=renode-sidecar
+# Renode container logs
+docker logs renode-test-device
+
+# API server logs (device management)
+kubectl logs -n wasmbed -l app=wasmbed-api-server | grep test-device
 ```
 
-## Deployment Applicazioni
+## Application Deployment
 
-### Creare Application
+### Create Application
 
-Via Dashboard:
-1. Navigare a "Applications"
+**Via Dashboard**:
+1. Navigate to "Application Management"
 2. Click "Create Application"
-3. Upload file WASM
-4. Configurare parametri
-5. Submit
+3. Enter application name and description
+4. Upload WASM module or compile from Rust source
+5. Configure target devices
+6. Click "Create"
 
-Via API:
+**Via API**:
 ```bash
-curl -X POST http://localhost:8080/api/v1/applications \
+curl -X POST http://localhost:3001/api/v1/applications \
   -H "Content-Type: application/json" \
   -d '{
     "name": "test-app",
-    "wasm_module": "<base64-encoded-wasm>"
+    "description": "Test application",
+    "wasmBytes": "<base64-encoded-wasm>",
+    "targetDevices": {
+      "deviceNames": ["test-device"]
+    }
   }'
 ```
 
-### Deploy su Device
+### Deploy Application
 
-Via Dashboard:
-1. Selezionare Application
+**Via Dashboard**:
+1. Select Application
 2. Click "Deploy"
-3. Selezionare Device target
-4. Submit
+3. Select target devices
+4. Click "Deploy"
+
+**Via API**:
+```bash
+curl -X POST http://localhost:3001/api/v1/applications/test-app/deploy
+```
+
+### Check Application Status
+
+```bash
+kubectl get applications -n wasmbed
+kubectl describe application test-app -n wasmbed
+```
 
 ## Monitoring
 
-### Status Components
+### Component Status
 
 ```bash
+# All pods
 kubectl get pods -n wasmbed
+
+# All services
 kubectl get svc -n wasmbed
+
+# All CRDs
+kubectl get devices -n wasmbed
+kubectl get applications -n wasmbed
+kubectl get gateways -n wasmbed
 ```
 
 ### Logs
 
 ```bash
 # API Server
-kubectl logs -n wasmbed -l app=api-server
+kubectl logs -n wasmbed -l app=wasmbed-api-server
 
 # Gateway
-kubectl logs -n wasmbed -l app=gateway
+kubectl logs -n wasmbed -l app=wasmbed-gateway
 
 # Controllers
-kubectl logs -n wasmbed -l app=device-controller
-kubectl logs -n wasmbed -l app=application-controller
+kubectl logs -n wasmbed -l app=wasmbed-device-controller
+kubectl logs -n wasmbed -l app=wasmbed-application-controller
+kubectl logs -n wasmbed -l app=wasmbed-gateway-controller
+
+# Dashboard
+kubectl logs -n wasmbed -l app=wasmbed-dashboard
 ```
 
-### Metrics
+### Dashboard Monitoring
 
-Dashboard mostra:
-- Device status
-- Application execution
-- Network connectivity
-- Resource usage
+The dashboard provides:
+- Device status and health
+- Application execution status
+- Network topology visualization
+- System health monitoring
+- Infrastructure component status
+- Real-time logs
+
+Access at: http://localhost:3000 (after port-forwarding)
 
 ## Troubleshooting
 
-### Pods non si avviano
+### Pods Not Starting
 
 ```bash
+# Check pod status
 kubectl describe pod <pod-name> -n wasmbed
+
+# Check logs
 kubectl logs <pod-name> -n wasmbed
+
+# Check events
+kubectl get events -n wasmbed --sort-by=.metadata.creationTimestamp
 ```
 
-### Device non si connette
+### Device Not Connecting
 
-1. Verificare TCP bridge attivo
-2. Controllare certificati TLS
-3. Verificare endpoint gateway
-4. Controllare log firmware
+1. **Check Gateway Endpoint**:
+   ```bash
+   kubectl get pods -n wasmbed -l app=wasmbed-gateway -o wide
+   # Verify endpoint in device memory matches gateway pod IP
+   ```
 
-### Application non si esegue
+2. **Check TLS Certificates**:
+   ```bash
+   kubectl get secret gateway-certificates -n wasmbed
+   ```
 
-1. Verificare formato WASM
-2. Controllare log WAMR
-3. Verificare memoria disponibile
-4. Controllare log dispositivo
+3. **Check Renode Container**:
+   ```bash
+   docker ps --filter "name=renode-"
+   docker logs renode-<device-id>
+   ```
+
+4. **Check Device Status**:
+   ```bash
+   kubectl describe device <device-name> -n wasmbed
+   ```
+
+### Application Not Executing
+
+1. **Verify WASM Format**:
+   ```bash
+   # Check application CRD
+   kubectl get application <app-name> -n wasmbed -o yaml
+   ```
+
+2. **Check Device Logs**:
+   ```bash
+   docker logs renode-<device-id>
+   ```
+
+3. **Check Gateway Logs**:
+   ```bash
+   kubectl logs -n wasmbed -l app=wasmbed-gateway | grep <app-name>
+   ```
 
 ### Network Issues
 
-1. Verificare configurazione network policy
-2. Controllare service endpoints
-3. Verificare DNS resolution
+1. **Check Service Endpoints**:
+   ```bash
+   kubectl get endpoints -n wasmbed
+   ```
+
+2. **Check Network Policies**:
+   ```bash
+   kubectl get networkpolicies -n wasmbed
+   ```
+
+3. **Test Connectivity**:
+   ```bash
+   # From API server pod
+   kubectl exec -n wasmbed <api-server-pod> -- curl http://wasmbed-gateway.wasmbed.svc.cluster.local:8080/health
+   ```
 
 ## Scaling
 
 ### Gateway Scaling
 
 ```bash
-kubectl scale deployment gateway -n wasmbed --replicas=3
+kubectl scale deployment wasmbed-gateway -n wasmbed --replicas=3
 ```
 
 ### HPA Configuration
@@ -301,36 +460,71 @@ kubectl apply -f k8s/gateway-hpa.yaml
 
 ## Cleanup
 
-### Stop Services
+### Complete Cleanup
+
+Use the cleanup script:
 
 ```bash
-./scripts/05-stop-services.sh
+./scripts/cleanup-k3s.sh
 ```
 
-### Remove All
+This will:
+- Stop all port-forwards
+- Remove Renode containers
+- Remove Docker volumes
+- Delete wasmbed namespace
+- Optionally stop local registry
+
+### Manual Cleanup
 
 ```bash
+# Delete namespace (removes all resources)
 kubectl delete namespace wasmbed
+
+# Remove Renode containers
+docker stop $(docker ps -q --filter "name=renode-")
+docker rm $(docker ps -aq --filter "name=renode-")
+
+# Remove Docker volumes
+docker volume rm $(docker volume ls -q --filter "name=firmware-")
 ```
 
 ## Production Considerations
 
 ### Security
 
-- Usare certificati validi
-- Configurare network policies
-- Abilitare RBAC completo
-- Usare secrets per credenziali
+- Use proper CA with certificate rotation
+- Configure network policies
+- Enable full RBAC
+- Use Kubernetes secrets for credentials
+- Implement proper certificate provisioning for devices
+- Use VPN or secure network for device-to-gateway communication
 
 ### Performance
 
-- Configurare resource limits
-- Usare HPA per auto-scaling
-- Monitorare metriche
-- Ottimizzare configurazione
+- Configure resource limits for all pods
+- Use HPA for auto-scaling
+- Monitor metrics and set up alerting
+- Optimize Renode container startup time
+- Use persistent volumes for device state
 
 ### Backup
 
-- Backup CRDs (Device, Application)
-- Backup configurazione
-- Backup certificati
+- Backup CRDs (Device, Application, Gateway)
+- Backup configuration files
+- Backup TLS certificates and keys
+- Backup Kubernetes secrets
+
+### High Availability
+
+- Deploy multiple gateway instances
+- Use load balancing for gateways
+- Implement gateway health monitoring
+- Set up automatic failover
+
+## Additional Resources
+
+- [K3S Deployment Guide](K3S_DEPLOYMENT.md) - K3S-specific instructions
+- [Architecture Documentation](ARCHITECTURE.md) - System architecture details
+- [Development Status](DEVELOPMENT_STATUS.md) - Current status and known issues
+- [Real Device Integration](REAL_DEVICE_INTEGRATION.md) - Hardware integration guide

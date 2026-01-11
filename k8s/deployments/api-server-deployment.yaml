@@ -14,9 +14,12 @@ spec:
         app: wasmbed-api-server
     spec:
       serviceAccountName: wasmbed-api-server
+      securityContext:
+        fsGroup: 988  # docker group
+        supplementalGroups: [988]
       containers:
       - name: api-server
-        image: wasmbed/api-server:latest
+        image: localhost:5000/wasmbed/api-server:latest
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3001
@@ -30,10 +33,14 @@ spec:
         - name: WASMBED_API_SERVER_GATEWAY_ENDPOINT
           value: "http://wasmbed-gateway.wasmbed.svc.cluster.local:8080"
         - name: WASMBED_API_SERVER_INFRASTRUCTURE_ENDPOINT
-          value: "http://wasmbed-infrastructure.wasmbed.svc.cluster.local:30432"
+          value: "http://172.18.0.1:30460"
+        - name: RENODE_USE_DOCKER
+          value: "true"
+        # In k3d, we need to mount the Docker socket from the host via k3d server container
         volumeMounts:
         - name: docker-sock
           mountPath: /var/run/docker.sock
+          readOnly: false
         # Firmware is in container image, no need for host mount
         # - name: zephyr-firmware
         #   mountPath: /app/zephyr-workspace
@@ -45,12 +52,13 @@ spec:
             memory: "512Mi"
             cpu: "500m"
       volumes:
-      # In k3d, Docker socket is accessible directly from host
-      # k3d automatically mounts /var/run/docker.sock from host to node
       - name: docker-sock
         hostPath:
+          # In k3d, /var/run/docker.sock in the node is actually the host's Docker socket
           path: /var/run/docker.sock
           type: Socket
+      # For real k3s (not k3d), we would need to use containerd socket:
+      # path: /run/containerd/containerd.sock
       # For k3d, we can't mount host directories directly
       # Firmware is already in the container image, so we don't need this mount
       # - name: zephyr-firmware

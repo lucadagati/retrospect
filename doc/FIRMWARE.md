@@ -1,11 +1,11 @@
-# Firmware Zephyr - Documentazione
+# Zephyr RTOS Firmware Documentation
 
-## Panoramica
+## Overview
 
-Il firmware Wasmbed è basato su Zephyr RTOS e integra:
-- Network stack per comunicazione TCP/TLS
-- WAMR runtime per esecuzione WebAssembly
-- Protocollo Wasmbed per comunicazione con gateway
+The RETROSPECT Wasmbed firmware is based on Zephyr RTOS and integrates:
+- Network stack for TCP/TLS communication
+- WAMR runtime for WebAssembly execution
+- Wasmbed protocol for gateway communication
 
 ## Struttura Codice
 
@@ -14,11 +14,11 @@ graph TD
     Root["zephyr-app/"]
     Src["src/"]
     Main["main.c<br/>(Entry point)"]
-    NetworkH["network_handler.c/h<br/>(Gestione networking)"]
-    WAMRH["wamr_integration.c/h<br/>(Integrazione WAMR)"]
-    ProtocolH["wasmbed_protocol.c/h<br/>(Protocollo Wasmbed)"]
-    PrjConf["prj.conf<br/>(Configurazione Zephyr)"]
-    CMake["CMakeLists.txt<br/>(Build system)"]
+    NetworkH["network_handler.c/h<br/>(Network Management)"]
+    WAMRH["wamr_integration.c/h<br/>(WAMR Integration)"]
+    ProtocolH["wasmbed_protocol.c/h<br/>(Wasmbed Protocol)"]
+    PrjConf["prj.conf<br/>(Zephyr Configuration)"]
+    CMake["CMakeLists.txt<br/>(Build System)"]
     
     Root --> Src
     Root --> PrjConf
@@ -33,66 +33,66 @@ graph TD
 
 ### main.c
 
-Entry point dell'applicazione. Responsabile di:
-- Inizializzazione network stack
-- Inizializzazione WAMR runtime
-- Inizializzazione protocollo Wasmbed
-- Main loop per gestione eventi
+Application entry point. Responsible for:
+- Network stack initialization
+- WAMR runtime initialization
+- Wasmbed protocol initialization
+- Main event loop
 
 ### network_handler.c
 
-Gestione stack di rete Zephyr:
+Zephyr network stack management:
 
-**Funzioni principali:**
-- `network_init()`: Inizializza network stack e DHCP
-- `network_connect_tls()`: Connessione TLS al gateway
-- `network_send()`: Invio dati
-- `network_receive()`: Ricezione dati
-- `network_process()`: Processamento eventi network
+**Main Functions:**
+- `network_init()`: Initializes network stack and DHCP
+- `network_connect_tls()`: TLS connection to gateway
+- `network_send()`: Send data
+- `network_receive()`: Receive data
+- `network_process()`: Process network events
 
-**Caratteristiche:**
-- Retry automatico per interfaccia network
-- Gestione graceful dell'assenza di network
-- Supporto TLS con SNI
-- Socket API Zephyr (non POSIX)
+**Features:**
+- Automatic retry for network interface
+- Graceful handling of network absence
+- TLS support with SNI
+- Zephyr Socket API (not POSIX)
 
 ### wamr_integration.c
 
-Integrazione WAMR runtime:
+WAMR runtime integration:
 
-**Funzioni principali:**
-- `wamr_init()`: Inizializza runtime WAMR
-- `wamr_load_module()`: Carica modulo WASM
-- `wamr_instantiate()`: Crea istanza modulo
-- `wamr_call_function()`: Esegue funzione WASM
-- `wamr_process()`: Processamento runtime
-- `wamr_cleanup()`: Cleanup risorse
+**Main Functions:**
+- `wamr_init()`: Initializes WAMR runtime
+- `wamr_load_module()`: Loads WASM module
+- `wamr_instantiate()`: Creates module instance
+- `wamr_call_function()`: Executes WASM function
+- `wamr_process()`: Runtime processing
+- `wamr_cleanup()`: Resource cleanup
 
-**Configurazione:**
-- Heap buffer statico: 64KB
-- Stack size: 64KB per istanza
+**Configuration:**
+- Static heap buffer: 64KB
+- Stack size: 64KB per instance
 - Multi-module support
 
 ### wasmbed_protocol.c
 
-Protocollo di comunicazione Wasmbed:
+Wasmbed communication protocol:
 
-**Funzioni principali:**
-- `wasmbed_protocol_init()`: Inizializza protocollo
-- `wasmbed_protocol_handle_message()`: Gestisce messaggi in arrivo
-- `wasmbed_protocol_send_message()`: Invia messaggi
+**Main Functions:**
+- `wasmbed_protocol_init()`: Initializes protocol
+- `wasmbed_protocol_handle_message()`: Handles incoming messages
+- `wasmbed_protocol_send_message()`: Sends messages
 
-**Caratteristiche:**
-- Lettura endpoint gateway da memoria (0x20001000)
-- Parsing endpoint (host:port)
-- Connessione TLS automatica
-- Gestione messaggi CBOR
+**Features:**
+- Gateway endpoint reading from memory (0x20001000)
+- Endpoint parsing (host:port)
+- Automatic TLS connection
+- CBOR message handling
 
-## Configurazione
+## Configuration
 
 ### prj.conf
 
-Configurazione Zephyr basata su `dhcpv4_client` sample funzionante:
+Zephyr configuration based on working `dhcpv4_client` sample:
 
 **Network:**
 - `CONFIG_NETWORKING=y`
@@ -103,116 +103,181 @@ Configurazione Zephyr basata su `dhcpv4_client` sample funzionante:
 
 **TLS:**
 - `CONFIG_MBEDTLS=y`
+- `CONFIG_MBEDTLS_BUILTIN=y`
 - `CONFIG_NET_SOCKETS_SOCKOPT_TLS=y`
 
 **Logging:**
 - `CONFIG_LOG=y`
 - `CONFIG_NET_LOG=y`
+- `CONFIG_SERIAL=y`
+- `CONFIG_UART_INTERRUPT_DRIVEN=y`
 
 **Memory:**
 - `CONFIG_HEAP_MEM_POOL_SIZE=8192`
 
-**Note:**
-- `CONFIG_POSIX_API=n` (usa socket API Zephyr)
-- MPU abilitato (funziona con dhcpv4_client base)
+**Notes:**
+- `CONFIG_POSIX_API=n` (uses Zephyr socket API)
+- MPU enabled (works with dhcpv4_client base)
 
-## Compilazione
+## Compilation
 
-### Prerequisiti
+### Prerequisites
 
-- Zephyr SDK installato
-- Zephyr workspace configurato
-- WAMR clonato in `../wamr`
+- Zephyr SDK 0.16.5+ installed
+- Zephyr workspace configured
+- WAMR cloned in `../wamr`
+- Python 3.8+ with dependencies (west, pykwalify, pyelftools)
 
-### Build
+### Build Process
+
+#### For STM32F746G Discovery (Recommended - Ethernet)
 
 ```bash
 cd zephyr-workspace
-source ../.env.zephyr
-export ZEPHYR_BASE="$PWD/zephyr"
-west build -b nrf52840dk/nrf52840 ../zephyr-app
+source ../.venv/bin/activate
+west build -b stm32f746g_disco ../zephyr-app --pristine --build-dir build/stm32f746g_disco
 ```
 
-### Output
+Output: `build/stm32f746g_disco/zephyr/zephyr.elf`
 
-- `build/nrf52840dk/nrf52840/zephyr/zephyr.elf`: Firmware ELF
-- Dimensione tipica: ~290KB FLASH, ~121KB RAM
+#### For FRDM-K64F (Ethernet)
 
-## Piattaforme Supportate
+```bash
+cd zephyr-workspace
+source ../.venv/bin/activate
+west build -b frdm_k64f ../zephyr-app --pristine --build-dir build/frdm_k64f
+```
 
-### Arduino Nano 33 BLE (nRF52840)
+Output: `build/frdm_k64f/zephyr/zephyr.elf`
 
-- **Renode platform**: `arduino_nano_33_ble`
-- **MCU**: nRF52840 (ARM Cortex-M4)
-- **Network**: Nessuna interfaccia Ethernet fisica (normale)
+#### For nRF52840 DK
 
-### STM32F4 Discovery
+```bash
+cd zephyr-workspace
+source ../.venv/bin/activate
+west build -b nrf52840dk/nrf52840 ../zephyr-app --pristine --build-dir build/nrf52840dk_nrf52840
+```
 
-- **Renode platform**: `stm32f4_discovery`
-- **MCU**: STM32F407 (ARM Cortex-M4)
+Output: `build/nrf52840dk_nrf52840/zephyr/zephyr.elf`
+
+### Build Output
+
+- `build/<board>/zephyr/zephyr.elf`: Firmware ELF file
+- `build/<board>/zephyr/zephyr.bin`: Binary file (for flashing)
+- `build/<board>/zephyr/zephyr.hex`: Intel HEX file (for flashing)
+- Typical size: ~290KB FLASH, ~121KB RAM (varies by board)
+
+## Supported Platforms
+
+See [MCU_SUPPORT.md](MCU_SUPPORT.md) for complete list of supported MCU types.
+
+### Ethernet-Enabled Boards (Recommended)
+
+1. **STM32F746G Discovery** (`stm32f746g_disco`)
+   - Renode platform: `stm32f7_discovery-bb`
+   - Network: Ethernet 10/100 Mbps
+   - UART: `usart1`
+
+2. **FRDM-K64F** (`frdm_k64f`)
+   - Renode platform: `frdm_k64f`
+   - Network: Ethernet 10/100 Mbps
+   - UART: `uart0`
+
+### WiFi-Enabled Boards
+
+3. **ESP32 DevKitC** (`esp32_devkitc_wroom`)
+   - Renode platform: `esp32`
+   - Network: WiFi 802.11 b/g/n
+   - UART: `uart0`
+
+### Other Supported Boards
+
+- **nRF52840 DK**: BLE only, no Ethernet/WiFi
+- **STM32F4 Discovery**: No network support
+- **Arduino Nano 33 BLE**: Legacy support
 
 
-## Esecuzione in Renode
+## Execution in Renode
 
-### Script Renode
+### Renode Scripts
 
-Script di esempio in `renode-scripts/`:
-- `arduino_nano_ble.resc`
-- `nrf52840_dk.resc`
-- `stm32f4_discovery.resc`
-
-### Comandi Base
+Renode scripts are automatically generated by the API Server. Example structure:
 
 ```renode
-mach add "device"
-include @platforms/boards/arduino_nano_33_ble.repl
-showAnalyzer sysbus.uart0
+mach add "device-id"
+include @platforms/boards/stm32f7_discovery-bb.repl
+showAnalyzer sysbus.usart1
+
+# Ethernet configuration (for Ethernet-enabled boards)
+emulation CreateSwitch "ethernet_switch"
+emulation CreateTap "tap0" "ethernet_tap"
+sysbus.ethernet MAC "00:11:22:33:44:55"
+connector Connect sysbus.ethernet ethernet_switch
+connector Connect host.ethernet_tap ethernet_switch
+host.ethernet_tap Start
+
+# Load firmware
 sysbus LoadELF "/firmware/zephyr.elf"
-mach set "device"
+
+# Set machine
+mach set "device-id"
+
+# Start execution
 start
 ```
 
-### Output UART
+### UART Output
 
-Il firmware emette log su UART0:
+The firmware emits logs on UART:
 - Boot message
 - Network initialization
+- DHCP IP assignment (for Ethernet boards)
 - WAMR initialization
 - Protocol initialization
+- Gateway connection status
 - Application ready
 
 ## Debugging
 
 ### Log Levels
 
-Configurabili in `prj.conf`:
-- `CONFIG_LOG_LEVEL_DBG`
-- `CONFIG_LOG_LEVEL_INF`
-- `CONFIG_LOG_LEVEL_WRN`
-- `CONFIG_LOG_LEVEL_ERR`
+Configurable in `prj.conf`:
+- `CONFIG_LOG_LEVEL_DBG`: Debug messages
+- `CONFIG_LOG_LEVEL_INF`: Info messages
+- `CONFIG_LOG_LEVEL_WRN`: Warning messages
+- `CONFIG_LOG_LEVEL_ERR`: Error messages
 
 ### UART Output
 
-Monitor UART in Renode per vedere:
-- Stato inizializzazione
-- Errori network
-- Errori WAMR
-- Messaggi protocollo
+Monitor UART in Renode to see:
+- Initialization status
+- Network errors
+- WAMR errors
+- Protocol messages
+- Gateway connection status
 
 ### Common Issues
 
-**Network interface non disponibile:**
-- Normale su nRF52840 (nessuna Ethernet)
-- Firmware continua senza network
+**Network interface not available:**
+- Normal for nRF52840 (no Ethernet)
+- Firmware continues without network
+- Use Ethernet-enabled boards for network testing
 
 **WAMR heap error:**
-- Verificare dimensione heap buffer
-- Controllare memoria disponibile
+- Verify heap buffer size
+- Check available memory
+- Reduce WASM module size
 
 **TLS connection failed:**
-- Verificare endpoint gateway
-- Controllare certificati
-- Verificare TCP bridge attivo
+- Verify gateway endpoint in memory (0x20001000)
+- Check TLS certificates
+- Verify gateway pod is accessible
+- Check network connectivity
+
+**Firmware crashes on startup:**
+- Verify correct Renode platform is used
+- Check firmware is compiled for correct board
+- Verify UART configuration matches platform
 
 ## Integrazione WAMR
 
@@ -238,23 +303,38 @@ wasm_module_t module = wasm_runtime_load(wasm_bytes, wasm_size, error_buf, sizeo
 wasm_runtime_call_wasm(exec_env, function, argc, argv);
 ```
 
-## Protocollo Wasmbed
+## Wasmbed Protocol
 
-### Endpoint Memory
+### Gateway Endpoint Memory
 
-Gateway endpoint scritto in memoria a `0x20001000`:
-- Bytes 0-3: Length (uint32_t)
-- Bytes 4+: Endpoint string ("host:port")
+Gateway endpoint is written to memory at `0x20001000`:
+- Bytes 0-3: Length (uint32_t, little-endian)
+- Bytes 4+: Endpoint string ("host:port", null-terminated)
+
+Example: `"10.42.0.44:8081"` (15 bytes)
+- Length: `0x0F` (15)
+- String: `"10.42.0.44:8081"`
 
 ### Message Format
 
-- **Transport**: TLS
-- **Serialization**: CBOR
-- **Types**: ClientMessage / ServerMessage
+- **Transport**: TLS 1.3
+- **Serialization**: CBOR (Compact Binary Object Representation)
+- **Message Types**: ClientMessage / ServerMessage
+- **Authentication**: Ed25519 public key signatures
 
 ### Message Flow
 
-1. Device si connette al gateway via TLS
-2. Gateway invia messaggi deployment
-3. Device carica ed esegue WASM
-4. Device invia risultati/status
+1. Device connects to gateway via TLS
+2. Device sends enrollment request with public key
+3. Gateway authenticates and registers device
+4. Gateway sends WASM deployment messages
+5. Device loads and executes WASM via WAMR
+6. Device sends execution results/status to gateway
+
+## Additional Resources
+
+- [Zephyr RTOS Documentation](https://docs.zephyrproject.org/)
+- [WAMR Documentation](https://github.com/bytecodealliance/wasm-micro-runtime)
+- [TLS Connection Guide](TLS_CONNECTION.md)
+- [MCU Support](MCU_SUPPORT.md)
+- [Real Device Integration](REAL_DEVICE_INTEGRATION.md)

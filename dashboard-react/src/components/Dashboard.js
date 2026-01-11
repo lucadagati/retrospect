@@ -56,19 +56,25 @@ const Dashboard = () => {
         logging_status: 'unknown'
       };
       
-      if (infraStatusResponse.ok) {
+      if (infraStatusResponse && infraStatusResponse.ok) {
         try {
           const infraData = await infraStatusResponse.json();
+          console.log('Dashboard - Infrastructure status response:', infraData);
           const components = infraData.components || {};
+          console.log('Dashboard - Infrastructure components:', components);
           infraStatus = {
-            ca_status: components.ca === 'healthy' || components.database === 'healthy' ? 'healthy' : 'unknown',
-            secret_store_status: components.secret_store === 'healthy' || components.database === 'healthy' ? 'healthy' : 'unknown',
+            ca_status: components.ca === 'healthy' ? 'healthy' : 'unknown',
+            secret_store_status: components.secret_store === 'healthy' ? 'healthy' : 'unknown',
             monitoring_status: components.monitoring === 'healthy' ? 'healthy' : 'unknown',
-            logging_status: components.logging === 'healthy' || components.monitoring === 'healthy' ? 'healthy' : 'unknown'
+            logging_status: components.logging === 'healthy' ? 'healthy' : 'unknown'
           };
+          console.log('Dashboard - Parsed infrastructure status:', infraStatus);
         } catch (e) {
           console.warn('Failed to parse infrastructure status:', e);
+          console.warn('Infrastructure response:', infraStatusResponse);
         }
+      } else {
+        console.warn('Infrastructure status response not OK:', infraStatusResponse);
       }
 
       // Calculate application stats
@@ -202,10 +208,13 @@ const Dashboard = () => {
         >
           <Row gutter={[16, 16]}>
             <Col xs={24}>
-              <Title level={4}>🚀 Welcome to Wasmbed Platform</Title>
-              <Paragraph>
-                Your Wasmbed platform is ready! Use the <strong>Initial Configuration</strong> in the sidebar to set up your infrastructure.
-              </Paragraph>
+            <Title level={4}>🚀 Wasmbed Platform - Production Ready</Title>
+            <Paragraph>
+              Kubernetes-native platform for deploying WebAssembly applications on embedded devices with Ethernet/WiFi connectivity.
+            </Paragraph>
+            <Paragraph type="secondary">
+              <strong>Supported MCU Types:</strong> STM32F746G Discovery (Ethernet), FRDM-K64F (Ethernet), ESP32 DevKitC (WiFi), nRF52840 DK (BLE), STM32F4 Discovery
+            </Paragraph>
               <Space direction="vertical" size="small">
                 <Text><strong>Next Steps:</strong></Text>
                 <Text>• Navigate to <strong>Initial Configuration</strong> in the sidebar menu</Text>

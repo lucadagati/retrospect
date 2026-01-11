@@ -1,31 +1,23 @@
-# Multi-stage build for Wasmbed Application Controller
-FROM rust:latest as builder
+FROM rust:1.88-slim as builder
 
-# Set working directory
 WORKDIR /app
 
-# Copy Cargo files
-COPY Cargo.toml Cargo.lock ./
-COPY crates/ crates/
-
-# Build the application controller
-RUN cargo build --release --workspace --bin wasmbed-application-controller
-
-# Runtime stage
-FROM debian:testing-slim
-
-# Install runtime dependencies including kubectl
 RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    curl \
-    && curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
-    && chmod +x kubectl \
-    && mv kubectl /usr/local/bin/ \
+    pkg-config \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the binary
-COPY --from=builder /app/target/release/wasmbed-application-controller /usr/local/bin/
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ ./crates/
 
-# Run the application controller
+RUN cargo build --release --bin wasmbed-application-controller
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/wasmbed-application-controller /usr/local/bin/wasmbed-application-controller
+
 CMD ["wasmbed-application-controller"]
-

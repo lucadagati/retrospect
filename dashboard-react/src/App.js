@@ -361,7 +361,7 @@ function App() {
                   RETROSPECT
                   <br />
                   <span style={{ fontSize: '9px', color: '#8c8c8c' }}>
-                    MdsLab - UniMe
+                    PROSODIAC - UniMe
                   </span>
                 </div>
               )}

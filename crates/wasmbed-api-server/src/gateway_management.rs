@@ -23,7 +23,7 @@ impl GatewayManager {
         
         // Query Kubernetes for Gateway CRDs
         let output = tokio::process::Command::new("kubectl")
-            .args(&["get", "gateways", "-n", "wasmbed", "-o", "json"])
+            .args(&["get", "gateways.wasmbed.io", "-n", "wasmbed", "-o", "json"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output()

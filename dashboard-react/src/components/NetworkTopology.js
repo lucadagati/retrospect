@@ -30,13 +30,84 @@ const NetworkTopology = () => {
 
   const fetchTopologyData = async () => {
     try {
-      const [infrastructureResponse, gatewaysData, devicesData] = await Promise.all([
-        fetchWithTimeout('/api/v1/status', {}, 5000),
+      const [infraHealthResponse, infraStatusResponse, gatewaysData, devicesData] = await Promise.all([
+        fetchWithTimeout('/api/v1/infrastructure/health', {}, 5000).catch(() => ({ ok: false })),
+        fetchWithTimeout('/api/v1/infrastructure/status', {}, 5000).catch(() => ({ ok: false })),
         apiGet('/api/v1/gateways', 10000),
         apiGet('/api/v1/devices', 10000)
       ]);
 
-      const infrastructure = infrastructureResponse.ok ? await infrastructureResponse.json() : { status: 'unknown' };
+      // Determine infrastructure status from health and status endpoints
+      let infraStatus = 'unknown';
+      let infraEndpoint = null;
+      let services = ['Certificate Authority', 'Secret Store', 'Monitoring'];
+
+      if (infraHealthResponse.ok) {
+        try {
+          const infraHealthData = await infraHealthResponse.json();
+          infraStatus = infraHealthData.status === 'healthy' ? 'active' : 'inactive';
+          infraEndpoint = infraHealthData.infrastructure_endpoint || 'http://localhost:30460';
+          console.log('[NetworkTopology] Infrastructure health:', infraHealthData);
+        } catch (e) {
+          console.warn('Failed to parse infrastructure health:', e);
+        }
+      } else {
+        console.warn('[NetworkTopology] Infrastructure health response not OK:', infraHealthResponse.status);
+      }
+
+      if (infraStatusResponse.ok) {
+        try {
+          const infraStatusData = await infraStatusResponse.json();
+          console.log('[NetworkTopology] Infrastructure status:', infraStatusData);
+          const components = infraStatusData.components || {};
+          // If all components are healthy, status is active
+          const allHealthy = Object.values(components).every(v => v === 'healthy');
+          if (allHealthy) {
+            infraStatus = 'active';
+          } else if (infraStatus === 'unknown') {
+            // If health endpoint failed but status endpoint shows some healthy components
+            const hasHealthyComponents = Object.values(components).some(v => v === 'healthy');
+            if (hasHealthyComponents) {
+              infraStatus = 'active';
+            }
+          }
+          // Extract services from components
+          services = Object.keys(components).map(key => {
+            const nameMap = {
+              'ca': 'Certificate Authority',
+              'secret_store': 'Secret Store',
+              'monitoring': 'Monitoring',
+              'logging': 'Logging'
+            };
+            return nameMap[key] || key;
+          });
+          if (services.length === 0) {
+            services = ['Certificate Authority', 'Secret Store', 'Monitoring'];
+          }
+        } catch (e) {
+          console.warn('Failed to parse infrastructure status:', e);
+        }
+      } else {
+        console.warn('[NetworkTopology] Infrastructure status response not OK:', infraStatusResponse.status);
+        // Fallback: if health endpoint says healthy, use that
+        if (infraStatus === 'active') {
+          // Already set from health endpoint
+        } else if (infraStatus === 'unknown') {
+          // Try direct health check as fallback
+          try {
+            const healthCheck = await fetch('/api/v1/infrastructure/health').catch(() => null);
+            if (healthCheck && healthCheck.ok) {
+              const healthData = await healthCheck.json();
+              if (healthData.status === 'healthy') {
+                infraStatus = 'active';
+              }
+            }
+          } catch (e) {
+            console.warn('Fallback health check failed:', e);
+          }
+        }
+      }
+
       const gateways = gatewaysData;
       const devices = devicesData;
 
@@ -63,20 +134,17 @@ const NetworkTopology = () => {
         });
       }
 
-      // Extract infrastructure endpoint from API response or use first gateway endpoint
-      const infraEndpoint = infrastructure.endpoint || 
-                           (gatewayList.length > 0 ? gatewayList[0].endpoint : null);
-      
-      // Extract services from infrastructure response
-      const services = infrastructure.services || 
-                      (infrastructure.components ? Object.keys(infrastructure.components) : []);
+      // Use infrastructure endpoint from health response or fallback
+      if (!infraEndpoint && gatewayList.length > 0) {
+        infraEndpoint = gatewayList[0].endpoint;
+      }
       
       setTopologyData(prev => ({
         ...prev,
         infrastructure: {
-          status: infrastructure.status || 'unknown',
-          endpoint: infraEndpoint,
-          services: services.length > 0 ? services : ['Certificate Authority', 'Secret Store', 'Monitoring']
+          status: infraStatus,
+          endpoint: infraEndpoint || 'http://localhost:30460',
+          services: services
         },
         gateways: gatewayList,
         devices: deviceList

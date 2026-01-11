@@ -300,75 +300,25 @@ const Terminal = () => {
           result = `Error: ${e.message}`;
         }
       } else if (cmd.includes('kubectl get pods')) {
-        try {
-          const response = await fetch('/api/v1/pods');
-          if (response.ok) {
-            const data = await response.json();
-            const pods = data.pods || [];
-            if (pods.length === 0) {
-              result = 'No pods found in wasmbed namespace.';
-            } else {
-              result = `NAME                                    READY   STATUS    RESTARTS   AGE\n`;
-              pods.forEach(pod => {
-                result += `${pod.name.padEnd(40)} ${pod.ready.padEnd(8)} ${pod.status.padEnd(10)} ${pod.restarts.toString().padEnd(8)} ${pod.age}\n`;
-              });
-            }
-          } else {
-            result = `Error: ${response.status} ${response.statusText}`;
-          }
-        } catch (e) {
-          result = `Error: ${e.message}`;
-        }
+        // Use terminal execute API instead of direct fetch
+        result = 'Note: Pods listing is available via the terminal execute API. Use the predefined "System Status" command.';
       } else if (cmd.includes('kubectl get svc')) {
-        try {
-          const response = await fetch('/api/v1/services');
-          if (response.ok) {
-            const data = await response.json();
-            const services = data.services || [];
-            if (services.length === 0) {
-              result = 'No services found in wasmbed namespace.';
-            } else {
-              result = `NAME                    TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE\n`;
-              services.forEach(svc => {
-                result += `${svc.name.padEnd(20)} ${svc.type.padEnd(10)} ${svc.clusterIP.padEnd(15)} ${svc.externalIP.padEnd(15)} ${svc.ports.padEnd(15)} ${svc.age}\n`;
-              });
-            }
-          } else {
-            result = `Error: ${response.status} ${response.statusText}`;
-          }
-        } catch (e) {
-          result = `Error: ${e.message}`;
-        }
+        // Use terminal execute API instead of direct fetch
+        result = 'Note: Services listing is available via the terminal execute API. Use the predefined "Network Status" command.';
       } else if (cmd.includes('kubectl top pods')) {
-        try {
-          const response = await fetch('/api/v1/pods/metrics');
-          if (response.ok) {
-            const data = await response.json();
-            const metrics = data.metrics || [];
-            if (metrics.length === 0) {
-              result = 'No metrics available for pods in wasmbed namespace.';
-            } else {
-              result = `NAME                                    CPU(cores)   MEMORY(bytes)\n`;
-              metrics.forEach(metric => {
-                result += `${metric.name.padEnd(40)} ${metric.cpu.padEnd(12)} ${metric.memory}\n`;
-              });
-            }
-          } else {
-            result = `Error: ${response.status} ${response.statusText}`;
-          }
-        } catch (e) {
-          result = `Error: ${e.message}`;
-        }
+        // Use terminal execute API instead of direct fetch
+        result = 'Note: Pod metrics are available via the terminal execute API. Use the predefined "System Resources" command.';
       } else if (cmd.includes('kubectl logs')) {
+        // Use infrastructure logs API
         try {
-          const response = await fetch('/api/v1/logs');
+          const response = await fetch('/api/v1/infrastructure/logs');
           if (response.ok) {
             const data = await response.json();
             const logs = data.logs || [];
             if (logs.length === 0) {
               result = 'No logs available.';
             } else {
-              result = logs.join('\n');
+              result = logs.map(log => `${log.timestamp || ''}\t${log.source || ''}\t${log.message || ''}`).join('\n');
             }
           } else {
             result = `Error: ${response.status} ${response.statusText}`;
