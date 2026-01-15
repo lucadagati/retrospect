@@ -33,6 +33,14 @@ The platform is designed for the **Cloud-Fog-Edge** computing continuum, with co
 
 ## Architecture
 
+### Architectural Vision
+
+RETROSPECT follows a **Gateway-Centric Architecture** where the Gateway Fog component serves as the single point of communication between devices (physical or emulated) and the Kubernetes cluster:
+
+- **Southbound (Device ↔ Gateway)**: TLS 1.3 transport with CBOR-based application protocol
+- **Northbound (Gateway ↔ Cluster)**: Kubernetes API and CRD operations
+- **Gateway as Hub**: Centralized device attachment, enrollment, inventory, health monitoring, and WASM lifecycle management
+
 ### High-Level Architecture
 
 ```mermaid
@@ -46,8 +54,11 @@ graph TB
             APIServer["API Server<br/>(REST API + Controllers)<br/>Port: 3001"]
         end
         
-        subgraph "Gateway Layer"
-            Gateway["Gateway<br/>(TLS Server)<br/>Ports: 8080 HTTP, 8081 TLS"]
+        subgraph "Gateway Layer - Fog"
+            Gateway["Gateway Fog<br/>(TLS + CBOR Hub)<br/>Ports: 8080 HTTP, 8081 TLS"]
+            GWReg["Device Registry<br/>& Inventory"]
+            GWLife["WASM Lifecycle<br/>Manager"]
+            GWProxy["Device Proxy<br/>& Messaging"]
         end
         
         subgraph "Controller Layer"
@@ -57,20 +68,20 @@ graph TB
         end
         
         subgraph "Kubernetes Resources"
-            DeviceCRD["Device CRD"]
-            AppCRD["Application CRD"]
-            GatewayCRD["Gateway CRD"]
+            DeviceCRD["Device CRD<br/>(desired + reported state)"]
+            AppCRD["Application CRD<br/>(deployment intent)"]
+            GatewayCRD["Gateway CRD<br/>(gateway config)"]
         end
     end
     
     subgraph "Fog Layer - Host Docker"
-        RenodeMgr["Renode Manager<br/>(in API Server)"]
-        RenodeCont["Renode Containers<br/>(one per device)"]
+        RenodeMgr["Renode Manager<br/>(Board Provisioner)"]
+        RenodeCont["Renode Device Proxy<br/>(one per device)"]
         FirmwareVol["Firmware Volumes<br/>(Zephyr ELF files)"]
     end
     
-    subgraph "Edge Layer - Emulated Devices"
-        Zephyr["Zephyr RTOS<br/>(Network Stack + TLS)"]
+    subgraph "Edge Layer - Devices"
+        Zephyr["Zephyr RTOS<br/>(TLS + CBOR Client)"]
         WAMR["WAMR Runtime<br/>(WebAssembly)"]
         WASMApp["WASM Applications"]
     end
@@ -81,32 +92,39 @@ graph TB
     APIServer -->|Manages| GatewayCRD
     APIServer -->|Orchestrates| RenodeMgr
     RenodeMgr -->|Creates| RenodeCont
+    RenodeMgr -.->|"Board Registration<br/>(endpoint, identity, capabilities)"| Gateway
     RenodeCont -->|Loads| FirmwareVol
     RenodeCont -->|Runs| Zephyr
     Zephyr -->|Executes| WAMR
     WAMR -->|Runs| WASMApp
-    Zephyr -->|TLS| Gateway
+    Zephyr -->|"TLS 1.3 + CBOR<br/>(Southbound)"| Gateway
+    Gateway -->|"Updates Status<br/>(Northbound)"| DeviceCRD
+    Gateway -->|"Deployment Intent<br/>(Northbound)"| AppCRD
     DeviceCtrl -->|Watches| DeviceCRD
     AppCtrl -->|Watches| AppCRD
     GatewayCtrl -->|Watches| GatewayCRD
+    Gateway -.->|"Reads Desired State"| AppCRD
+    Gateway -.->|"Reads Desired State"| DeviceCRD
 ```
 
 ### Detailed Component Architecture
 
 ```mermaid
-graph LR
+graph TB
     subgraph "Cloud Components"
         subgraph "API Server"
             API1["REST API<br/>Device Management"]
-            API2["Renode Manager<br/>Container Orchestration"]
-            API3["Kubernetes Client<br/>CRD Operations"]
+            API2["Kubernetes Client<br/>CRD Operations"]
         end
         
-        subgraph "Gateway"
-            GW1["TLS Server<br/>Port 8081"]
-            GW2["HTTP API<br/>Port 8080"]
-            GW3["Device Enrollment"]
-            GW4["WASM Deployment"]
+        subgraph "Gateway Fog - Central Hub"
+            GW1["TLS Server<br/>Port 8081<br/>(Southbound)"]
+            GW2["HTTP API<br/>Port 8080<br/>(Northbound)"]
+            GW3["Device Enrollment<br/>& Attestation"]
+            GW4["Device Registry<br/>& Inventory"]
+            GW5["WASM Lifecycle Manager<br/>(deploy/update/stop/rollback)"]
+            GW6["Device Proxy<br/>& Messaging"]
+            GW7["Status Uplink<br/>(to K8s API)"]
         end
         
         subgraph "Controllers"
@@ -117,7 +135,12 @@ graph LR
     end
     
     subgraph "Fog Components"
-        subgraph "Renode Container"
+        subgraph "Renode Manager"
+            RM1["Board Provisioner<br/>(creates emulated devices)"]
+            RM2["Board Registration<br/>(registers with Gateway)"]
+        end
+        
+        subgraph "Renode Device Proxy"
             RC1["Renode Emulator<br/>Hardware Simulation"]
             RC2["Platform File<br/>.repl"]
             RC3["Firmware Loader<br/>ELF Loader"]
@@ -126,20 +149,28 @@ graph LR
     
     subgraph "Edge Components"
         subgraph "Zephyr Firmware"
-            Z1["Network Stack<br/>TCP/IP + TLS"]
+            Z1["Network Stack<br/>TCP/IP + TLS 1.3"]
             Z2["WAMR Integration<br/>WASM Runtime"]
-            Z3["Wasmbed Protocol<br/>CBOR Messages"]
+            Z3["CBOR Protocol<br/>(Wasmbed Messages)"]
         end
     end
     
     API1 --> API2
-    API2 --> RC1
+    RM1 --> RC1
+    RM1 -->|"Board Registration<br/>(endpoint, identity, certs, capabilities)"| GW4
     RC1 --> RC2
     RC1 --> RC3
     RC3 --> Z1
     Z1 --> Z2
     Z2 --> Z3
-    Z3 -->|TLS| GW1
+    Z3 -->|"TLS + CBOR<br/>(Southbound)"| GW1
+    GW1 --> GW3
+    GW3 --> GW4
+    GW4 --> GW6
+    GW5 -->|"Deploy/Update/Stop<br/>(via CBOR)"| GW1
+    GW6 --> GW7
+    GW7 -.->|"Updates CRD Status"| API2
+    AC -.->|"Reads Desired State"| GW5
 ```
 
 ### Communication Flow Architecture
@@ -151,26 +182,115 @@ sequenceDiagram
     participant APIServer
     participant K8sAPI
     participant Gateway
-    participant Renode
+    participant RenodeMgr
+    participant RenodeProxy
     participant Zephyr
     participant WAMR
     
-    User->>Dashboard: Access Web UI
-    Dashboard->>APIServer: REST API Calls
-    APIServer->>K8sAPI: Create Device CRD
-    APIServer->>Renode: Start Emulation
-    Renode->>Zephyr: Load Firmware
-    Zephyr->>Gateway: TLS Connection
-    Gateway->>Zephyr: Device Enrollment
-    Zephyr->>Gateway: Enrollment Response
+    Note over User,K8sAPI: Device Creation & Enrollment Flow
+    
+    User->>Dashboard: Create Device
+    Dashboard->>APIServer: REST API Call
+    APIServer->>K8sAPI: Create Device CRD (desired state)
+    APIServer->>RenodeMgr: Start Emulation
+    RenodeMgr->>RenodeProxy: Create Renode Container
+    RenodeProxy->>Zephyr: Load Firmware
+    RenodeMgr->>Gateway: Register Board<br/>(endpoint, identity, capabilities)
+    Gateway->>Gateway: Add to Device Registry
+    Zephyr->>Gateway: TLS Connection + CBOR Enrollment
+    Gateway->>Gateway: Device Enrollment & Attestation
+    Gateway->>K8sAPI: Update Device CRD Status<br/>(reported state: enrolled, online)
+    
+    Note over User,WAMR: Application Deployment Flow
+    
     User->>Dashboard: Deploy Application
     Dashboard->>APIServer: Create Application CRD
-    APIServer->>K8sAPI: Store Application
-    Gateway->>Zephyr: Deploy WASM Module
+    APIServer->>K8sAPI: Store Application CRD (desired state)
+    Gateway->>Gateway: Read Application CRD (desired deployment)
+    Gateway->>Zephyr: Deploy WASM Module<br/>(via CBOR/TLS)
     Zephyr->>WAMR: Load WASM Module
     WAMR->>WAMR: Execute Application
-    WAMR->>Gateway: Send Results
+    WAMR->>Gateway: Send Results/Telemetry<br/>(via CBOR/TLS)
+    Gateway->>K8sAPI: Update Application CRD Status<br/>(deployment progress, metrics)
 ```
+
+### Architecture Principles
+
+#### Gateway as Central Hub
+
+The **Gateway Fog** component is the single point of communication between devices and the cluster:
+
+1. **Device Attachment & Enrollment**
+   - Registers devices when they connect (physical or emulated)
+   - Associates identity, certificates, metadata (model, capabilities, firmware version)
+   - Maintains device registry (in-memory or via CRD)
+   - Performs lightweight attestation
+
+2. **Device Messaging & Proxy**
+   - Maintains device sessions (multiplexing, keepalive, retry)
+   - Exposes uniform device model to cluster
+   - Translates between:
+     - **Southbound**: CBOR messages over TLS
+     - **Northbound**: Kubernetes API/CRD operations
+
+3. **WASM Lifecycle Manager**
+   - Receives deployment instructions from cluster (reads Application CRD)
+   - Sends to device: deploy/update/stop/rollback commands + WASM module
+   - Manages acknowledgments, progress, failures, rollback
+   - Maintains state: "desired vs reported"
+
+4. **Kubernetes Integration**
+   - Updates Device CRD status (reported state: online/offline, health, last_seen)
+   - Updates Application CRD status (deployment progress, per-device state)
+   - Reads desired state from CRDs (deployment intent, policies)
+
+#### Communication Protocols
+
+- **Southbound (Device ↔ Gateway)**: TLS 1.3 + CBOR application protocol
+  - TLS provides secure transport
+  - CBOR provides structured, compact message format
+  - Protocol includes: message types, correlation IDs, acknowledgments, retry logic
+
+- **Northbound (Gateway ↔ Cluster)**: Kubernetes API
+  - Gateway updates CRD status (reported state)
+  - Controllers/API Server manage desired state
+  - Gateway reads desired state for deployment orchestration
+
+#### Renode Manager Integration
+
+The **Renode Manager** (Board Provisioner) must collaborate with the Gateway:
+
+- Creates and starts emulated device containers
+- Registers emulated boards with Gateway:
+  - Board endpoint (TCP bridge address)
+  - Board identity and certificates
+  - Board capabilities (MCU type, network interfaces, firmware version)
+  - Boot state and readiness
+
+This ensures emulated devices are treated identically to physical devices from the Gateway's perspective.
+
+#### Component Responsibilities
+
+**Device / Zephyr (Edge)**
+- Maintains TLS connection to Gateway
+- Speaks CBOR-based protocol
+- Exposes capabilities: enrollment, attestation, WASM reception, telemetry
+
+**Gateway (Fog)**
+- Device attachment and enrollment
+- Device messaging and proxy
+- WASM lifecycle management
+- Kubernetes status updates
+
+**Renode Manager (Fog)**
+- Board provisioning (creates emulated devices)
+- Board registration with Gateway
+- Device proxy management
+
+**API Server + Controllers (Cloud)**
+- Manages desired state via CRDs
+- Orchestrates Renode Manager
+- Provides REST API for dashboard
 
 ## Repository Structure
 
@@ -286,14 +406,15 @@ Components deployed in the **Cloud Layer** run as Kubernetes Pods in the `wasmbe
 - **Why Cloud**: Centralized control plane, scalable, accessible from anywhere
 
 #### Gateway (`wasmbed-gateway`)
-- **Location**: Kubernetes Pod
-- **Purpose**: Secure communication endpoint for embedded devices
+- **Location**: Kubernetes Pod (Fog Layer - bridges Cloud and Edge)
+- **Purpose**: Central hub for device communication and WASM lifecycle management
 - **Responsibilities**:
-  - TLS 1.3 server for device connections
-  - Device enrollment and authentication
-  - WASM module deployment
-  - Heartbeat monitoring
-- **Why Cloud**: Centralized security, certificate management, scalable gateway instances
+  - Device attachment, enrollment, and registry management
+  - Device messaging proxy (CBOR southbound ↔ K8s northbound)
+  - WASM lifecycle management (deploy/update/stop/rollback)
+  - Kubernetes CRD status updates
+  - TLS 1.3 server for secure device connections
+- **Why Fog**: Proximity to edge devices, efficient message routing, single point of device management
 
 #### Dashboard (`wasmbed-dashboard`)
 - **Location**: Kubernetes Pod
@@ -325,15 +446,17 @@ Components in the **Fog Layer** run as Docker containers on Kubernetes cluster n
   - UART analyzer for logs
 - **Why Fog**: Close to edge devices, efficient resource usage, isolated per device
 
-#### Renode Manager
+#### Renode Manager (Board Provisioner)
 - **Location**: Runs inside API Server Pod, manages Docker containers
-- **Purpose**: Lifecycle management of Renode containers
+- **Purpose**: Board provisioning and registration for emulated devices
 - **Responsibilities**:
-  - Create/start/stop Renode containers
-  - Configure network interfaces
+  - Create/start/stop Renode containers (one per emulated device)
+  - Configure network interfaces and TCP bridges
   - Load firmware into containers
-  - Generate Renode scripts
-- **Why Fog**: Direct Docker API access, efficient container management
+  - Generate Renode platform scripts
+  - **Register emulated boards with Gateway**: Endpoint, identity, certificates, capabilities
+  - Coordinate board lifecycle with Gateway (attach/detach)
+- **Why Fog**: Direct Docker API access, efficient container management, close to edge emulation
 
 ### Edge Layer (Emulated Devices)
 
@@ -506,17 +629,20 @@ Complete documentation is available in the [`doc/`](doc/) directory:
   - Renode container orchestration
   - Application compilation (Rust to WASM)
 
-#### Gateway (`wasmbed-gateway`)
+#### Gateway (`wasmbed-gateway`) - Central Hub
 - **Language**: Rust
-- **Deployment**: Kubernetes Pod
-- **Ports**: 8080 (HTTP), 8081 (TLS)
+- **Deployment**: Kubernetes Pod (Fog Layer)
+- **Ports**: 8080 (HTTP - Northbound), 8081 (TLS - Southbound)
 - **Source**: `crates/wasmbed-gateway/`
 - **Dockerfile**: `Dockerfile.gateway`
 - **Responsibilities**:
-  - TLS 1.3 server for device connections
-  - Device enrollment and authentication
-  - WASM module deployment
-  - Heartbeat monitoring
+  - **Device Attachment & Enrollment**: Register devices, manage identity and certificates, perform attestation
+  - **Device Registry & Inventory**: Maintain device registry with metadata (model, capabilities, firmware version, health)
+  - **Device Messaging & Proxy**: Manage device sessions, translate CBOR (southbound) ↔ K8s API (northbound)
+  - **WASM Lifecycle Manager**: Deploy/update/stop/rollback WASM modules, manage deployment state (desired vs reported)
+  - **Kubernetes Integration**: Update CRD status (Device, Application), read desired state for orchestration
+  - **TLS 1.3 Server**: Secure southbound communication with devices
+  - **HTTP API**: Northbound API for cluster communication
 
 #### Dashboard (`dashboard-react`)
 - **Language**: JavaScript (React)
@@ -601,6 +727,143 @@ Complete documentation is available in the [`doc/`](doc/) directory:
 - **HTTP/REST**: API communication
 - **WebSocket**: Real-time updates
 
+## Implementation Roadmap
+
+This section outlines the implementation tasks required to achieve the Gateway-Centric Architecture described above.
+
+### Phase 1: Gateway Enhancement
+
+#### A. Device Registry & Inventory
+- [ ] Implement in-memory device registry in Gateway
+- [ ] Add device metadata storage (model, capabilities, firmware version, certificates)
+- [ ] Implement device lookup by identity/public key
+- [ ] Add device health tracking (last heartbeat, connection state)
+- [ ] Optional: Persist device registry to database or CRD
+
+#### B. Device Messaging & Proxy
+- [ ] Implement device session management (multiplexing, keepalive, retry)
+- [ ] Add uniform device proxy model for cluster access
+- [ ] Implement CBOR message routing and validation
+- [ ] Add message correlation IDs and acknowledgment handling
+- [ ] Implement retry logic for failed messages
+
+#### C. WASM Lifecycle Manager
+- [ ] Implement deployment state machine (desired vs reported)
+- [ ] Add WASM module storage and versioning
+- [ ] Implement deploy/update/stop/rollback commands via CBOR
+- [ ] Add deployment progress tracking (per-device state)
+- [ ] Implement failure handling and automatic rollback
+- [ ] Add deployment acknowledgment and status reporting
+
+#### D. Kubernetes Integration
+- [ ] Implement K8s client in Gateway (or via API Server)
+- [ ] Add Device CRD status updates (reported state)
+- [ ] Add Application CRD status updates (deployment progress)
+- [ ] Implement desired state reading from Application CRD
+- [ ] Add Gateway CRD status updates (health, devices attached)
+
+### Phase 2: Renode Manager Integration
+
+#### A. Board Registration Protocol
+- [ ] Define board registration API between Renode Manager and Gateway
+- [ ] Implement board registration endpoint in Gateway
+- [ ] Add board metadata transmission (endpoint, identity, capabilities)
+- [ ] Implement board readiness notification
+- [ ] Add board removal/cleanup on container stop
+
+#### B. Renode Manager Updates
+- [ ] Refactor Renode Manager to register boards with Gateway
+- [ ] Add board identity generation (certificates, UUID)
+- [ ] Implement board capability detection (MCU type, network interfaces)
+- [ ] Add board endpoint calculation and reporting
+- [ ] Implement board lifecycle coordination with Gateway
+
+### Phase 3: CBOR Protocol Formalization
+
+#### A. Protocol Definition
+- [ ] Document complete CBOR message format specification
+- [ ] Define message types (enrollment, deployment, telemetry, heartbeat)
+- [ ] Add message correlation IDs for request/response matching
+- [ ] Define acknowledgment and retry semantics
+- [ ] Add message versioning and compatibility
+
+#### B. Protocol Implementation
+- [ ] Update Zephyr firmware CBOR message handling
+- [ ] Update Gateway CBOR message parsing and validation
+- [ ] Add message routing based on type
+- [ ] Implement idempotency for deployment commands
+- [ ] Add protocol-level error handling
+
+### Phase 4: Deployment Flow Refactoring
+
+#### A. Application Deployment Chain
+- [ ] Refactor: Application CRD → Gateway reads desired state
+- [ ] Implement: Gateway → Device (deploy/update/stop via CBOR/TLS)
+- [ ] Add: Gateway → K8s (status updates)
+- [ ] Remove: Direct API Server → Device communication
+- [ ] Ensure: Gateway is single deployment channel
+
+#### B. Device Enrollment Flow
+- [ ] Refactor: Device → Gateway (TLS + CBOR enrollment)
+- [ ] Implement: Gateway → K8s (Device CRD status update)
+- [ ] Add: Gateway device registry update
+- [ ] Ensure: Enrollment is Gateway-managed only
+
+### Phase 5: Architecture Diagrams & Documentation
+
+#### A. Diagram Updates
+- [ ] Update architecture diagrams to show Gateway as hub
+- [ ] Add Renode Manager ↔ Gateway connection
+- [ ] Explicitly show southbound (TLS + CBOR) and northbound (K8s API)
+- [ ] Add device registry and lifecycle manager components
+- [ ] Update sequence diagrams for new flows
+
+#### B. Documentation
+- [ ] Update architecture documentation with Gateway-Centric model
+- [ ] Document CBOR protocol specification
+- [ ] Add board registration protocol documentation
+- [ ] Update deployment guides with new flows
+- [ ] Add troubleshooting guide for Gateway issues
+
+### Phase 6: Testing & Validation
+
+#### A. Integration Testing
+- [ ] Test end-to-end device enrollment via Gateway
+- [ ] Test WASM deployment flow: CRD → Gateway → Device
+- [ ] Test status updates: Device → Gateway → CRD
+- [ ] Test board registration: Renode Manager → Gateway
+- [ ] Test failure scenarios and rollback
+
+#### B. Performance Testing
+- [ ] Test Gateway with multiple concurrent devices
+- [ ] Test message throughput (CBOR messages per second)
+- [ ] Test deployment scalability (multiple devices, multiple apps)
+- [ ] Test Gateway resource usage under load
+
+### Implementation Notes
+
+**Kubernetes Integration Decision**:
+- **Option A (Recommended)**: Gateway communicates with API Server (HTTP/gRPC), API Server handles K8s API
+  - Better separation of concerns
+  - Gateway doesn't need K8s permissions
+  - Easier to test and maintain
+
+- **Option B (Edge-Native)**: Gateway has direct K8s client and updates CRDs
+  - More direct, fewer hops
+  - Gateway needs K8s RBAC permissions
+  - Can run as Pod or external with kubeconfig
+
+**CBOR Protocol Considerations**:
+- CBOR is a format, not a complete protocol
+- Need to define: message routing, correlation IDs, acknowledgments, retry, idempotency
+- Consider existing protocols (CoAP over CBOR, or custom Wasmbed protocol)
+
+**Migration Strategy**:
+- Implement Gateway enhancements incrementally
+- Maintain backward compatibility during transition
+- Add feature flags for new Gateway features
+- Gradually migrate existing flows to Gateway-Centric model
+
 ## Development Status
 
 For detailed information about the current development status, known issues, and planned features, see [DEVELOPMENT_STATUS.md](doc/DEVELOPMENT_STATUS.md).
@@ -614,10 +877,13 @@ For detailed information about the current development status, known issues, and
 - Renode container orchestration
 - MCU type support (13 MCU types)
 - Dashboard UI and API integration
+- Basic TLS connection between devices and Gateway
+- Basic device enrollment
 
 **In Progress**:
-- End-to-end TLS connection verification
-- Application deployment workflow
+- Gateway-Centric Architecture implementation (see Roadmap above)
+- End-to-end WASM deployment workflow
+- CBOR protocol formalization
 - Real hardware device integration
 
 **Known Issues**:
