@@ -41,134 +41,130 @@ graph TB
         subgraph "User Interface"
             Dashboard["Dashboard<br/>(React Web UI)<br/>Port: 3000"]
         end
-        
+
         subgraph "API Layer"
             APIServer["API Server<br/>(REST API + Controllers)<br/>Port: 3001"]
         end
-        
-        subgraph "Gateway Layer"
-            Gateway["Gateway<br/>(TLS Server + Control API)<br/>Ports: 8080 HTTP, 8081 TLS"]
-        end
-        
+
         subgraph "Controller Layer"
             DeviceCtrl["Device Controller"]
             AppCtrl["Application Controller"]
             GatewayCtrl["Gateway Controller"]
         end
-        
+
         subgraph "Kubernetes Resources"
             DeviceCRD["Device CRD"]
             AppCRD["Application CRD"]
             GatewayCRD["Gateway CRD"]
         end
     end
-    
+
     subgraph "Fog Layer - Host Runtime"
-        RenodeMgr["Renode Manager<br/>(in API Server)"]
+        Gateway["Gateway<br/>(Fog Gateway / Teleserver)<br/>Ports: 8080 HTTP, 8081 TLS"]
+        RenodeMgr["Renode Manager<br/>(orchestrated by API Server)"]
         DevProxy["Renode Device Proxy<br/>(one per device)<br/>(container/process/VM)"]
         FirmwareVol["Firmware Volumes<br/>(Zephyr ELF files)"]
     end
-    
+
     subgraph "Edge Layer - Emulated Devices"
         Zephyr["Zephyr RTOS<br/>(Network Stack + TLS)"]
         WAMR["WAMR Runtime<br/>(WebAssembly)"]
         WASMApp["WASM Applications"]
     end
-    
+
     %% UI -> API
     Dashboard -->|HTTP| APIServer
-    
+
     %% API -> CRDs
     APIServer -->|Manages| DeviceCRD
     APIServer -->|Manages| AppCRD
     APIServer -->|Manages| GatewayCRD
-    
+
     %% Controllers watch CRDs
     DeviceCtrl -->|Watches| DeviceCRD
     AppCtrl -->|Watches| AppCRD
     GatewayCtrl -->|Watches| GatewayCRD
-    
-    %% Gateway integrates with control-plane/CRDs (enrollment, routing, status)
-    Gateway -->|Reads/Writes| DeviceCRD
-    Gateway -->|Reads/Writes| AppCRD
-    Gateway -->|Reads/Writes| GatewayCRD
-    
-    %% API -> Gateway (control path)
-    APIServer -->|Control API| Gateway
-    
-    %% API orchestrates emulation
+
+    %% Control plane: Gateway <-> API Server
+    Gateway <--> |Control API| APIServer
+
+    %% Emulation chain
     APIServer -->|Orchestrates| RenodeMgr
     RenodeMgr -->|Creates| DevProxy
     DevProxy -->|Loads| FirmwareVol
     DevProxy -->|Runs| Zephyr
-    
+
     %% Runtime on device
     Zephyr -->|Executes| WAMR
     WAMR -->|Runs| WASMApp
-    
-    %% Device comms go via Gateway
-    Zephyr -->|TLS| Gateway
+
+    %% Data plane: Device <-> Gateway
+    Zephyr <--> |TLS| Gateway
 ```
 
 ### Detailed Component Architecture
 
 ```mermaid
 graph LR
-    subgraph "Cloud Components"
+    subgraph "Cloud Components (Kubernetes)"
         subgraph "API Server"
-            API1["REST API<br/>Device & App Management"]
-            API2["Renode Manager<br/>Proxy Orchestration"]
+            API1["REST API<br/>Device & App Mgmt"]
+            API2["Renode Manager API<br/>Proxy Orchestration"]
             API3["Kubernetes Client<br/>CRD Operations"]
         end
-        
-        subgraph "Gateway"
-            GW1["TLS Server<br/>Port 8081"]
-            GW2["Control/HTTP API<br/>Port 8080"]
-            GW3["Device Enrollment<br/>(Auth + Identity)"]
-            GW4["WASM Deployment<br/>(Fetch/Push + Policy)"]
-            GW5["CRD Sync Adapter<br/>(Status/Config)"]
-        end
-        
+
         subgraph "Controllers"
             DC["Device Controller<br/>Watches Device CRD"]
             AC["Application Controller<br/>Watches Application CRD"]
             GC["Gateway Controller<br/>Watches Gateway CRD"]
         end
-        
-        subgraph "Kubernetes API"
-            K8S["K8s API Server<br/>CRDs Storage"]
+
+        subgraph "CRDs"
+            DCRD["Device CRD"]
+            ACRD["Application CRD"]
+            GCRD["Gateway CRD"]
         end
     end
-    
+
     subgraph "Fog Components"
+        subgraph "Gateway (Fog)"
+            GW1["TLS Server<br/>:8081"]
+            GW2["Control API<br/>:8080"]
+            GW3["Enrollment<br/>(Auth/Identity)"]
+            GW4["WASM Deployment<br/>(Module Delivery)"]
+            GW5["Telemetry Uplink<br/>(Results/Status)"]
+        end
+
         subgraph "Renode Device Proxy"
-            RP1["Renode Emulator<br/>Hardware Simulation"]
+            RP1["Renode Emulator"]
             RP2["Platform File<br/>.repl"]
-            RP3["Firmware Loader<br/>ELF Loader"]
+            RP3["Firmware Loader<br/>ELF"]
         end
     end
-    
+
     subgraph "Edge Components"
         subgraph "Zephyr Firmware"
-            Z1["Network Stack<br/>TCP/IP + TLS"]
-            Z2["WAMR Integration<br/>WASM Runtime"]
-            Z3["Wasmbed Protocol<br/>CBOR Messages"]
+            Z1["TCP/IP + TLS"]
+            Z2["WAMR Runtime"]
+            Z3["Wasmbed Protocol<br/>CBOR"]
         end
     end
-    
-    %% API internals
+
+    %% API Server internals
     API1 --> API2
-    API2 --> API3
-    
-    %% Control-plane interactions
-    API3 -->|CRUD| K8S
-    GW5 -->|Read/Write| K8S
-    
-    %% Gateway functions
-    GW2 --> GW3
-    GW2 --> GW4
-    GW2 --> GW5
-    
+    API1 --> API3
+
+    %% CRD operations and watches
+    API3 --> DCRD
+    API3 --> ACRD
+    API3 --> GCRD
+    DC --> DCRD
+    AC --> ACRD
+    GC --> GCRD
+
+    %% Control plane: API Server <-> Gateway
+    API1 <--> GW2
+
     %% Emulation chain
     API2 --> RP1
     RP1 --> RP2
@@ -176,9 +172,9 @@ graph LR
     RP3 --> Z1
     Z1 --> Z2
     Z2 --> Z3
-    
-    %% Data plane
-    Z3 -->|TLS| GW1
+
+    %% Data plane: Zephyr <-> Gateway
+    Z3 <--> |TLS| GW1
 ```
 
 ### Communication Flow Architecture
@@ -189,37 +185,38 @@ sequenceDiagram
     participant Dashboard
     participant APIServer as API Server
     participant K8sAPI as K8s API (CRDs)
-    participant Gateway
+    participant Gateway as Fog Gateway
     participant RenodeMgr as Renode Manager
     participant DevProxy as Renode Device Proxy
     participant Zephyr
     participant WAMR
-    
+
     User->>Dashboard: Access Web UI
-    Dashboard->>APIServer: REST API calls
-    
+    Dashboard->>APIServer: REST API Calls
+
     APIServer->>K8sAPI: Create/Update Device CRD
-    APIServer->>RenodeMgr: Orchestrate emulation (start device)
-    RenodeMgr->>DevProxy: Create proxy instance (per device)
+    APIServer->>RenodeMgr: Start emulation (per device)
+    RenodeMgr->>DevProxy: Create proxy instance
     DevProxy->>Zephyr: Load firmware (ELF) and boot
-    
-    %% Device enrollment via gateway
+
     Zephyr->>Gateway: TLS connect
-    Gateway->>Zephyr: Enrollment challenge/flow
+    Gateway->>Zephyr: Enrollment flow
     Zephyr->>Gateway: Enrollment response
-    Gateway->>K8sAPI: Update Device CRD status/identity
-    
-    %% Deploy application via CRD + gateway
+
+    Gateway->>APIServer: Notify enrollment/status
+    APIServer->>K8sAPI: Update Device CRD status/identity
+
     User->>Dashboard: Deploy application
     Dashboard->>APIServer: Create Application CRD
     APIServer->>K8sAPI: Store Application CRD
-    
-    Gateway->>K8sAPI: Watch/Read Application CRD (policy/targeting)
-    Gateway->>Zephyr: Deploy WASM module (over TLS)
-    Zephyr->>WAMR: Load WASM module
-    WAMR->>WAMR: Execute application
-    WAMR->>Gateway: Send results/telemetry
-    Gateway->>K8sAPI: Update App/Device status (optional)
+
+    APIServer->>Gateway: Instruct deployment/targets
+    Gateway->>Zephyr: Deliver WASM module (TLS)
+    Zephyr->>WAMR: Load WASM
+    WAMR->>WAMR: Execute app
+    WAMR->>Gateway: Results/telemetry
+    Gateway->>APIServer: Forward results/telemetry
+    APIServer->>K8sAPI: Update status (optional)
 ```
 
 ## Repository Structure
