@@ -1,6 +1,6 @@
 # Development Status - RETROSPECT Wasmbed Platform
 
-**Last Updated**: 2026-01-11
+**Last Updated**: 2026-02-10
 
 ## Executive Summary
 
@@ -85,19 +85,20 @@ The RETROSPECT Wasmbed platform is **operational** with core functionality worki
 #### 1. End-to-End TLS Connection
 - **Status**: Partially Functional
 - **Details**:
-  - Gateway TLS server operational
-  - Gateway endpoint resolution working
-  - Endpoint written to device memory correctly
-  - Zephyr firmware compilation pending for Ethernet boards
-  - TLS connection from Zephyr to Gateway needs verification
+  - Gateway TLS server operational; Device CRD updated to Connected/Enrolled on TLS connect and heartbeat
+  - Gateway endpoint resolution (pod IP) and write to device memory (0x20001000) implemented in RenodeManager
+  - Zephyr firmware reads endpoint, connects TLS, sends enrollment/heartbeat; Gateway marks device TLS-connected
+  - Verification: see **doc/RENODE_TLS_DEPLOY_VERIFICATION.md** (checklist and code references)
+  - Zephyr firmware compilation for Ethernet boards may be pending; TLS path is implemented in code
 
 #### 2. Application Deployment
 - **Status**: Partially Functional
 - **Details**:
   - Application CRD creation working
   - Application status tracking working
-  - WASM module deployment to devices needs end-to-end testing
-  - WAMR execution on devices needs verification
+  - Gateway sends DeployApplication via TLS (length-prefix + CBOR); Gateway updates Application CRD on DeployAck
+  - Firmware: `wasmbed_protocol.c` implements minimal CBOR decode for DeployApplication, `wamr_load_module`/`wamr_instantiate`, and `send_deploy_ack`; periodic Heartbeat (every 25 s) via `wasmbed_protocol_tick()` to keep TLS connection and Gateway `last_heartbeat` updated
+  - See **doc/RENODE_TLS_DEPLOY_VERIFICATION.md** for verification steps and wire format
 
 ### Known Issues
 
@@ -115,10 +116,8 @@ The RETROSPECT Wasmbed platform is **operational** with core functionality worki
 - **Status**: Fixed - Now correctly reads MCU type from CRD and uses correct platform
 
 #### 3. Application Deployment Status
-- **Issue**: Application shows "Running" status but may not have devices deployed
-- **Impact**: Confusion about actual deployment state
-- **Priority**: Medium
-- **Status**: Needs verification
+- **Issue**: Application status (phase, per-device) must be written by the Gateway; owner of status is documented in ARCHITECTURE.md.
+- **Status**: Gateway patches Application CRD status (phase, deviceStatuses, error) via status subresource; controller does not write status.
 
 #### 4. Dashboard API Calls
 - **Issue**: Some Terminal API calls were using non-existent endpoints
@@ -158,6 +157,11 @@ The RETROSPECT Wasmbed platform is **operational** with core functionality worki
 - **Status**: Resolved
 - **Solution**: Generated complete certificate set (CA, server cert, server key)
 
+#### 7. Connection refused (os error 111) on board registration
+- **Issue**: First "start emulation" worked, second time failed with connection refused to port 8080.
+- **Status**: Resolved
+- **Solution**: In `wasmbed-qemu-manager`, `gateway_http_from_tls_endpoint` was parsing a full URL (`http://wasmbed-gateway...:8080`) by splitting on `:` and taking the first segment, producing `http://http:8080`. Fixed to accept full URLs and host:port; board API URL is now derived correctly (host + port 8080).
+
 ## Testing Status
 
 ### Tested and Verified
@@ -178,6 +182,8 @@ The RETROSPECT Wasmbed platform is **operational** with core functionality worki
 - [x] Dashboard API integration
 - [x] Network topology visualization
 - [x] Infrastructure status monitoring
+- [x] Application CRD status patched by Gateway (phase, deviceStatuses per device, error); see ARCHITECTURE.md for desired vs reported and owner of status.
+- [x] **Local Gateway (Step 5–6)**: `scripts/generate-gateway-certs.sh` produces X.509 v3 server cert (rustls-compatible). Gateway binary runs with required args (`--bind-addr`, `--private-key`, `--certificate`, `--client-ca`, `--namespace`, `--pod-namespace`, `--pod-name`); TLS and HTTP servers start; GET `/health`, `/ready`, `/api/v1/devices`, `/api/v1/applications`, `/api/v1/gateways` return 200.
 
 ### Needs Testing
 
@@ -186,7 +192,7 @@ The RETROSPECT Wasmbed platform is **operational** with core functionality worki
 - [ ] WASM module deployment to devices
 - [ ] WAMR execution on emulated devices
 - [ ] Application deployment workflow
-- [ ] Heartbeat monitoring
+- [x] Heartbeat monitoring (Gateway marks Unreachable after 90s; recovery: Gateway recovers on next Heartbeat, Device Controller re-registers Unreachable devices with Gateway)
 - [ ] Device reconnection after restart
 - [ ] Multiple device management
 - [ ] Application update workflow
@@ -288,6 +294,114 @@ The RETROSPECT Wasmbed platform is **operational** with core functionality worki
    - Distributed tracing
    - Alerting system
 
+## Implementation & Test TODO
+
+Da aggiornare di volta in volta in base a ciò che è stato implementato. Per ogni voce: completare le attività di implementazione, poi eseguire i test e spuntare le checkbox. **Implementazione**: tutte le voci di implementazione (§1–§7) sono completate; restano da eseguire manualmente i test sotto **Test**.
+
+---
+
+### 1. Naming e documentazione (Device Proxy)
+
+**Implementazione**
+- [x] Sostituire in `doc/` e README il concetto "Renode container" con **device proxy** (oggetto uno-per-device che fa da proxy verso runtime).
+- [x] Chiarire in `doc/ARCHITECTURE.md` che il "Renode Manager" (o device manager) è chi crea i device proxy; il nome non vincola a Renode.
+- [x] Aggiornare i diagrammi in README e in `doc/` per usare "Device proxy (one per device)" e freccia logica verso il runtime (WASM/Zephyr).
+
+**Test**
+- [ ] Verificare che tutta la documentazione in `doc/` sia coerente con la nuova nomenclatura.
+- [ ] Verificare che i diagrammi riflettano il modello device proxy / runtime.
+
+---
+
+### 2. Board registration (Renode Manager → Gateway)
+
+**Implementazione**
+- [x] Definire in Gateway un endpoint (es. HTTP o interno) per la **registrazione board**: riceve endpoint TCP, identity/certificati, capabilities, readiness.
+- [x] In `wasmbed-qemu-manager`: dopo l’avvio di un device proxy (container Renode), invocare il Gateway per registrare la board (endpoint, identità, MCU type, ecc.).
+- [x] Documentare il protocollo di board registration in `doc/` (es. ARCHITECTURE o SEQUENCE_DIAGRAMS).
+- [x] Gestire detach/cleanup: quando un device proxy viene spento, notificare il Gateway (rimozione board).
+
+**Test**
+- [ ] Creare un device e avviare emulazione: verificare che il Gateway riceva la registrazione della board.
+- [ ] Verificare che il Gateway esponga le board registrate (es. via HTTP API o stato interno).
+- [ ] Fermare l’emulazione: verificare che la board venga rimossa dal Gateway.
+- [ ] Test con più device: ogni board registrata con endpoint e identità corretti.
+
+---
+
+### 3. Gateway legge Application CRD (desired state) e pilota il deployment
+
+**Implementazione**
+- [x] Aggiungere nel Gateway (o in un componente che notifica il Gateway) la lettura dell’**Application CRD** per lo stato desired (target devices, immagine WASM, azione deploy/update/stop).
+- [x] Flusso: deploy API Server → Gateway per device → Gateway legge CRD → deploy via TLS.
+- [x] Decidere se il Gateway watcha i CRD direttamente (client K8s + watch) o riceve notifiche dall’API Server/controller; implementare la scelta.
+- [x] Flusso documentato in ARCHITECTURE.md (Gateway and Application CRD status).
+
+**Test**
+- [ ] Creare un Application CRD con target device e WASM image: verificare che il Gateway riceva/legga il desired state.
+- [ ] Verificare che a un update dell’Application CRD corrisponda un’azione del Gateway (deploy/update/stop) verso i device corretti.
+- [ ] Test con Application CRD che punta a device non connessi: verificare comportamento (pending, retry, o status coerente).
+
+---
+
+### 4. WASM lifecycle reale nel Gateway
+
+**Implementazione**
+- [x] Invio reale al device via TLS: in `wasmbed-tls-utils` aggiunto canale per connessione e callback `on_connection_ready(public_key, sender)`; il Gateway salva il sender in `DeviceConnection.tls_sender` e `send_message_to_device` invia via `tls_sender.send(ServerMessage)`. Deploy/Stop inviano quindi davvero al device connesso (CBOR su TLS).
+- [x] Nessuno stub: deploy/stop in HttpApiServer e TLS.
+- [x] Implementare comandi deploy / update / stop / rollback nel protocollo CBOR e nel Gateway.
+- [x] Mantenere stato desired vs reported (per device e per applicazione) e aggiornare lo stato verso l’Application CRD (o cooperare con application-controller per patch status).
+- [x] Gestire acknowledgment, retry e fallimento (con eventuale rollback) e rifletterli nello stato CRD.
+
+**Test**
+- [ ] Deploy di un modulo WASM su un device connesso: verificare invio via CBOR e esecuzione su device (WAMR).
+- [ ] Update: inviare nuova versione WASM e verificare che il device riceva e aggiorni.
+- [ ] Stop: verificare che il comando stop porti alla rimozione/stop dell’app sul device.
+- [ ] Verificare che lo stato su Application CRD (reported) rifletta deploy in corso / running / failed / stopped.
+- [ ] Test di fallimento (device offline, WASM invalido): verificare retry e aggiornamento stato.
+
+---
+
+### 5. Gateway aggiorna Application CRD status (reported) in modo coerente
+
+**Implementazione**
+- [x] Gateway fa patch dello status dell’Application CRD (reported: phase, per-device state, errori).
+- [x] Campi allineati allo schema wasmbed-k8s-resource (phase, deviceStatuses, error).
+- [x] Gateway owner dello status; controller non scrive (ARCHITECTURE.md).
+
+**Test**
+- [ ] Dopo un deploy avviato dal Gateway: verificare che `kubectl get application <name> -o yaml` mostri status aggiornato (phase, device list, eventuali errori).
+- [ ] Verificare che update e stop aggiornino correttamente lo status.
+- [ ] Verificare che in caso di errore lo status riporti fase e messaggio appropriati.
+
+---
+
+### 6. wasmbed-renode-sidecar
+
+**Implementazione**
+- [x] Deciso: rimosso; logica in wasmbed-qemu-manager (una Renode, N device): se sì, aggiungerlo ai `members` del workspace in `retrospect/Cargo.toml`; altrimenti rimuoverlo o unificarlo con `wasmbed-qemu-manager`.
+- [x] Crate eliminato (crates/wasmbed-renode-sidecar) e come si integra con device proxy e Gateway.
+
+**Test**
+- [ ] Se incluso nel workspace: verificare che `cargo build -p wasmbed-renode-sidecar` compili e che eventuali test passino.
+- [x] Verificato: nessun riferimento al crate nel repo (solo doc/changelog).
+
+---
+
+### 7. Una istanza Renode, N device
+
+**Implementazione**
+- [x] Refactoring wasmbed-qemu-manager: container singolo wasmbed-renode, N machine. Start: comandi al monitor (porta 9999); stop: mach set + pause. Volume condiviso wasmbed-firmware-store.
+- [x] (obsolete) Valutazione non necessaria: modello una Renode N device implementato.
+- [x] Documentato in ARCHITECTURE.md. (obsolete) Adattare creazione/distruzione device proxy (avvio/stop machine in Renode, non container Docker per device).
+- [x] Documentare in `doc/ARCHITECTURE.md` il modello “una Renode, N device proxy”.
+
+**Test**
+- [ ] Avviare più device sull’istanza Renode condivisa: verificare isolamento e corretto wiring.
+- [ ] Verificare che Gateway e CRD continuino a vedere N device distinti con stato corretto.
+
+---
+
 ## Known Limitations
 
 1. **Emulation Only**: Currently supports only emulated devices, not real hardware (though architecture supports it)
@@ -323,9 +437,36 @@ For issues or questions:
 - Check device status: `kubectl get devices -n wasmbed`
 - Check application status: `kubectl get applications -n wasmbed`
 - Check gateway status: `kubectl get gateways -n wasmbed`
-- Check Renode logs: `docker logs renode-<device-id>`
+- Check Renode logs: `docker logs wasmbed-renode`
+
+## Verification (2026-02-10)
+
+Verifica di ogni step implementato:
+
+- **Build**: `cargo build -p wasmbed-k8s-resource -p wasmbed-gateway -p wasmbed-api-server` OK
+- **Test**: `cargo test -p wasmbed-k8s-resource -p wasmbed-protocol` OK
+- **Gateway patch status**: ApplicationStatusUpdate con patch_status (phase, deviceStatuses, lastUpdated, error); deploy/stop/ApplicationStatus/DeployAck/StopAck verificati in codice
+- **Gateway DeviceInfo**: update_device_capabilities su DeviceInfo message OK
+- **API Server deploy/stop**: POST a Gateway per ogni target device, URL e body corretti
+- **API Server failed_devices**: conteggio da status.deviceStatuses (status Failed) OK
+- **CRD/naming**: camelCase e subresource status allineati
+
+Test E2E (cluster + device reali/simulati) da eseguire manualmente.
 
 ## Changelog
+
+### 2026-02-10 (continued)
+- **Gateway patches Application CRD status**: Gateway uses `ApplicationStatusUpdate` to patch Application status (phase, deviceStatuses per device, error) on deploy/stop and on ApplicationStatus/DeployAck/StopAck from devices. Owner of status documented in ARCHITECTURE.md.
+- **API Server deploy/stop to Gateway**: `deploy_application_by_id` and `stop_application_by_id` call the Gateway HTTP API for each target device (POST .../deploy and POST .../stop/:app_id); Gateway owns Application status (no kubectl patch from API Server).
+- **API Server**: `failed_devices` in applications API now derived from Application CRD status.deviceStatuses (count of Failed).
+- **Gateway**: On DeviceInfo message over TLS, capabilities are updated in HTTP API when device_id is resolved from public_key.
+- **ARCHITECTURE.md**: Subsection "Una Renode, N device proxy"; "Gateway and Application CRD status (desired vs reported)"; Future evolution multi-workload per device. Removed duplicate trailing text.
+- **DEVELOPMENT_STATUS.md**: Implementation & Test TODO checkboxes updated for §3, §4, §5, §7.
+
+### 2026-02-10
+- **Single Renode instance, N devices**: Refactored wasmbed-qemu-manager to use one container (`wasmbed-renode`) with Renode monitor on port 9999; each device is a machine inside that instance. Start device = send commands to monitor; stop device = pause machine. Shared firmware volume `wasmbed-firmware-store`. Env `RENODE_MONITOR_ADDR` (default `127.0.0.1:9999`).
+- **Removed** crate `wasmbed-renode-sidecar` (logic unified in wasmbed-qemu-manager).
+- Updated ARCHITECTURE.md for single-Renode model.
 
 ### 2026-01-11
 - Fixed Renode platform selection (now reads from CRD)

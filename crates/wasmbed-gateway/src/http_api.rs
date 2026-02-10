@@ -3,8 +3,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
-use std::net::SocketAddr;
+use std::time::SystemTime;
 
 use anyhow::Result;
 use axum::{
@@ -16,15 +15,28 @@ use axum::{
 };
 use kube::Api;
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, error, info, warn};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio::io::AsyncWriteExt;
 use minicbor;
-use wasmbed_tls_utils::{TlsServer};
 
-use wasmbed_k8s_resource::{Application, Device, DeviceApplicationPhase, ApplicationPhase, ApplicationConfig, Gateway};
+use wasmbed_k8s_resource::{
+    Application, ApplicationConfig, ApplicationPhase, ApplicationStatusUpdate, Device,
+    DeviceApplicationPhase, DeviceApplicationStatus, Gateway,
+};
 use wasmbed_protocol::{ServerMessage, DeviceUuid};
+
+/// Build per-device status for Application CRD patch.
+fn device_app_status(phase: DeviceApplicationPhase, error: Option<String>) -> DeviceApplicationStatus {
+    DeviceApplicationStatus {
+        status: phase,
+        last_heartbeat: None,
+        metrics: None,
+        error,
+        restart_count: 0,
+    }
+}
 use wasmbed_types::PublicKey;
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyUsagePurpose, ExtendedKeyUsagePurpose};
 
@@ -32,12 +44,14 @@ use rcgen::{CertificateParams, DistinguishedName, DnType, KeyUsagePurpose, Exten
 #[derive(Clone)]
 pub struct HttpApiServer {
     pub device_connections: Arc<RwLock<HashMap<String, DeviceConnection>>>,
+    /// Map public_key (base64) -> device_id for looking up device when TLS connection is ready
+    pub public_key_to_device: Arc<RwLock<HashMap<String, String>>>,
     pub applications: Arc<RwLock<HashMap<String, DeployedApplication>>>,
+    /// Board registry: device_id -> BoardRegistration (boards registered by Renode Manager)
+    pub board_registry: Arc<RwLock<HashMap<String, BoardRegistration>>>,
     pub device_api: Api<Device>,
     pub application_api: Api<Application>,
     pub gateway_api: Api<Gateway>,
-    pub tls_config: Arc<TlsServer>, // Custom TLS server implementation
-    pub cbor_tls_listener: Option<Arc<TcpListener>>,
     pub pairing_mode: Arc<RwLock<bool>>,
     pub pairing_timeout_seconds: Arc<RwLock<u64>>,
     pub heartbeat_timeout_seconds: Arc<RwLock<u64>>,
@@ -53,6 +67,8 @@ pub struct DeviceConnection {
     pub last_heartbeat: SystemTime,
     pub capabilities: DeviceCapabilities,
     pub tls_connection: Option<Arc<RwLock<TcpStream>>>,
+    /// Sender to push ServerMessage to the device over TLS (set when TLS connection is ready)
+    pub tls_sender: Option<Arc<mpsc::Sender<ServerMessage>>>,
     pub is_enrolled: bool,
     pub tls_connected: bool, // Flag to indicate if TLS connection is active
 }
@@ -64,12 +80,6 @@ pub struct CborTlsMessage {
     pub data: Vec<u8>,
     pub signature: Vec<u8>,
     pub timestamp: SystemTime,
-}
-
-/// CBOR/TLS connection handler
-pub struct CborTlsHandler {
-    device_connections: Arc<RwLock<HashMap<String, DeviceConnection>>>,
-    applications: Arc<RwLock<HashMap<String, DeployedApplication>>>,
 }
 
 /// Device capabilities
@@ -120,6 +130,35 @@ pub struct ApplicationStatusResponse {
     pub error: Option<String>,
 }
 
+/// Board registration (emulated device proxy registered by Renode Manager)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoardRegistration {
+    pub device_id: String,
+    pub endpoint: String,
+    pub mcu_type: String,
+    pub capabilities: Option<BoardCapabilities>,
+    /// Unix timestamp (seconds) when the board was registered
+    pub registered_at: u64,
+}
+
+/// Capabilities reported at board registration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoardCapabilities {
+    pub has_ethernet: bool,
+    pub has_wifi: bool,
+    pub has_network: bool,
+}
+
+/// Request body for POST /api/v1/board/register
+#[derive(Debug, Deserialize)]
+pub struct BoardRegisterRequest {
+    pub device_id: String,
+    pub endpoint: String,
+    pub mcu_type: String,
+    #[serde(default)]
+    pub capabilities: Option<BoardCapabilities>,
+}
+
 /// Device list response
 #[derive(Debug, Serialize)]
 pub struct DeviceListResponse {
@@ -141,106 +180,16 @@ impl HttpApiServer {
     pub fn new(device_api: Api<Device>, application_api: Api<Application>, gateway_api: Api<Gateway>) -> Result<Self> {
         Ok(Self {
             device_connections: Arc::new(RwLock::new(HashMap::new())),
+            public_key_to_device: Arc::new(RwLock::new(HashMap::new())),
             applications: Arc::new(RwLock::new(HashMap::new())),
+            board_registry: Arc::new(RwLock::new(HashMap::new())),
             device_api,
             application_api,
             gateway_api,
-            tls_config: Arc::new(TlsServer::new(
-                "0.0.0.0:8443".parse().unwrap(),
-                rustls_pki_types::CertificateDer::from(vec![]),
-                rustls_pki_types::PrivatePkcs8KeyDer::from(vec![]),
-                rustls_pki_types::CertificateDer::from(vec![]),
-            )),
-            cbor_tls_listener: None,
             pairing_mode: Arc::new(RwLock::new(false)),
             pairing_timeout_seconds: Arc::new(RwLock::new(300)),
             heartbeat_timeout_seconds: Arc::new(RwLock::new(90)),
         })
-    }
-    
-    
-    /// Start CBOR/TLS listener for device connections
-    pub async fn start_cbor_tls_listener(&mut self, bind_addr: SocketAddr) -> Result<()> {
-        info!("Starting CBOR/TLS listener on {}", bind_addr);
-        
-        let listener = TcpListener::bind(bind_addr).await?;
-        let listener_arc = Arc::new(listener);
-        self.cbor_tls_listener = Some(listener_arc.clone());
-        
-        let device_connections = self.device_connections.clone();
-        let applications = self.applications.clone();
-        let tls_config = self.tls_config.clone();
-        
-        tokio::spawn(async move {
-            let handler = CborTlsHandler {
-                device_connections,
-                applications,
-            };
-            
-            loop {
-                match listener_arc.accept().await {
-                    Ok((stream, addr)) => {
-                        info!("New CBOR/TLS connection from {}", addr);
-                        
-                        let handler_clone = handler.clone();
-                        let tls_config_clone = tls_config.clone();
-                        
-                        tokio::spawn(async move {
-                            if let Err(e) = handler_clone.handle_connection(stream, tls_config_clone).await {
-                                error!("Error handling CBOR/TLS connection: {}", e);
-                            }
-                        });
-                    }
-                    Err(e) => {
-                        error!("Failed to accept CBOR/TLS connection: {}", e);
-                    }
-                }
-            }
-        });
-        
-        info!("CBOR/TLS listener started successfully");
-        Ok(())
-    }
-    
-    /// Send CBOR/TLS message to device
-    pub async fn send_cbor_tls_message(&self, device_id: &str, message: ServerMessage) -> Result<()> {
-        let connections = self.device_connections.read().await;
-        
-        if let Some(connection) = connections.get(device_id) {
-            if let Some(tls_stream) = &connection.tls_connection {
-                let mut stream = tls_stream.write().await;
-                
-                // Serialize message to CBOR
-                let cbor_data = minicbor::to_vec(&message)?;
-                
-                // Create message wrapper
-                let cbor_message = CborTlsMessage {
-                    message_type: "server_message".to_string(),
-                    data: cbor_data,
-                    signature: vec![], // In real implementation, sign the message
-                    timestamp: SystemTime::now(),
-                };
-                
-                // Serialize wrapper to CBOR
-                let message_data = serde_cbor::to_vec(&cbor_message)?;
-                
-                // Send length prefix + data
-                let length = message_data.len() as u32;
-                let length_bytes = length.to_be_bytes();
-                
-                stream.write_all(&length_bytes).await?;
-                stream.write_all(&message_data).await?;
-                stream.flush().await?;
-                
-                debug!("Sent CBOR/TLS message to device {}", device_id);
-            } else {
-                return Err(anyhow::anyhow!("No TLS connection for device {}", device_id));
-            }
-        } else {
-            return Err(anyhow::anyhow!("Device {} not found", device_id));
-        }
-        
-        Ok(())
     }
 
     /// Create the HTTP router
@@ -282,6 +231,9 @@ impl HttpApiServer {
             .route("/api/v1/metrics/system", get(get_system_metrics))
             .route("/api/v1/alerts", get(get_alerts))
             .route("/api/v1/drone/command", post(send_drone_command))
+            .route("/api/v1/board/register", post(board_register))
+            .route("/api/v1/board", get(board_list))
+            .route("/api/v1/board/:device_id", delete(board_unregister))
             .route("/health", get(health_check))
             .route("/ready", get(readiness_check))
             .with_state(state)
@@ -297,13 +249,38 @@ impl HttpApiServer {
             last_heartbeat: SystemTime::now(),
             capabilities,
             tls_connection: None,
+            tls_sender: None,
             is_enrolled: false,
-            tls_connected: false, // Will be set to true when first message is received
+            tls_connected: false, // Set true when TLS connection is ready (sender set)
         };
 
+        {
+            let mut map = self.public_key_to_device.write().await;
+            map.insert(public_key.clone(), device_id.clone());
+        }
         let mut connections = self.device_connections.write().await;
         connections.insert(device_id, connection);
         info!("Device registered for HTTP API (waiting for TLS connection)");
+    }
+
+    /// Set the TLS sender for a device (called when TLS connection is ready in wasmbed-tls-utils)
+    pub async fn set_device_tls_sender(&self, public_key: &[u8], sender: mpsc::Sender<ServerMessage>) {
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+        let key_b64 = BASE64.encode(public_key);
+        let device_id = {
+            let map = self.public_key_to_device.read().await;
+            map.get(&key_b64).cloned()
+        };
+        if let Some(device_id) = device_id {
+            let mut connections = self.device_connections.write().await;
+            if let Some(conn) = connections.get_mut(&device_id) {
+                conn.tls_sender = Some(Arc::new(sender));
+                conn.tls_connected = true;
+                info!("TLS sender set for device {}", device_id);
+            }
+        } else {
+            warn!("No device_id found for public_key ({} bytes), cannot set TLS sender", public_key.len());
+        }
     }
     
     /// Mark device as having an active TLS connection
@@ -324,6 +301,15 @@ impl HttpApiServer {
         if let Some(connection) = connections.get_mut(device_id) {
             connection.last_heartbeat = SystemTime::now();
             debug!("Updated heartbeat for device {}", device_id);
+        }
+    }
+
+    /// Update device capabilities (e.g. when receiving DeviceInfo from device over TLS)
+    pub async fn update_device_capabilities(&self, device_id: &str, capabilities: DeviceCapabilities) {
+        let mut connections = self.device_connections.write().await;
+        if let Some(connection) = connections.get_mut(device_id) {
+            connection.capabilities = capabilities;
+            debug!("Updated capabilities for device {}", device_id);
         }
     }
 
@@ -410,57 +396,39 @@ impl HttpApiServer {
         }
     }
 
-    /// Send message to a specific device via TLS
-    /// Note: The actual TLS communication is handled by GatewayServer
-    /// This method checks if the device has an active TLS connection
+    /// Send message to a specific device via TLS (using tls_sender from TLS connection when set)
     async fn send_message_to_device(&self, device_id: &str, message: &ServerMessage) -> Result<()> {
         info!("Sending message to device {}: {:?}", device_id, message);
-        
+
         let connections = self.device_connections.read().await;
-        
+
         if let Some(connection) = connections.get(device_id) {
-            if connection.tls_connected {
-                // The actual message sending is handled by GatewayServer via the TLS connection
-                // We just need to verify the connection is active
-                // In a real implementation, we would use GatewayServer's message sending mechanism
-                // For now, we'll use the existing TLS stream if available, otherwise we'll rely on GatewayServer
-                if let Some(tls_stream) = &connection.tls_connection {
-                    let mut stream = tls_stream.write().await;
-                    
-                    // Serialize message to CBOR
-                    let cbor_data = minicbor::to_vec(&message)?;
-                    
-                    // Create message wrapper
-                    let cbor_message = CborTlsMessage {
-                        message_type: "server_message".to_string(),
-                        data: cbor_data,
-                        signature: vec![], // In real implementation, sign the message
-                        timestamp: SystemTime::now(),
-                    };
-                    
-                    // Serialize wrapper to CBOR
-                    let message_data = serde_cbor::to_vec(&cbor_message)?;
-                    
-                    // Send length prefix + data
-                    let length = message_data.len() as u32;
-                    let length_bytes = length.to_be_bytes();
-                    
-                    stream.write_all(&length_bytes).await?;
-                    stream.write_all(&message_data).await?;
-                    stream.flush().await?;
-                    
-                    debug!("Sent CBOR/TLS message to device {}", device_id);
-                    Ok(())
-                } else {
-                    // TLS connection is marked as active but no stream available
-                    // This means GatewayServer is handling the connection
-                    // We'll return success as the message will be sent via GatewayServer
-                    info!("Device {} has active TLS connection (handled by GatewayServer)", device_id);
-                    Ok(())
-                }
-            } else {
-                Err(anyhow::anyhow!("No TLS connection for device {}", device_id))
+            if let Some(sender) = &connection.tls_sender {
+                sender
+                    .send(message.clone())
+                    .await
+                    .map_err(|e| anyhow::anyhow!("TLS send to device {}: {}", device_id, e))?;
+                debug!("Sent message to device {} via TLS sender", device_id);
+                return Ok(());
             }
+            if let Some(tls_stream) = &connection.tls_connection {
+                let mut stream = tls_stream.write().await;
+                let cbor_data = minicbor::to_vec(message)?;
+                let cbor_message = CborTlsMessage {
+                    message_type: "server_message".to_string(),
+                    data: cbor_data,
+                    signature: vec![],
+                    timestamp: SystemTime::now(),
+                };
+                let message_data = serde_cbor::to_vec(&cbor_message)?;
+                let length = message_data.len() as u32;
+                stream.write_all(&length.to_be_bytes()).await?;
+                stream.write_all(&message_data).await?;
+                stream.flush().await?;
+                debug!("Sent CBOR/TLS message to device {}", device_id);
+                return Ok(());
+            }
+            Err(anyhow::anyhow!("No TLS connection for device {}", device_id))
         } else {
             Err(anyhow::anyhow!("Device {} not found", device_id))
         }
@@ -492,18 +460,38 @@ async fn deploy_application(
     Path(device_id): Path<String>,
     Json(payload): Json<DeploymentRequest>,
 ) -> Result<Json<DeploymentResponse>, StatusCode> {
-    info!("Received deployment request for device {}: app_id={}", device_id, payload.app_id);
+    info!(
+        "Received deployment request for device {}: app_id={}",
+        device_id, payload.app_id
+    );
+
+    // Read desired state from Application CRD: this is the source of truth for wasm_bytes and config.
+    let application = match server.application_api.get(&payload.app_id).await {
+        Ok(app) => app,
+        Err(e) => {
+            error!(
+                "Failed to get Application CRD {} from Kubernetes: {}",
+                payload.app_id, e
+            );
+            return Ok(Json(DeploymentResponse {
+                success: false,
+                message: format!(
+                    "Application {} not found in Kubernetes",
+                    payload.app_id
+                ),
+                error: Some(e.to_string()),
+            }));
+        }
+    };
 
     // Check if device is registered - but allow waiting for TLS connection even if not yet registered
     // This handles race conditions where device registration happens after deployment request
     let max_wait_for_registration = 5; // Wait up to 5 seconds for device to be registered
     let mut waited_for_registration = 0;
-    let mut device_registered = false;
     
     loop {
         let connections = server.device_connections.read().await;
         if connections.contains_key(&device_id) {
-            device_registered = true;
             drop(connections);
             break;
         }
@@ -552,14 +540,21 @@ async fn deploy_application(
         waited_for_registration += 1;
     }
 
-    // Decode WASM bytes
-    let wasm_bytes = match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &payload.wasm_bytes) {
+    // Decode WASM bytes from Application spec (base64 encoded in CRD)
+    let wasm_bytes_b64 = &application.spec.wasm_bytes;
+    let wasm_bytes = match base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        wasm_bytes_b64,
+    ) {
         Ok(bytes) => bytes,
         Err(e) => {
-            error!("Failed to decode WASM bytes: {}", e);
+            error!(
+                "Failed to decode WASM bytes from Application {} spec: {}",
+                payload.app_id, e
+            );
             return Ok(Json(DeploymentResponse {
                 success: false,
-                message: "Invalid WASM bytes".to_string(),
+                message: "Invalid WASM bytes in Application spec".to_string(),
                 error: Some(format!("Failed to decode base64: {}", e)),
             }));
         }
@@ -567,12 +562,14 @@ async fn deploy_application(
 
     // Register application
     let app_id = payload.app_id.clone();
+    let app_name = application.spec.name.clone();
+    let app_config = application.spec.config.clone();
     server.register_application(
         app_id.clone(),
         device_id.clone(),
-        payload.name,
+        app_name,
         wasm_bytes.clone(),
-        None, // No config for now
+        app_config,
     ).await;
 
     // Wait for TLS connection to be established before sending deployment
@@ -605,6 +602,16 @@ async fn deploy_application(
         waited += 1;
     }
 
+    // Patch Application CRD status to Deploying for this device (Gateway owns status)
+    if let Err(e) = ApplicationStatusUpdate::default()
+        .phase(ApplicationPhase::Deploying)
+        .device_status(device_id.clone(), device_app_status(DeviceApplicationPhase::Deploying, None))
+        .apply(&server.application_api, &application)
+        .await
+    {
+        error!("Failed to patch Application {} status to Deploying: {}", app_id, e);
+    }
+
     // Send deployment command to device via TLS connection
     let server_clone = server.clone();
     let app_id_clone = app_id.clone();
@@ -612,15 +619,44 @@ async fn deploy_application(
     let wasm_bytes_clone = wasm_bytes.clone();
     
     tokio::spawn(async move {
-        // Deploy to the specific device
-        match server_clone.deploy_application_to_device(&device_id_clone, &app_id_clone, &wasm_bytes_clone).await {
+        match server_clone
+            .deploy_application_to_device(&device_id_clone, &app_id_clone, &wasm_bytes_clone)
+            .await
+        {
             Ok(_) => {
-                // Update application status to running
-                server_clone.update_application_status(&app_id_clone, DeviceApplicationPhase::Running, None).await;
+                if let Ok(app) = server_clone.application_api.get(&app_id_clone).await {
+                    let _ = ApplicationStatusUpdate::default()
+                        .phase(ApplicationPhase::Running)
+                        .device_status(
+                            device_id_clone.clone(),
+                            device_app_status(DeviceApplicationPhase::Running, None),
+                        )
+                        .apply(&server_clone.application_api, &app)
+                        .await;
+                }
+                server_clone
+                    .update_application_status(&app_id_clone, DeviceApplicationPhase::Running, None)
+                    .await;
             }
             Err(e) => {
-                eprintln!("Failed to deploy application {} to device {}: {}", app_id_clone, device_id_clone, e);
-                server_clone.update_application_status(&app_id_clone, DeviceApplicationPhase::Failed, Some(e.to_string())).await;
+                error!(
+                    "Deploy application {} to device {} failed: {}",
+                    app_id_clone, device_id_clone, e
+                );
+                if let Ok(app) = server_clone.application_api.get(&app_id_clone).await {
+                    let _ = ApplicationStatusUpdate::default()
+                        .phase(ApplicationPhase::Failed)
+                        .error(Some(e.to_string()))
+                        .device_status(
+                            device_id_clone.clone(),
+                            device_app_status(DeviceApplicationPhase::Failed, Some(e.to_string())),
+                        )
+                        .apply(&server_clone.application_api, &app)
+                        .await;
+                }
+                server_clone
+                    .update_application_status(&app_id_clone, DeviceApplicationPhase::Failed, Some(e.to_string()))
+                    .await;
             }
         }
     });
@@ -649,23 +685,54 @@ async fn stop_application(
         }));
     }
 
-    // Update application status
-    let server_clone = server.clone();
-    let app_id_clone = app_id.clone();
+    // Patch Application CRD status to Stopping
+    if let Ok(app) = server.application_api.get(&app_id).await {
+        let _ = ApplicationStatusUpdate::default()
+            .phase(ApplicationPhase::Stopping)
+            .apply(&server.application_api, &app)
+            .await;
+    }
     server.update_application_status(&app_id, DeviceApplicationPhase::Stopped, None).await;
 
-    // Send stop command to device via TLS connection
+    let server_clone = server.clone();
+    let app_id_clone = app_id.clone();
     let device_id_clone = device_id.clone();
     tokio::spawn(async move {
-        // Stop the application on the specific device
         match server_clone.stop_application_on_device(&device_id_clone, &app_id_clone).await {
             Ok(_) => {
-                // Update application status to stopped
-                server_clone.update_application_status(&app_id_clone, DeviceApplicationPhase::Stopped, None).await;
+                if let Ok(app) = server_clone.application_api.get(&app_id_clone).await {
+                    let _ = ApplicationStatusUpdate::default()
+                        .phase(ApplicationPhase::Stopped)
+                        .device_status(
+                            device_id_clone.clone(),
+                            device_app_status(DeviceApplicationPhase::Stopped, None),
+                        )
+                        .apply(&server_clone.application_api, &app)
+                        .await;
+                }
+                server_clone
+                    .update_application_status(&app_id_clone, DeviceApplicationPhase::Stopped, None)
+                    .await;
             }
             Err(e) => {
-                eprintln!("Failed to stop application {} on device {}: {}", app_id_clone, device_id_clone, e);
-                server_clone.update_application_status(&app_id_clone, DeviceApplicationPhase::Failed, Some(e.to_string())).await;
+                error!(
+                    "Stop application {} on device {} failed: {}",
+                    app_id_clone, device_id_clone, e
+                );
+                if let Ok(app) = server_clone.application_api.get(&app_id_clone).await {
+                    let _ = ApplicationStatusUpdate::default()
+                        .phase(ApplicationPhase::Failed)
+                        .error(Some(e.to_string()))
+                        .device_status(
+                            device_id_clone.clone(),
+                            device_app_status(DeviceApplicationPhase::Failed, Some(e.to_string())),
+                        )
+                        .apply(&server_clone.application_api, &app)
+                        .await;
+                }
+                server_clone
+                    .update_application_status(&app_id_clone, DeviceApplicationPhase::Failed, Some(e.to_string()))
+                    .await;
             }
         }
     });
@@ -717,6 +784,52 @@ async fn get_device_applications(
     Ok(Json(device_apps))
 }
 
+/// Register a board (device proxy) with the Gateway. Called by Renode Manager when a device proxy starts.
+async fn board_register(
+    State(server): State<Arc<HttpApiServer>>,
+    Json(payload): Json<BoardRegisterRequest>,
+) -> Result<Json<BoardRegistration>, StatusCode> {
+    let registered_at = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let registration = BoardRegistration {
+        device_id: payload.device_id.clone(),
+        endpoint: payload.endpoint.clone(),
+        mcu_type: payload.mcu_type.clone(),
+        capabilities: payload.capabilities.clone(),
+        registered_at,
+    };
+    let mut registry = server.board_registry.write().await;
+    registry.insert(payload.device_id.clone(), registration.clone());
+    drop(registry);
+    info!("Board registered: device_id={} endpoint={} mcu_type={}", payload.device_id, payload.endpoint, payload.mcu_type);
+    Ok(Json(registration))
+}
+
+/// List all registered boards.
+async fn board_list(
+    State(server): State<Arc<HttpApiServer>>,
+) -> Result<Json<Vec<BoardRegistration>>, StatusCode> {
+    let registry = server.board_registry.read().await;
+    let list: Vec<BoardRegistration> = registry.values().cloned().collect();
+    Ok(Json(list))
+}
+
+/// Unregister a board. Called by Renode Manager when a device proxy stops.
+async fn board_unregister(
+    State(server): State<Arc<HttpApiServer>>,
+    Path(device_id): Path<String>,
+) -> Result<StatusCode, StatusCode> {
+    let mut registry = server.board_registry.write().await;
+    if registry.remove(&device_id).is_some() {
+        info!("Board unregistered: device_id={}", device_id);
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Ok(StatusCode::NOT_FOUND)
+    }
+}
+
 /// Health check endpoint
 async fn health_check() -> StatusCode {
     StatusCode::OK
@@ -725,122 +838,6 @@ async fn health_check() -> StatusCode {
 /// Readiness check endpoint
 async fn readiness_check() -> StatusCode {
     StatusCode::OK
-}
-
-impl Clone for CborTlsHandler {
-    fn clone(&self) -> Self {
-        Self {
-            device_connections: self.device_connections.clone(),
-            applications: self.applications.clone(),
-        }
-    }
-}
-
-impl CborTlsHandler {
-    /// Handle incoming CBOR/TLS connection
-    pub async fn handle_connection(&self, stream: TcpStream, _tls_config: Arc<TlsServer>) -> Result<()> {
-        info!("Handling new CBOR/TLS connection");
-        
-        // In a real implementation, you would:
-        // 1. Perform TLS handshake
-        // 2. Authenticate the device
-        // 3. Handle enrollment process
-        // 4. Process CBOR messages
-        
-        // For now, we'll simulate the connection handling
-        let mut buffer = [0u8; 1024];
-        let mut stream = stream;
-        
-        loop {
-            match stream.read(&mut buffer).await {
-                Ok(0) => {
-                    info!("CBOR/TLS connection closed by client");
-                    break;
-                }
-                Ok(n) => {
-                    debug!("Received {} bytes from CBOR/TLS client", n);
-                    
-                    // In a real implementation, you would:
-                    // 1. Parse the CBOR message
-                    // 2. Verify the signature
-                    // 3. Process the message
-                    // 4. Send response
-                    
-                    // For now, just acknowledge receipt
-                    let response = b"ACK";
-                    if let Err(e) = stream.write_all(response).await {
-                        error!("Failed to send response: {}", e);
-                        break;
-                    }
-                }
-                Err(e) => {
-                    error!("Error reading from CBOR/TLS connection: {}", e);
-                    break;
-                }
-            }
-        }
-        
-        Ok(())
-    }
-    
-    /// Process CBOR message from device
-    async fn process_cbor_message(&self, message: CborTlsMessage) -> Result<()> {
-        debug!("Processing CBOR message: {}", message.message_type);
-        
-        match message.message_type.as_str() {
-            "enrollment_request" => {
-                self.handle_enrollment_request(message).await?;
-            }
-            "heartbeat" => {
-                self.handle_heartbeat(message).await?;
-            }
-            "application_status" => {
-                self.handle_application_status(message).await?;
-            }
-            _ => {
-                warn!("Unknown message type: {}", message.message_type);
-            }
-        }
-        
-        Ok(())
-    }
-    
-    /// Handle device enrollment request
-    async fn handle_enrollment_request(&self, _message: CborTlsMessage) -> Result<()> {
-        debug!("Handling enrollment request");
-        
-        // In a real implementation, you would:
-        // 1. Parse the enrollment request
-        // 2. Verify device credentials
-        // 3. Generate device UUID
-        // 4. Send enrollment response
-        
-        Ok(())
-    }
-    
-    /// Handle device heartbeat
-    async fn handle_heartbeat(&self, _message: CborTlsMessage) -> Result<()> {
-        debug!("Handling heartbeat");
-        
-        // In a real implementation, you would:
-        // 1. Parse the heartbeat message
-        // 2. Update device connection status
-        // 3. Send heartbeat response
-        
-        Ok(())
-    }
-    
-    /// Handle application status update
-    async fn handle_application_status(&self, _message: CborTlsMessage) -> Result<()> {
-        debug!("Handling application status update");
-        
-        // In a real implementation, you would:
-        // 1. Parse the status update
-        // 2. Update application status in Kubernetes
-        // 3. Log the status change
-        
-        Ok(())
-    }
 }
 
 /// Admin API handlers for pairing mode management
@@ -1158,8 +1155,9 @@ async fn create_application(
             config: None,
             metadata: None,
         },
+        status: None,
     };
-    
+
     match server.application_api.create(&kube::api::PostParams::default(), &application).await {
         Ok(_) => {
             info!("Created application: {}", name);

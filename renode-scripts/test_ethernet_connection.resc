@@ -33,8 +33,9 @@ echo "  Switch: ethernet_switch"
 echo "  TAP: tap0"
 echo ""
 
-# Load firmware (path should be absolute or relative to Renode working directory)
-$firmware_path?=@target/thumbv7em-none-eabihf/release/wasmbed-device-runtime
+# Load firmware: set path to Zephyr app ELF (e.g. zephyr-app/build/.../zephyr.elf)
+# wasmbed-device-runtime was removed; use Zephyr app from zephyr-app/ with west build
+$firmware_path?=@zephyr-app/build/zephyr/zephyr.elf
 if exists $firmware_path:
     echo "Loading firmware: $firmware_path"
     sysbus LoadELF $firmware_path
@@ -46,28 +47,18 @@ if exists $firmware_path:
     echo ""
     echo "Expected sequence:"
     echo "  1. Ethernet MAC initialization"
-    echo "  2. Network stack initialization (smoltcp)"
-    echo "  3. TCP connection attempt to gateway"
-    echo "  4. TLS handshake (if TLS enabled)"
+    echo "  2. Network stack initialization"
+    echo "  3. TCP/TLS connection to gateway"
+    echo "  4. Heartbeat and protocol messages"
     echo ""
     
     start
 else:
     echo "ERROR: Firmware not found: $firmware_path"
     echo ""
-    echo "Build firmware first with:"
-    echo "  cargo build --target thumbv7em-none-eabihf \\"
-    echo "    --package wasmbed-device-runtime \\"
-    echo "    --no-default-features \\"
-    echo "    --features network \\"
-    echo "    --release"
-    echo ""
-    echo "Or for TLS support:"
-    echo "  cargo build --target thumbv7em-none-eabihf \\"
-    echo "    --package wasmbed-device-runtime \\"
-    echo "    --no-default-features \\"
-    echo "    --features network,tls \\"
-    echo "    --release"
+    echo "Build Zephyr firmware first, e.g.:"
+    echo "  cd zephyr-app && west build -b stm32f4_disc1 ."
+    echo "  Then set firmware_path in this script to the zephyr.elf path."
     echo ""
     quit 1
 

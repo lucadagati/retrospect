@@ -46,19 +46,29 @@ RETROSPECT Wasmbed is a distributed system for managing WebAssembly applications
   - Secret storage
   - System monitoring
 
-### 2. Device Emulation (Host Docker)
+### 2. Device Emulation (Fog Layer)
 
-#### Renode Containers
-- **Location**: Host Docker (one container per device)
-- **Network**: `--net=host` (shares host network)
-- **Volumes**: Device-specific firmware volumes
+#### Device Proxy (one per device)
+- **Concept**: The **device proxy** is the logical object that represents one emulated device toward the control plane. It is one-per-device (or one-per-runtime when a device has multiple runtimes). Implementation may be a Docker container, a process, or a Renode machine.
+- **Location**: **Single Renode container** (`wasmbed-renode`): one Docker container runs one Renode process; each device is a **machine** inside that Renode instance (one Renode, N devices). The Renode monitor is exposed on port 9999; the manager sends commands to add/pause machines.
+- **Network**: Container exposes port 9999 (Renode monitor). Firmware in shared volume `wasmbed-firmware-store` (per-device subdirs).
 - **Responsibilities**:
-  - Hardware emulation (CPU, memory, peripherals)
+  - Hardware emulation (CPU, memory, peripherals) when implemented with Renode
   - Loads and executes Zephyr firmware
   - Provides UART analyzer for logs
+  - Interfaces with the runtime (Zephyr + WAMR) for application lifecycle
+
+#### Renode Manager (Board Provisioner)
+- **Role**: Creates and manages **device proxy** instances. The name "Renode Manager" is used because the current implementation uses Renode; the function is generic (device manager / board provisioner).
+- **Location**: Runs inside API Server Pod. Ensures the **single** Renode container (`wasmbed-renode`) is running, then sends monitor commands (TCP port 9999) to add or pause machines per device.
+- **Responsibilities**: Start/ensure singleton Renode container, copy firmware to shared volume, send Renode monitor commands to add/start or pause machines, register/unregister boards with Gateway.
+
+#### Una Renode, N device proxy
+- **Modello**: Una sola istanza Renode (un container Docker `wasmbed-renode`) gestisce **N device proxy**: ogni device è una **machine** dentro quella istanza, non un container separato. Il volume condiviso `wasmbed-firmware-store` contiene una sottocartella per device con il firmware. Il Renode Manager comunica con Renode via monitor (porta 9999) per avviare/sospendere le machine.
+- **Flusso**: Avvio device → comandi al monitor per creare e avviare la machine; stop device → `mach set` + `pause` sulla machine. Gateway e CRD vedono N device distinti; ogni device ha il proprio endpoint TLS e stato.
 
 #### Zephyr RTOS Firmware
-- **Location**: Runs inside Renode container
+- **Location**: Runs inside device proxy (e.g. inside Renode emulator)
 - **Boards Supported**:
   - **nRF52840 DK** (Official Zephyr board) - Recommended
   - **STM32F4 Discovery** (Official Zephyr board)
@@ -84,26 +94,26 @@ graph TB
     end
     
     subgraph "Fog Layer - Host Docker"
-        RenodeCont["Renode Container<br/>Network: host<br/>Volume: firmware-{device-id}"]
+        DevProxy["Device Proxy<br/>(one per device)<br/>Network: host<br/>Volume: firmware-{device-id}"]
     end
     
-    subgraph "Edge Layer - Emulated Device"
+    subgraph "Edge Layer - Emulated Device (Runtime)"
         Zephyr["Zephyr RTOS<br/>Network Stack + TLS"]
         WAMR["WAMR Runtime<br/>WebAssembly"]
     end
     
     Dashboard -->|HTTP| APIServer
-    APIServer -->|Manages| RenodeCont
+    APIServer -->|Manages| DevProxy
     Zephyr -->|TLS 1.3| Gateway
     Zephyr -->|Executes| WAMR
-    RenodeCont -->|Runs| Zephyr
+    DevProxy -->|Runs| Zephyr
 ```
 
 ## TLS Connection Flow
 
 1. **Device Startup**:
-   - Renode container starts with firmware volume
-   - Renode writes gateway endpoint to memory (0x20001000)
+   - Device proxy starts with firmware volume (e.g. Renode container)
+   - Device proxy writes gateway endpoint to memory (0x20001000)
    - Format: `"10.42.0.12:8081"` (15 bytes)
 
 2. **Zephyr Initialization**:
@@ -173,6 +183,22 @@ Previously, devices used a TCP bridge at `127.0.0.1:40029`. Now they connect dir
 - Reused on subsequent Renode restarts
 - No more `127.0.0.1` fallback
 
+## Board registration protocol
+
+When a **device proxy** (e.g. Renode container) starts, the **Renode Manager** (running in the API Server) registers the board with the **Gateway** over HTTP. When the device proxy stops, the manager unregisters it. The Gateway keeps an in-memory **board registry** (device_id → endpoint, mcu_type, capabilities).
+
+### Endpoints (Gateway HTTP API, port 8080)
+
+- **POST /api/v1/board/register** — Register a board. Body: `{ "device_id", "endpoint", "mcu_type", "capabilities" }` (optional: `has_ethernet`, `has_wifi`, `has_network`). Returns the stored registration.
+- **GET /api/v1/board** — List all registered boards.
+- **DELETE /api/v1/board/:device_id** — Unregister a board (204 No Content or 404 if not found).
+
+### Flow
+
+1. API Server starts a device proxy (e.g. `docker run` for Renode); after the process/container is up, it calls `POST .../board/register` with the device’s gateway endpoint, MCU type, and capabilities.
+2. The Gateway adds the board to its registry. The device (Zephyr) can then connect via TLS and enroll; the Gateway can correlate TLS connections with registered boards.
+3. When the API Server stops the device proxy (e.g. `docker stop`), it calls `DELETE .../board/:device_id` so the Gateway removes the board from the registry.
+
 ## Supported MCU Types
 
 See [MCU_SUPPORT.md](MCU_SUPPORT.md) for complete list of supported MCU types.
@@ -233,6 +259,10 @@ See [MCU_SUPPORT.md](MCU_SUPPORT.md) for complete list of supported MCU types.
 5. Device → WAMR → Load and execute WASM
 6. Device → Gateway: Send execution results
 ```
+
+### Gateway and Application CRD status (desired vs reported)
+
+The Gateway is the component in the middle between the control plane and devices: it reads **desired** state from the Application CRD (spec) and writes **reported** state to the Application CRD status (phase, deviceStatuses, error). The Gateway is the owner of Application status; the Application Controller triggers deploy via the Gateway API but does not write Application status.
 
 ## Security
 
@@ -339,3 +369,7 @@ See [MCU_SUPPORT.md](MCU_SUPPORT.md) for complete list of supported MCU types.
 4. **Real Hardware Support**: Complete integration guide for physical devices (see [REAL_DEVICE_INTEGRATION.md](REAL_DEVICE_INTEGRATION.md))
 5. **Performance Optimization**: Optimize Renode startup time and API response times
 6. **Monitoring**: Enhanced metrics collection and distributed tracing
+
+### Future evolution: multi-workload per device
+
+The current model is one Application to many target devices (each device runs one instance of that application). A possible evolution is multiple WASM workloads on the same node: several applications on one device, with intra-node (same device) and inter-node (device-to-device) communication. This is not yet modelled or implemented; the CRD and Gateway assume one deployed application context per device per Application resource.

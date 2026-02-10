@@ -26,6 +26,6 @@ RUN apt-get update && apt-get install -y \
 # Copy from builder if build succeeded, otherwise expect binary to be mounted/copied
 COPY --from=builder /app/target/release/wasmbed-gateway /usr/local/bin/wasmbed-gateway
 
-EXPOSE 4423 8080
+EXPOSE 8080 8081
 
 CMD ["wasmbed-gateway"]

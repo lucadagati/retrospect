@@ -47,10 +47,11 @@ tests/
 build/
 dist/
 
-# Environment files
+# Environment files (machine-specific paths)
 .env
 .env.local
 .env.*.local
+.env.zephyr
 
 # Node modules (if any)
 node_modules/

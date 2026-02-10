@@ -2,7 +2,7 @@
 // Copyright © 2025 Wasmbed contributors
 
 use kube::{
-    api::{Api, ListParams, Patch, PatchParams, PostParams},
+    api::{Api, ListParams, Patch, PatchParams},
     client::Client,
     runtime::{
         controller::{Action, Controller},
@@ -10,8 +10,6 @@ use kube::{
     },
     ResourceExt,
 };
-use k8s_openapi::api::core::v1::Pod;
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use futures_util::StreamExt;
 use std::time::Duration;
 use tracing::{error, info, warn};
@@ -34,14 +32,12 @@ pub enum ControllerError {
 pub struct DeviceController {
     client: Client,
     devices: Api<Device>,
-    pods: Api<Pod>,
 }
 
 impl DeviceController {
     pub fn new(client: Client) -> Self {
         Self {
             devices: Api::<Device>::namespaced(client.clone(), "wasmbed"),
-            pods: Api::<Pod>::namespaced(client.clone(), "wasmbed"),
             client,
         }
     }
@@ -567,7 +563,42 @@ impl DeviceController {
     }
 
     async fn handle_unreachable(&self, device: &Device) -> Result<(), ControllerError> {
-        warn!("Device {} is unreachable", device.name_any());
+        let device_id = device.name_any();
+        info!("Device {} is unreachable (heartbeat timeout), attempting automatic recovery", device_id);
+
+        // Same reconnection as handle_disconnected: re-register with Gateway so when device reconnects TLS and sends heartbeat, Gateway can mark Connected
+        let gateway_endpoint = if let Some(gateway_ref) = device.status.as_ref().and_then(|s| s.gateway.as_ref()) {
+            gateway_ref.endpoint.clone()
+        } else {
+            let gateways_api = Api::<Gateway>::namespaced(self.client.clone(), "wasmbed");
+            match gateways_api.list(&kube::api::ListParams::default()).await {
+                Ok(gateways) => gateways.items.iter()
+                    .find_map(|g| {
+                        if let Some(status) = &g.status {
+                            if matches!(status.phase, GatewayPhase::Running) {
+                                return Some(if g.spec.endpoint.is_empty() {
+                                    "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string()
+                                } else {
+                                    g.spec.endpoint.clone()
+                                });
+                            }
+                        }
+                        None
+                    })
+                    .unwrap_or_else(|| "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string()),
+                Err(_) => "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string(),
+            }
+        };
+
+        let gateway_url = format!("{}/api/v1/devices/{}/connect", gateway_endpoint, device_id);
+        let client = reqwest::Client::new();
+        match client.post(&gateway_url).timeout(std::time::Duration::from_secs(10)).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                info!("Device {} re-registered with gateway for recovery; will become Connected when TLS heartbeat is received", device_id);
+            }
+            Ok(resp) => warn!("Gateway recovery returned status {} for device {}", resp.status(), device_id),
+            Err(e) => warn!("Failed to re-register device {} with gateway: {}. Will retry on next reconciliation.", device_id, e),
+        }
         Ok(())
     }
 
@@ -593,86 +624,6 @@ impl DeviceController {
         }
     }
 
-    // NOTE: This function is no longer used because Renode is managed as a standalone process
-    // by RenodeManager, not as a Docker container. Renode is spawned directly as a process
-    // (see wasmbed-qemu-manager/src/lib.rs build_renode_args and Command::spawn).
-    // 
-    // Renode is NOT a Docker container - it's a standalone application that runs as a process.
-    // See: https://interrupt.memfault.com/blog/intro-to-renode
-    //
-    // If you need to run Renode in a container in the future, you would need to:
-    // 1. Create a proper Docker image with Renode installed
-    // 2. Update the image name from "qemu/qemu:latest" (which doesn't exist) to the correct image
-    // 3. Ensure Renode binary is available in the container
-    #[allow(dead_code)]
-    async fn create_device_pod(&self, device: &Device) -> Result<(), ControllerError> {
-        let pod_name = format!("{}-pod", device.name_any());
-        
-        // Check if pod already exists
-        match self.pods.get(&pod_name).await {
-            Ok(_) => {
-                info!("Pod {} already exists", pod_name);
-                return Ok(());
-            }
-            Err(kube::Error::Api(kube::core::ErrorResponse { code: 404, .. })) => {
-                // Pod doesn't exist, create it
-            }
-            Err(e) => return Err(ControllerError::KubeError(e)),
-        }
-
-        let pod = Pod {
-            metadata: ObjectMeta {
-                name: Some(pod_name.clone()),
-                namespace: Some("wasmbed".to_string()),
-                labels: Some({
-                    let mut labels = std::collections::BTreeMap::new();
-                    labels.insert("app".to_string(), "wasmbed-device".to_string());
-                    labels.insert("device".to_string(), device.name_any());
-                    labels
-                }),
-                ..Default::default()
-            },
-            spec: Some(k8s_openapi::api::core::v1::PodSpec {
-                containers: vec![k8s_openapi::api::core::v1::Container {
-                    name: "qemu-device".to_string(),
-                    image: Some("qemu/qemu:latest".to_string()), // NOTE: This image doesn't exist - Renode is not a Docker container
-                    env: Some(vec![
-                        k8s_openapi::api::core::v1::EnvVar {
-                            name: "DEVICE_NAME".to_string(),
-                            value: Some(device.name_any()),
-                            ..Default::default()
-                        },
-                        k8s_openapi::api::core::v1::EnvVar {
-                            name: "DEVICE_PUBLIC_KEY".to_string(),
-                            value: Some(device.spec.public_key.clone()),
-                            ..Default::default()
-                        },
-                        k8s_openapi::api::core::v1::EnvVar {
-                            name: "QEMU_ENDPOINT".to_string(),
-                            value: Some(format!("127.0.0.1:{}", 30450 + device.name_any().len() as u16)),
-                            ..Default::default()
-                        },
-                    ]),
-                    ports: Some(vec![
-                        k8s_openapi::api::core::v1::ContainerPort {
-                            container_port: 8080,
-                            name: Some("device-api".to_string()),
-                            ..Default::default()
-                        },
-                    ]),
-                    ..Default::default()
-                }],
-                restart_policy: Some("Always".to_string()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-
-        let params = PostParams::default();
-        self.pods.create(&params, &pod).await?;
-        info!("Created pod for device: {}", device.name_any());
-        Ok(())
-    }
 }
 
 #[tokio::main]

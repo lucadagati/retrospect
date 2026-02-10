@@ -43,6 +43,24 @@ cd /home/lucadag/18_10_23_retrospect/retrospect
 - Gateway configurato
 - Dashboard accessibile
 
+### `generate-gateway-certs.sh`
+Genera certificati X.509 v3 per il Gateway (CA, server cert, server key). Di default scrive in `config/certs/`; opzionalmente si può passare una directory. Usare `--private-key`, `--certificate`, `--client-ca` per avviare il Gateway in locale o in K8s.
+
+**Utilizzo:**
+```bash
+./scripts/generate-gateway-certs.sh [OUTPUT_DIR]
+```
+
+### `verify-tls-and-deploy.sh`
+Verifica mantenimento TLS (heartbeat, unreachable, recovery) e deploy WASM su device Renode. Richiede API e Gateway HTTP raggiungibili (es. port-forward).
+
+**Utilizzo:**
+```bash
+./scripts/verify-tls-and-deploy.sh [API_BASE_URL] [GATEWAY_HTTP_URL]
+```
+
+Vedi `doc/RENODE_TLS_DEPLOY_VERIFICATION.md` per i dettagli.
+
 ### `cleanup-k3s.sh`
 Rimozione completa del deployment Wasmbed.
 

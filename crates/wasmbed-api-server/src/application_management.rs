@@ -78,19 +78,19 @@ impl ApplicationManager {
                         .unwrap_or("unknown:latest")
                         .to_string();
                     
-                    // Extract deployed devices from deviceStatuses (keys are device IDs)
-                    // Also check if there's a deployedDevices array for backward compatibility
-                    let deployed_devices: Vec<String> = if let Some(device_statuses) = item["status"]["deviceStatuses"].as_object() {
-                        // Extract device IDs from deviceStatuses keys
-                        device_statuses.keys().cloned().collect()
+                    // Extract deployed devices and per-device status counts from deviceStatuses
+                    let (deployed_devices, failed_devices_count) = if let Some(device_statuses) = item["status"]["deviceStatuses"].as_object() {
+                        let ids: Vec<String> = device_statuses.keys().cloned().collect();
+                        let failed = device_statuses.values().filter(|v| v.get("status").and_then(|s| s.as_str()) == Some("Failed")).count() as u32;
+                        (ids, failed)
                     } else if let Some(deployed_devices_arr) = item["status"]["deployedDevices"].as_array() {
-                        // Fallback to deployedDevices array if it exists
-                        deployed_devices_arr.iter()
+                        let ids: Vec<String> = deployed_devices_arr.iter()
                             .filter_map(|v| v.as_str())
                             .map(|s| s.to_string())
-                            .collect()
+                            .collect();
+                        (ids, 0u32)
                     } else {
-                        Vec::new()
+                        (Vec::new(), 0u32)
                     };
                     
                     let created_at = metadata["creationTimestamp"]
@@ -148,11 +148,12 @@ impl ApplicationManager {
 
                     applications.push(ApplicationInfo {
                         app_id: app_id.clone(),
-                        id: Some(app_id.clone()), // Ensure id is set from app_id
+                        id: Some(app_id.clone()),
                         name,
                         image,
                         status,
                         deployed_devices,
+                        failed_devices: failed_devices_count,
                         created_at,
                         target_devices,
                         last_updated,

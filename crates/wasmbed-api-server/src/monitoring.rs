@@ -28,9 +28,10 @@ impl MonitoringDashboard {
     }
 
     pub async fn get_metrics(&self) -> anyhow::Result<Vec<MetricValue>> {
+        if self.infrastructure_endpoint.is_empty() {
+            return self.get_fallback_metrics().await;
+        }
         info!("Fetching metrics from infrastructure");
-        
-        // Make HTTP requests to the infrastructure service
         let client = reqwest::Client::new();
                let response = client
                    .get(&format!("{}/api/v1/metrics", self.infrastructure_endpoint))

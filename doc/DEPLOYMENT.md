@@ -50,22 +50,15 @@ This script will:
 
 ### 4. Setup Zephyr Workspace (Optional, for firmware compilation)
 
-```bash
-./scripts/setup-zephyr-workspace.sh
-```
+Zephyr e firmware sono descritti in **doc/FIRMWARE.md**. In sintesi: configurare `ZEPHYR_BASE` (workspace Zephyr) e SDK, poi in `zephyr-app/` usare `west build` per la board desiderata (es. `west build -b stm32f4_disc1 .`).
 
-This script:
-- Clones Zephyr RTOS
-- Configures environment
-- Sets up WAMR (if not present)
-
-### 5. Build Firmware (Optional)
+### 5. Certificati Gateway (per avvio Gateway in locale)
 
 ```bash
-./scripts/build-zephyr-app.sh
+./scripts/generate-gateway-certs.sh
 ```
 
-Compiles Zephyr firmware for supported platforms.
+Genera certificati X.509 v3 in `config/certs/` (o in una directory passata come argomento). Usare `--private-key`, `--certificate`, `--client-ca` per avviare il Gateway.
 
 ## Manual Deployment (Alternative to deploy-k3s.sh)
 
@@ -98,21 +91,31 @@ Permissions for controllers and API server.
 
 ### 4. Generate TLS Certificates
 
+Usare lo script (raccomandato):
+
 ```bash
+./scripts/generate-gateway-certs.sh
+# Crea config/certs/ (ca-cert.pem, server-cert.pem, server-key.pem)
+```
+
+Oppure manualmente con OpenSSL (salvare in `config/certs/`):
+
+```bash
+mkdir -p config/certs
 # Generate CA certificate
-openssl genrsa -out certs/ca-key.pem 4096
-openssl req -new -x509 -days 365 -key certs/ca-key.pem -out certs/ca-cert.pem -subj "/CN=wasmbed-ca"
+openssl genrsa -out config/certs/ca-key.pem 4096
+openssl req -new -x509 -days 365 -key config/certs/ca-key.pem -out config/certs/ca-cert.pem -subj "/CN=wasmbed-ca"
 
 # Generate server certificate
-openssl genrsa -out certs/server-key.pem 4096
-openssl req -new -key certs/server-key.pem -out certs/server-csr.pem -subj "/CN=wasmbed-gateway"
-openssl x509 -req -days 365 -in certs/server-csr.pem -CA certs/ca-cert.pem -CAkey certs/ca-key.pem -CAcreateserial -out certs/server-cert.pem
+openssl genrsa -out config/certs/server-key.pem 4096
+openssl req -new -key config/certs/server-key.pem -out config/certs/server-csr.pem -subj "/CN=wasmbed-gateway"
+openssl x509 -req -days 365 -in config/certs/server-csr.pem -CA config/certs/ca-cert.pem -CAkey config/certs/ca-key.pem -CAcreateserial -out config/certs/server-cert.pem
 
 # Create Kubernetes secret
 kubectl create secret generic gateway-certificates -n wasmbed \
-  --from-file=ca-cert.pem=certs/ca-cert.pem \
-  --from-file=server-cert.pem=certs/server-cert.pem \
-  --from-file=server-key.pem=certs/server-key.pem
+  --from-file=ca-cert.pem=config/certs/ca-cert.pem \
+  --from-file=server-cert.pem=config/certs/server-cert.pem \
+  --from-file=server-key.pem=config/certs/server-key.pem
 ```
 
 ### 5. Build and Push Docker Images
@@ -166,9 +169,9 @@ gateway:
   http_addr: "0.0.0.0:8080"
   
 tls:
-  ca_cert: "certs/ca-cert.pem"
-  server_cert: "certs/server-cert.pem"
-  server_key: "certs/server-key.pem"
+  ca_cert: "config/certs/ca-cert.pem"
+  server_cert: "config/certs/server-cert.pem"
+  server_key: "config/certs/server-key.pem"
 ```
 
 ### Environment Variables

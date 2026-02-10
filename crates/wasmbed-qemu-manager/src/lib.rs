@@ -3,6 +3,7 @@
 
 use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 use std::time::Duration;
 use std::collections::HashMap;
@@ -10,6 +11,193 @@ use std::sync::Arc;
 use std::thread;
 use wasmbed_tcp_bridge::TcpBridge;
 use base64::{engine::general_purpose, Engine};
+
+/// Derive Gateway HTTP base URL from TLS/gateway endpoint.
+/// Accepts either a full URL ("http://host:8080" or "http://host:8081") or host:port ("10.42.0.12:8081").
+/// Board API is always on port 8080.
+fn gateway_http_from_tls_endpoint(tls_endpoint: &str) -> String {
+    let s = tls_endpoint.trim();
+    if s.starts_with("http://") || s.starts_with("https://") {
+        // Full URL: extract host and use port 8080 for the HTTP API
+        let after_scheme = s
+            .strip_prefix("http://")
+            .or_else(|| s.strip_prefix("https://"))
+            .unwrap_or(s);
+        let host = after_scheme
+            .splitn(2, ':')
+            .next()
+            .and_then(|h| if h.is_empty() { None } else { Some(h) })
+            .unwrap_or_else(|| after_scheme.split('/').next().unwrap_or("127.0.0.1"));
+        format!("http://{}:8080", host)
+    } else {
+        // host:port
+        let host = s.splitn(2, ':').next().unwrap_or("127.0.0.1");
+        format!("http://{}:8080", host)
+    }
+}
+
+/// Request body for board registration (matches Gateway's BoardRegisterRequest).
+#[derive(Debug, Serialize)]
+struct BoardRegisterRequest {
+    device_id: String,
+    endpoint: String,
+    mcu_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    capabilities: Option<BoardCapabilitiesRequest>,
+}
+
+#[derive(Debug, Serialize)]
+struct BoardCapabilitiesRequest {
+    has_ethernet: bool,
+    has_wifi: bool,
+    has_network: bool,
+}
+
+/// Register the board (device proxy) with the Gateway. Called after device proxy starts.
+async fn register_board_with_gateway(
+    gateway_http: &str,
+    device_id: &str,
+    endpoint: &str,
+    mcu_type: &str,
+    has_ethernet: bool,
+    has_wifi: bool,
+) {
+    let url = format!("{}/api/v1/board/register", gateway_http.trim_end_matches('/'));
+    let body = BoardRegisterRequest {
+        device_id: device_id.to_string(),
+        endpoint: endpoint.to_string(),
+        mcu_type: mcu_type.to_string(),
+        capabilities: Some(BoardCapabilitiesRequest {
+            has_ethernet,
+            has_wifi,
+            has_network: has_ethernet || has_wifi,
+        }),
+    };
+    match reqwest::Client::new()
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                eprintln!("Board registered with Gateway: device_id={}", device_id);
+            } else {
+                eprintln!(
+                    "Gateway board registration returned status {} for device_id={}",
+                    resp.status(),
+                    device_id
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "Failed to register board with Gateway for device_id={}: {}",
+                device_id, e
+            );
+        }
+    }
+}
+
+/// Unregister the board from the Gateway. Called when device proxy stops.
+async fn unregister_board_from_gateway(gateway_http: &str, device_id: &str) {
+    let url = format!("{}/api/v1/board/{}", gateway_http.trim_end_matches('/'), device_id);
+    match reqwest::Client::new().delete(&url).send().await {
+        Ok(resp) => {
+            if resp.status().is_success() || resp.status().as_u16() == 204 || resp.status().as_u16() == 404 {
+                eprintln!("Board unregistered from Gateway: device_id={}", device_id);
+            } else {
+                eprintln!(
+                    "Gateway board unregister returned status {} for device_id={}",
+                    resp.status(),
+                    device_id
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "Failed to unregister board from Gateway for device_id={}: {}",
+                device_id, e
+            );
+        }
+    }
+}
+
+// --- Single Renode instance (one container, N devices) ---
+const WASMBED_RENODE_CONTAINER_NAME: &str = "wasmbed-renode";
+const WASMBED_FIRMWARE_VOLUME: &str = "wasmbed-firmware-store";
+const RENODE_MONITOR_PORT: u16 = 9999;
+
+/// Ensure the singleton Renode container is running. Start it if not.
+fn ensure_renode_container_running() -> Result<(), anyhow::Error> {
+    let check = Command::new("docker")
+        .args(&["ps", "-a", "--filter", &format!("name={}", WASMBED_RENODE_CONTAINER_NAME), "--format", "{{.Names}} {{.Status}}"])
+        .output()?;
+    let out = String::from_utf8_lossy(&check.stdout);
+    let running = out.contains(WASMBED_RENODE_CONTAINER_NAME) && (out.contains("Up") || out.contains("running"));
+    if running {
+        return Ok(());
+    }
+    // Remove if exists but stopped
+    let _ = Command::new("docker")
+        .args(&["rm", "-f", WASMBED_RENODE_CONTAINER_NAME])
+        .output();
+    // Create volume if needed
+    let _ = Command::new("docker")
+        .args(&["volume", "create", WASMBED_FIRMWARE_VOLUME])
+        .output();
+    // Start singleton Renode with monitor on port
+    let status = Command::new("docker")
+        .args(&[
+            "run", "-d", "--restart=unless-stopped",
+            "--name", WASMBED_RENODE_CONTAINER_NAME,
+            "-v", &format!("{}:/firmware:ro", WASMBED_FIRMWARE_VOLUME),
+            "-p", &format!("{}:{}", RENODE_MONITOR_PORT, RENODE_MONITOR_PORT),
+            "antmicro/renode:nightly",
+            "renode", "--console", "--disable-gui", "-P", &RENODE_MONITOR_PORT.to_string(),
+        ])
+        .status()?;
+    if !status.success() {
+        return Err(anyhow::anyhow!("Failed to start Renode container"));
+    }
+    std::thread::sleep(Duration::from_secs(2));
+    Ok(())
+}
+
+/// Copy firmware into the shared volume under /firmware/<device_id>/<filename>.
+fn copy_firmware_to_shared_volume(device_id: &str, firmware_path: &std::path::Path, firmware_filename: &str) -> Result<(), anyhow::Error> {
+    let parent = firmware_path.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|| ".".to_string());
+    let create_and_copy = Command::new("docker")
+        .args(&[
+            "run", "--rm",
+            "-v", &format!("{}:/firmware", WASMBED_FIRMWARE_VOLUME),
+            "-v", &format!("{}:/source:ro", parent),
+            "alpine:latest",
+            "sh", "-c",
+            &format!("mkdir -p /firmware/{} && cp /source/{} /firmware/{}/{}", device_id, firmware_filename, device_id, firmware_filename),
+        ])
+        .output()?;
+    if !create_and_copy.status.success() {
+        let stderr = String::from_utf8_lossy(&create_and_copy.stderr);
+        return Err(anyhow::anyhow!("Failed to copy firmware to shared volume: {}", stderr));
+    }
+    Ok(())
+}
+
+/// Send monitor commands to the running Renode instance (TCP, line-based).
+async fn send_renode_monitor_commands(addr: &str, commands: &str) -> Result<(), anyhow::Error> {
+    let mut stream = tokio::net::TcpStream::connect(addr).await?;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let filtered: String = commands
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(|l| format!("{}\n", l))
+        .collect();
+    stream.write_all(filtered.as_bytes()).await?;
+    stream.flush().await?;
+    Ok(())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QemuDevice {
@@ -454,39 +642,6 @@ impl RenodeManager {
         let device = devices.get_mut(device_id)
             .ok_or_else(|| anyhow::anyhow!("Device {} not found after loading from CRD", device_id))?;
 
-        // Check if Docker container already exists and is running
-        let use_docker = std::env::var("RENODE_USE_DOCKER").unwrap_or_else(|_| "true".to_string()) == "true";
-        if use_docker {
-            let container_name = format!("renode-{}", device_id);
-            let check_container = Command::new("docker")
-                .args(&["ps", "-a", "--filter", &format!("name={}", container_name), "--format", "{{.Names}} {{.Status}}"])
-                .output();
-            
-            if let Ok(output) = check_container {
-                let output_str = String::from_utf8_lossy(&output.stdout);
-                let _ = std::fs::write(&debug_log_path, format!("Container check output: {:?}\n", output_str));
-                if output_str.contains(&container_name) {
-                    if output_str.contains("Up") || output_str.contains("running") {
-                        // FORCE RECREATION: Stop and remove existing container to regenerate script with Python code
-                        println!("Renode container {} exists but forcing recreation to update script", container_name);
-                        let _ = Command::new("docker")
-                            .args(&["stop", &container_name])
-                            .output();
-                        let _ = Command::new("docker")
-                            .args(&["rm", "-f", &container_name])
-                            .output();
-                        // Continue to build_renode_args to regenerate script
-                    } else if output_str.contains("Exited") {
-                        println!("Renode container {} exists but is stopped, removing and recreating", container_name);
-                        // Remove stopped container so we can recreate it with new restart policy
-                        let _ = Command::new("docker")
-                            .args(&["rm", "-f", &container_name])
-                            .output();
-                    }
-                }
-            }
-        }
-
         if matches!(device.status, QemuDeviceStatus::Running) {
             return Err(anyhow::anyhow!("Device is already running"));
         }
@@ -765,113 +920,53 @@ impl RenodeManager {
 
         device.status = QemuDeviceStatus::Starting;
 
-        // Copy firmware to a Docker volume if using Docker
-        // This is necessary because the firmware is inside the API server container image
-        // and we need to make it accessible to the Renode container
         let use_docker = std::env::var("RENODE_USE_DOCKER").unwrap_or_else(|_| "true".to_string()) == "true";
+
+        // Single Renode instance (one container, N devices): send commands to monitor
         if use_docker {
-            // Get firmware path
             let firmware_path = self.get_firmware_path(&device.mcu_type)?;
-            let firmware_path_str = firmware_path.to_string_lossy().to_string();
             let firmware_filename = firmware_path
                 .file_name()
                 .unwrap_or_else(|| std::ffi::OsStr::new("zephyr.elf"))
                 .to_string_lossy()
                 .to_string();
-            
-            // Create a Docker volume for the firmware
-            let firmware_volume_name = format!("firmware-{}", device_id);
-            
-            // Check if volume already exists, create if not
-            let volume_check = Command::new("docker")
-                .args(&["volume", "inspect", &firmware_volume_name])
-                .output();
-            
-            if volume_check.is_err() || !volume_check.unwrap().status.success() {
-                // Create volume
-                let create_volume = Command::new("docker")
-                    .args(&["volume", "create", &firmware_volume_name])
-                    .output();
-                
-                if let Err(e) = create_volume {
-                    eprintln!("Failed to create Docker volume {}: {}", firmware_volume_name, e);
-                    return Err(anyhow::anyhow!("Failed to create Docker volume: {}", e));
-                }
-                println!("Created Docker volume: {}", firmware_volume_name);
-            }
-            
-            // Copy firmware from current container filesystem to volume
-            // We're running inside the API server container, so the firmware should be accessible
-            // Use cat to read the file and pipe it to a container that writes to the volume
-            let firmware_copied = if std::path::Path::new(&firmware_path_str).exists() {
-                println!("Firmware found in container filesystem, copying to volume {}", firmware_volume_name);
-                
-                // Use cat to read the file and pipe to docker run
-                let cat_process = Command::new("cat")
-                    .arg(&firmware_path_str)
-                    .stdout(Stdio::piped())
-                    .spawn();
-                
-                if let Ok(mut cat_proc) = cat_process {
-                    if let Some(cat_stdout) = cat_proc.stdout.take() {
-                        // Write to volume using a temporary container
-                        let volume_write = Command::new("docker")
-                            .args(&[
-                                "run", "-i", "--rm",
-                                "-v", &format!("{}:/firmware", firmware_volume_name),
-                                "alpine:latest",
-                                "sh", "-c",
-                                &format!("cat > /firmware/{} && ls -lh /firmware/{}", firmware_filename, firmware_filename)
-                            ])
-                            .stdin(cat_stdout)
-                            .output();
-                        
-                        if let Ok(write_output) = volume_write {
-                            if write_output.status.success() {
-                                println!("Firmware copied successfully to volume {}", firmware_volume_name);
-                                true
-                            } else {
-                                let error_msg = String::from_utf8_lossy(&write_output.stderr);
-                                eprintln!("Failed to write firmware to volume: {}", error_msg);
-                                false
-                            }
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            } else {
-                eprintln!("WARNING: Firmware not found at {}", firmware_path_str);
-                false
+            let gateway_endpoint_str = device.gateway_endpoint.as_deref().unwrap_or("127.0.0.1:8081").to_string();
+            let gateway_http = device.gateway_endpoint.as_ref().map(|s| gateway_http_from_tls_endpoint(s.as_str()));
+            let endpoint = device.endpoint.clone();
+            let mcu_type_fmt = format!("{:?}", device.mcu_type);
+            let has_eth = device.mcu_type.has_ethernet();
+            let has_wifi = device.mcu_type.has_wifi();
+            drop(devices);
+
+            ensure_renode_container_running()?;
+            copy_firmware_to_shared_volume(device_id, &firmware_path, &firmware_filename)?;
+
+            let commands = {
+                let devices = self.devices.lock().await;
+                let device = devices.get(device_id).ok_or_else(|| anyhow::anyhow!("Device not found"))?;
+                self.build_renode_commands_string(
+                    device,
+                    device_id,
+                    &gateway_endpoint_str,
+                    &format!("/firmware/{}/{}", device_id, firmware_filename),
+                ).map_err(|e| anyhow::anyhow!("build_renode_commands_string: {}", e))?
             };
-            
-            // Fallback: if firmware exists on host filesystem, copy from there
-            if !firmware_copied && std::path::Path::new(&firmware_path_str).exists() {
-                println!("Copying firmware from host filesystem to volume {}", firmware_volume_name);
-                let copy_from_host = Command::new("docker")
-                    .args(&[
-                        "run", "--rm",
-                        "-v", &format!("{}:/firmware", firmware_volume_name),
-                        "-v", &format!("{}:/source:ro", firmware_path.parent().unwrap().to_string_lossy()),
-                        "alpine:latest",
-                        "sh", "-c",
-                        &format!("cp /source/{} /firmware/{}", firmware_filename, firmware_filename)
-                    ])
-                    .output();
-                
-                if let Ok(host_copy_output) = copy_from_host {
-                    if !host_copy_output.status.success() {
-                        let error_msg = String::from_utf8_lossy(&host_copy_output.stderr);
-                        eprintln!("Failed to copy firmware from host: {}", error_msg);
-                    }
-                }
+            let monitor_addr = std::env::var("RENODE_MONITOR_ADDR").unwrap_or_else(|_| "127.0.0.1:9999".to_string());
+            send_renode_monitor_commands(&monitor_addr, &commands).await?;
+
+            if let Some(ref gw) = gateway_http {
+                register_board_with_gateway(gw, device_id, &endpoint, &mcu_type_fmt, has_eth, has_wifi).await;
             }
+
+            let mut devices = self.devices.lock().await;
+            if let Some(device) = devices.get_mut(device_id) {
+                device.status = QemuDeviceStatus::Running;
+                device.process_id = None;
+            }
+            return Ok(());
         }
 
+        // Per-device Renode process (native / no Docker)
         // Start Renode process
         let renode_args = self.build_renode_args(device, device_id)?;
         println!("Starting Renode with args: {:?}", renode_args);
@@ -884,10 +979,32 @@ impl RenodeManager {
             Ok(mut child) => {
                 device.process_id = Some(child.id());
                 device.status = QemuDeviceStatus::Running;
+
+                // Register board with Gateway (so Gateway knows this device proxy is up)
+                let device_id_clone = device_id.to_string();
+                let gateway_http = device
+                    .gateway_endpoint
+                    .as_ref()
+                    .map(|s| gateway_http_from_tls_endpoint(s.as_str()));
+                let endpoint = device.endpoint.clone();
+                let mcu_type_fmt = format!("{:?}", device.mcu_type);
+                let has_eth = device.mcu_type.has_ethernet();
+                let has_wifi = device.mcu_type.has_wifi();
+                drop(devices);
+                if let Some(gw) = gateway_http {
+                    register_board_with_gateway(
+                        &gw,
+                        &device_id_clone,
+                        &endpoint,
+                        &mcu_type_fmt,
+                        has_eth,
+                        has_wifi,
+                    )
+                    .await;
+                }
+                let devices_clone = self.devices.clone();
                 
                 // Spawn a thread to monitor the process
-                let device_id_clone = device_id.to_string();
-                let devices_clone = self.devices.clone();
                 
                 // Don't wait for the process to exit - Renode should stay running
                 // Instead, just spawn a detached thread that monitors but doesn't block
@@ -942,30 +1059,30 @@ impl RenodeManager {
     }
 
     pub async fn stop_device(&self, device_id: &str) -> Result<(), anyhow::Error> {
-        let mut devices = self.devices.lock().await;
-        
-        let device = devices.get_mut(device_id)
+        let mut guard = Some(self.devices.lock().await);
+        let device = guard.as_deref_mut().unwrap().get_mut(device_id)
             .ok_or_else(|| anyhow::anyhow!("Device {} not found", device_id))?;
 
-        // Check if using Docker
-        let use_docker = std::env::var("RENODE_USE_DOCKER").unwrap_or_else(|_| "true".to_string()) == "true";
+        let gateway_http = device
+            .gateway_endpoint
+            .as_ref()
+            .map(|s| gateway_http_from_tls_endpoint(s.as_str()));
+
+        let use_docker =
+            std::env::var("RENODE_USE_DOCKER").unwrap_or_else(|_| "true".to_string()) == "true";
 
         if use_docker {
-            // Stop Docker container
             device.status = QemuDeviceStatus::Stopping;
-            let container_name = format!("renode-{}", device_id);
-            
-            println!("Stopping Docker container: {}", container_name);
-            if let Err(e) = Command::new("docker")
-                .args(&["stop", &container_name])
-                .output()
-            {
-                device.status = QemuDeviceStatus::Error(e.to_string());
-                return Err(anyhow::anyhow!("Failed to stop Docker container: {}", e));
+            let monitor_addr = std::env::var("RENODE_MONITOR_ADDR").unwrap_or_else(|_| "127.0.0.1:9999".to_string());
+            let pause_commands = format!("mach set \"{}\"\npause", device_id);
+            drop(guard.take());
+            if let Err(e) = send_renode_monitor_commands(&monitor_addr, &pause_commands).await {
+                eprintln!("Failed to pause machine in Renode (non-fatal): {}", e);
             }
-            
-            // Container will be automatically removed due to --rm flag
+            let mut devices = self.devices.lock().await;
+            let device = devices.get_mut(device_id).ok_or_else(|| anyhow::anyhow!("Device {} not found", device_id))?;
             device.process_id = None;
+            device.status = QemuDeviceStatus::Stopped;
         } else if let Some(pid) = device.process_id {
             // Stop portable Renode process
             device.status = QemuDeviceStatus::Stopping;
@@ -993,6 +1110,13 @@ impl RenodeManager {
 
             device.process_id = None;
             device.status = QemuDeviceStatus::Stopped;
+        }
+
+        // Unregister board from Gateway (device proxy is going away)
+        let device_id_clone = device_id.to_string();
+        drop(guard);
+        if let Some(gw) = gateway_http {
+            unregister_board_from_gateway(&gw, &device_id_clone).await;
         }
 
         Ok(())
@@ -1163,6 +1287,60 @@ impl RenodeManager {
                 }
             },
         }
+    }
+
+    /// Build the Renode monitor command string for one machine (for single-instance Renode).
+    fn build_renode_commands_string(
+        &self,
+        device: &QemuDevice,
+        device_id: &str,
+        gateway_endpoint_str: &str,
+        firmware_path_in_container: &str,
+    ) -> Result<String, std::io::Error> {
+        let mcu = &device.mcu_type;
+        let platform = mcu.renode_platform();
+        let uart = mcu.get_uart_name();
+        let ethernet_config = if mcu.has_ethernet() {
+            match mcu {
+                McuType::Stm32F746gDisco => "\nemulation CreateSwitch \"ethernet_switch\"\nemulation CreateTap \"tap0\" \"ethernet_tap\"\nsysbus.ethernet MAC \"00:11:22:33:44:55\"\nconnector Connect sysbus.ethernet ethernet_switch\nconnector Connect host.ethernet_tap ethernet_switch\nhost.ethernet_tap Start",
+                McuType::FrdmK64f => "\nemulation CreateSwitch \"ethernet_switch\"\nemulation CreateTap \"tap0\" \"ethernet_tap\"\nsysbus.ethernet MAC \"00:11:22:33:44:66\"\nconnector Connect sysbus.ethernet ethernet_switch\nconnector Connect host.ethernet_tap ethernet_switch\nhost.ethernet_tap Start",
+                _ => "",
+            }
+        } else if mcu.has_wifi() {
+            "\n# WiFi configuration for ESP32 (if supported)"
+        } else {
+            ""
+        };
+        let pc_sp = if *mcu == McuType::RenodeArduinoNano33Ble {
+            "\nsysbus.cpu PC 0x866b\nsysbus.cpu SP 0x20020000"
+        } else {
+            ""
+        };
+        let loadelf_cmd = format!("sysbus LoadELF \"{}\"", firmware_path_in_container);
+        let ethernet_block = if ethernet_config.is_empty() {
+            "".to_string()
+        } else {
+            ethernet_config.trim().split(';').map(|c| c.trim()).filter(|c| !c.is_empty()).collect::<Vec<_>>().join("\n")
+        };
+        let renode_commands = format!(
+            "mach add \"{id}\"\ninclude @platforms/boards/{platform}.repl\nshowAnalyzer sysbus.{uart}\n{loadelf}\nmach set \"{id}\"\n{ethernet}{pc_sp}\nlogLevel -1\nstart",
+            id = device.id,
+            platform = platform,
+            uart = uart,
+            loadelf = loadelf_cmd,
+            ethernet = ethernet_block,
+            pc_sp = pc_sp
+        );
+        let endpoint_bytes = gateway_endpoint_str.as_bytes();
+        let mut endpoint_write = format!("\nsysbus WriteDoubleWord 0x20001000 0x{:08x}", endpoint_bytes.len());
+        for (i, chunk) in endpoint_bytes.chunks(4).enumerate() {
+            let mut word: u32 = 0;
+            for (j, &byte) in chunk.iter().enumerate() {
+                word |= (byte as u32) << (j * 8);
+            }
+            endpoint_write.push_str(&format!("\nsysbus WriteDoubleWord 0x{:08x} 0x{:08x}", 0x20001004 + (i as u32 * 4), word));
+        }
+        Ok(format!("{}{}", renode_commands, endpoint_write))
     }
 
     fn build_renode_args(&self, device: &QemuDevice, device_id: &str) -> Result<Vec<String>, std::io::Error> {

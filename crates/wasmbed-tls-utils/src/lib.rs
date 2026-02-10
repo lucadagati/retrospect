@@ -9,6 +9,7 @@ use log::warn;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::mpsc;
 use std::fmt;
 use std::pin::Pin;
 use std::task::{Context as TaskContext, Poll};
@@ -173,6 +174,9 @@ pub type OnClientConnectWithKey = Box<dyn Fn(Vec<u8>) -> std::pin::Pin<Box<dyn s
 pub type OnClientDisconnectWithKey = Box<dyn Fn(Vec<u8>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
 pub type OnClientMessageWithKey = Box<dyn Fn(MessageContextWithKey) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
 
+/// Callback when a TLS connection is ready to receive server messages (public_key, sender to push ServerMessage)
+pub type OnConnectionReadyWithKey = Box<dyn Fn(Vec<u8>, mpsc::Sender<ServerMessage>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
+
 /// Server Configuration for compatibility
 pub struct ServerConfig {
     pub bind_addr: std::net::SocketAddr,
@@ -192,6 +196,8 @@ pub struct GatewayServerConfig {
     pub on_client_connect: Arc<OnClientConnectWithKey>,
     pub on_client_disconnect: Arc<OnClientDisconnectWithKey>,
     pub on_client_message: Arc<OnClientMessageWithKey>,
+    /// Optional: called when connection is ready so the gateway can store a sender to push ServerMessage to this device
+    pub on_connection_ready: Option<Arc<OnConnectionReadyWithKey>>,
     pub shutdown: tokio_util::sync::CancellationToken,
 }
 
@@ -992,44 +998,53 @@ impl GatewayServer {
             }
         }
 
-        // Handle the connection
-        loop {
-            let mut buffer = [0; 1024];
-            match tls_stream.read(&mut buffer).await {
-                Ok(0) => {
-                    log::info!("Connection closed by client");
-                    break;
-                }
-                Ok(n) => {
-                    log::debug!("Received {} bytes", n);
-                    
-                    // Create message context with public key
-                    let mut ctx = MessageContextWithKey::new(
-                        public_key.clone(),
-                        format!("gateway-connection-{}", addr),
-                    );
-                    
-                    // Parse CBOR message if possible
-                    if let Ok(client_message) = minicbor::decode::<ClientMessage>(&buffer[..n]) {
-                        ctx.set_message(client_message);
+        let (tx, mut rx) = mpsc::channel::<ServerMessage>(32);
+        let on_client_message = self.config.on_client_message.clone();
+        let on_client_disconnect = self.config.on_client_disconnect.clone();
+        let public_key_clone = public_key.clone();
+
+        tokio::spawn(async move {
+            let mut buffer = [0u8; 4096];
+            loop {
+                tokio::select! {
+                    maybe_msg = rx.recv() => {
+                        match maybe_msg {
+                            Some(msg) => {
+                                if let Ok(cbor) = minicbor::to_vec(&msg) {
+                                    let len = cbor.len() as u32;
+                                    let _ = tls_stream.write_all(&len.to_be_bytes()).await;
+                                    let _ = tls_stream.write_all(&cbor).await;
+                                    let _ = tls_stream.flush().await;
+                                }
+                            }
+                            None => break,
+                        }
                     }
-                    
-                    // Call on_client_message callback
-                    (self.config.on_client_message)(ctx).await;
-                    
-                    // Echo back the data
-                    tls_stream.write_all(&buffer[..n]).await?;
-                }
-                Err(e) => {
-                    log::error!("Error reading from connection: {}", e);
-                    break;
+                    result = tls_stream.read(&mut buffer) => {
+                        match result {
+                            Ok(0) => break,
+                            Ok(n) => {
+                                let mut ctx = MessageContextWithKey::new(
+                                    public_key_clone.clone(),
+                                    format!("gateway-connection-{}", addr),
+                                );
+                                if let Ok(client_message) = minicbor::decode::<ClientMessage>(&buffer[..n]) {
+                                    ctx.set_message(client_message);
+                                }
+                                (on_client_message)(ctx).await;
+                            }
+                            Err(_) => break,
+                        }
+                    }
                 }
             }
+            (on_client_disconnect)(public_key_clone).await;
+        });
+
+        if let Some(ref cb) = self.config.on_connection_ready {
+            (cb)(public_key, tx).await;
         }
-        
-        // Call on_client_disconnect callback
-        (self.config.on_client_disconnect)(public_key.clone()).await;
-        
+
         Ok(())
     }
 

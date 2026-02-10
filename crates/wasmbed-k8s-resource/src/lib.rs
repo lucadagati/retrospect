@@ -17,3 +17,5 @@ pub use gateway::{Gateway, GatewaySpec, GatewayStatus, GatewayPhase, GatewayCond
 
 #[cfg(feature = "client")]
 pub use device_client::DeviceStatusUpdate;
+#[cfg(feature = "client")]
+pub use application_client::ApplicationStatusUpdate;

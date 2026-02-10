@@ -46,7 +46,8 @@ struct Args {
     port: u16,
     #[arg(long, env = "WASMBED_API_SERVER_GATEWAY_ENDPOINT", default_value = "http://wasmbed-gateway.wasmbed.svc.cluster.local:8080")]
     gateway_endpoint: String,
-    #[arg(long, env = "WASMBED_API_SERVER_INFRASTRUCTURE_ENDPOINT", default_value = "http://localhost:30432")]
+    /// Optional; if empty, monitoring uses fallback metrics and infrastructure health is "not_configured"
+    #[arg(long, env = "WASMBED_API_SERVER_INFRASTRUCTURE_ENDPOINT", default_value = "")]
     infrastructure_endpoint: String,
 }
 
@@ -64,7 +65,7 @@ impl Default for DashboardConfig {
         Self {
             port: 3001,
             gateway_endpoint: "http://wasmbed-gateway.wasmbed.svc.cluster.local:8080".to_string(), // Kubernetes service name (no port-forward needed)
-            infrastructure_endpoint: "http://wasmbed-infrastructure.wasmbed.svc.cluster.local:30432".to_string(),
+            infrastructure_endpoint: String::new(), // Not deployed by default; set env to enable
             refresh_interval: Duration::from_secs(5),
         }
     }
@@ -592,7 +593,7 @@ impl DashboardApi {
                         "target_count": app.target_devices.as_ref().map_or(0, |v| v.len()),
                         "running_devices": app.deployed_devices.len(),
                         "deployed_count": app.deployed_devices.len(),
-                        "failed_devices": 0, // TODO: Extract from status if available
+                        "failed_devices": app.failed_devices,
                         "deployment_progress": if let Some(targets) = &app.target_devices {
                             if targets.is_empty() { 0.0 } else { (app.deployed_devices.len() as f64 / targets.len() as f64) * 100.0 }
                         } else { 0.0 }
@@ -1661,33 +1662,13 @@ spec:
     }
 
     /// Deploy application by ID
+    /// Gateway is the sole owner of Application CRD status: it will set Deploying then Running/Failed on PATCH when handling deploy requests.
     pub async fn deploy_application_by_id(
         State(state): State<Arc<DashboardState>>,
         Path(app_id): Path<String>,
         Json(request): Json<serde_json::Value>,
     ) -> Result<Json<serde_json::Value>, StatusCode> {
         info!("Deploying application {}: {:?}", app_id, request);
-        
-        // First, update application status to "Deploying" to indicate deployment in progress
-        let deploying_patch = serde_json::json!({
-            "status": {
-                "phase": "Deploying"
-            }
-        });
-        
-        let deploying_patch_str = serde_json::to_string(&deploying_patch).unwrap_or_else(|_| "{}".to_string());
-        
-        let deploying_output = tokio::process::Command::new("kubectl")
-            .args(&["patch", "application", &app_id, "-n", "wasmbed", "--type", "merge", "--subresource", "status", "--patch", &deploying_patch_str])
-            .output()
-            .await;
-        
-        if let Ok(output) = deploying_output {
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                warn!("Failed to set Deploying status for application {}: {}", app_id, stderr);
-            }
-        }
         
         // Get application details to check target devices
         let app_info = state.application_manager.get_application(&app_id).await
@@ -1696,105 +1677,158 @@ spec:
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
         
-        if let Some(app) = app_info {
-            info!("Deploying application {} to devices: {:?}", app_id, app.target_devices);
-            
-            // TODO: Actually deploy to gateway/devices here
-            // For now, we'll just update the status to Running
-            // In a real implementation, this would:
-            // 1. Call gateway API to deploy WASM to target devices
-            // 2. Monitor deployment progress
-            // 3. Update status based on deployment results
-        } else {
-            warn!("Application {} not found", app_id);
-            return Err(StatusCode::NOT_FOUND);
-        }
-        
-        // Update application status to "Running" using kubectl patch
-        let patch = serde_json::json!({
-            "status": {
-                "phase": "Running",
-                "lastUpdated": chrono::Utc::now().to_rfc3339()
+        let app = match app_info {
+            Some(a) => a,
+            None => {
+                warn!("Application {} not found", app_id);
+                return Err(StatusCode::NOT_FOUND);
             }
-        });
-        
-        let patch_str = serde_json::to_string(&patch).unwrap_or_else(|_| "{}".to_string());
-        
-        let output = tokio::process::Command::new("kubectl")
-            .args(&["patch", "application", &app_id, "-n", "wasmbed", "--type", "merge", "--subresource", "status", "--patch", &patch_str])
-            .output()
-            .await;
-            
-        match output {
-            Ok(output) => {
-                if output.status.success() {
-                    info!("Application {} deployed successfully", app_id);
-                    Ok(Json(serde_json::json!({
-                        "success": true,
-                        "message": format!("Application {} deployed successfully", app_id)
-                    })))
-                } else {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    error!("Failed to deploy application {}: {}", app_id, stderr);
-                    // Still return success if patch fails - status might be managed by controller
-                    Ok(Json(serde_json::json!({
-                        "success": true,
-                        "message": format!("Application {} deployment initiated (status update may be managed by controller)", app_id)
-                    })))
+        };
+
+        let target_devices = app.target_devices.as_deref().unwrap_or(&[]);
+        if target_devices.is_empty() {
+            warn!("Application {} has no target devices", app_id);
+            return Ok(Json(serde_json::json!({
+                "success": false,
+                "message": format!("Application {} has no target devices", app_id)
+            })));
+        }
+
+        info!("Deploying application {} to devices: {:?}", app_id, target_devices);
+
+        // Call Gateway HTTP API to deploy to each target device (Gateway owns Application status)
+        let gateway_endpoint = state.config.gateway_endpoint.trim_end_matches('/');
+        let client = reqwest::Client::new();
+        let mut initiated = 0u32;
+        let mut errors: Vec<String> = Vec::new();
+
+        for device_id in target_devices {
+            let url = format!("{}/api/v1/devices/{}/deploy", gateway_endpoint, device_id);
+            let body = serde_json::json!({
+                "app_id": app_id,
+                "name": app.name,
+                "wasm_bytes": ""  // Gateway reads WASM from Application CRD
+            });
+            match client.post(&url).json(&body).send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if status.is_success() {
+                        if let Ok(json) = resp.json::<serde_json::Value>().await {
+                            if json.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+                                initiated += 1;
+                                info!("Deploy initiated for application {} on device {}", app_id, device_id);
+                            } else {
+                                let msg = json.get("message").and_then(|v| v.as_str()).unwrap_or("unknown");
+                                errors.push(format!("{}: {}", device_id, msg));
+                            }
+                        } else {
+                            initiated += 1;
+                        }
+                    } else {
+                        let text = resp.text().await.unwrap_or_default();
+                        errors.push(format!("{}: {} {}", device_id, status, text));
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to call gateway for device {}: {}", device_id, e);
+                    errors.push(format!("{}: {}", device_id, e));
                 }
             }
-            Err(e) => {
-                error!("Failed to execute kubectl for application deployment {}: {}", app_id, e);
-                // Still return success - deployment might still work
-                Ok(Json(serde_json::json!({
-                    "success": true,
-                    "message": format!("Application {} deployment initiated", app_id)
-                })))
-            }
         }
+
+        let message = if errors.is_empty() {
+            format!("Application {} deployment initiated for {} device(s)", app_id, initiated)
+        } else {
+            format!(
+                "Application {} deployment initiated for {} device(s); errors: {}",
+                app_id,
+                initiated,
+                errors.join("; ")
+            )
+        };
+        Ok(Json(serde_json::json!({
+            "success": true,
+            "message": message,
+            "initiated": initiated,
+            "errors": errors
+        })))
     }
 
-    /// Stop application by ID
+    /// Stop application by ID (calls Gateway stop for each target device; Gateway owns Application status)
     pub async fn stop_application_by_id(
         State(state): State<Arc<DashboardState>>,
         Path(app_id): Path<String>,
-        Json(request): Json<serde_json::Value>,
+        Json(_request): Json<serde_json::Value>,
     ) -> Result<Json<serde_json::Value>, StatusCode> {
-        info!("Stopping application {}: {:?}", app_id, request);
-        
-        // Update application status to "Stopped" using kubectl patch
-        let patch = serde_json::json!({
-            "status": {
-                "phase": "Stopped"
+        info!("Stopping application {}", app_id);
+
+        let app_info = state.application_manager.get_application(&app_id).await
+            .map_err(|e| {
+                error!("Failed to get application {}: {}", app_id, e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+        let app = match app_info {
+            Some(a) => a,
+            None => {
+                warn!("Application {} not found", app_id);
+                return Err(StatusCode::NOT_FOUND);
             }
-        });
-        
-        let patch_str = serde_json::to_string(&patch).unwrap_or_else(|_| "{}".to_string());
-        
-        let output = tokio::process::Command::new("kubectl")
-            .args(&["patch", "application", &app_id, "-n", "wasmbed", "--type", "merge", "--patch", &patch_str])
-            .output()
-            .await;
-            
-        match output {
-            Ok(output) => {
-                if output.status.success() {
-                    info!("Application {} stopped successfully", app_id);
-                    Ok(Json(serde_json::json!({
-                        "success": true,
-                        "message": format!("Application {} stopped successfully", app_id)
-                    })))
-                } else {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    error!("Failed to stop application {}: {}", app_id, stderr);
-                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+        };
+
+        let target_devices = app.target_devices.as_deref().unwrap_or(&[]);
+        if target_devices.is_empty() {
+            return Ok(Json(serde_json::json!({
+                "success": true,
+                "message": format!("Application {} has no target devices", app_id)
+            })));
+        }
+
+        let gateway_endpoint = state.config.gateway_endpoint.trim_end_matches('/');
+        let client = reqwest::Client::new();
+        let mut stopped = 0u32;
+        let mut errors: Vec<String> = Vec::new();
+
+        for device_id in target_devices {
+            let url = format!("{}/api/v1/devices/{}/stop/{}", gateway_endpoint, device_id, app_id);
+            match client.post(&url).send().await {
+                Ok(resp) => {
+                    if resp.status().is_success() {
+                        if let Ok(json) = resp.json::<serde_json::Value>().await {
+                            if json.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+                                stopped += 1;
+                                info!("Stop initiated for application {} on device {}", app_id, device_id);
+                            } else {
+                                let msg = json.get("message").and_then(|v| v.as_str()).unwrap_or("unknown");
+                                errors.push(format!("{}: {}", device_id, msg));
+                            }
+                        } else {
+                            stopped += 1;
+                        }
+                    } else {
+                        let status = resp.status();
+                        let text = resp.text().await.unwrap_or_default();
+                        errors.push(format!("{}: {} {}", device_id, status, text));
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to call gateway for device {}: {}", device_id, e);
+                    errors.push(format!("{}: {}", device_id, e));
                 }
             }
-            Err(e) => {
-                error!("Failed to execute kubectl for application stop {}: {}", app_id, e);
-                Err(StatusCode::INTERNAL_SERVER_ERROR)
-            }
         }
+
+        let message = if errors.is_empty() {
+            format!("Application {} stop initiated for {} device(s)", app_id, stopped)
+        } else {
+            format!("Application {} stop initiated for {} device(s); errors: {}", app_id, stopped, errors.join("; "))
+        };
+        Ok(Json(serde_json::json!({
+            "success": true,
+            "message": message,
+            "stopped": stopped,
+            "errors": errors
+        })))
     }
 
     /// Deploy application
@@ -2274,7 +2308,7 @@ pub fn greet() {{
             "kubectl get events -n wasmbed --sort-by=.metadata.creationTimestamp",
             "kubectl get certificates -n wasmbed",
             "kubectl get all -n wasmbed",
-            "kubectl get pods -n wasmbed -l app=wasmbed-wasm-runtime",
+            "kubectl get pods -n wasmbed -l app=wasmbed-application-controller",
             "kubectl logs -n wasmbed -l app=wasmbed-application-controller",
             "kubectl logs -n wasmbed -l app=wasmbed-gateway",
             "kubectl describe device -n wasmbed",
@@ -2570,14 +2604,19 @@ pub fn greet() {{
         }
     }
 
-    /// Infrastructure health endpoint
+    /// Infrastructure health endpoint (optional service; not deployed by default)
     pub async fn infrastructure_health(State(state): State<Arc<DashboardState>>) -> Result<Json<serde_json::Value>, StatusCode> {
-        // Check infrastructure service health
+        if state.config.infrastructure_endpoint.is_empty() {
+            return Ok(Json(serde_json::json!({
+                "status": "not_configured",
+                "timestamp": SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                "infrastructure_endpoint": null
+            })));
+        }
         let health_status = match reqwest::get(&format!("{}/health", state.config.infrastructure_endpoint)).await {
             Ok(response) => response.status().is_success(),
             Err(_) => false,
         };
-        
         Ok(Json(serde_json::json!({
             "status": if health_status { "healthy" } else { "unhealthy" },
             "timestamp": SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
@@ -2608,7 +2647,7 @@ pub fn greet() {{
     pub async fn infrastructure_logs(State(_state): State<Arc<DashboardState>>) -> Result<Json<serde_json::Value>, StatusCode> {
         // Get infrastructure logs
         let output = tokio::process::Command::new("kubectl")
-            .args(&["logs", "-n", "wasmbed", "-l", "app=wasmbed-infrastructure", "--tail=50"])
+            .args(&["logs", "-n", "wasmbed", "-l", "app=wasmbed-gateway", "--tail=50"])
             .output()
             .await;
 
@@ -2676,6 +2715,8 @@ pub struct ApplicationInfo {
     pub image: String,
     pub status: String,
     pub deployed_devices: Vec<String>,
+    /// Number of devices where deployment failed (from status.deviceStatuses)
+    pub failed_devices: u32,
     pub created_at: SystemTime,
     pub target_devices: Option<Vec<String>>,
     pub last_updated: Option<SystemTime>,
@@ -2955,7 +2996,7 @@ impl Dashboard {
     async fn check_monitoring_status(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         // Check if monitoring service is running
         let output = tokio::process::Command::new("kubectl")
-            .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-infrastructure"])
+            .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-gateway"])
             .output()
             .await?;
 

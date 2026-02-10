@@ -13,10 +13,12 @@ Questo documento contiene tutti i sequence diagram che descrivono i flussi di co
 2. [Application Deployment](#application-deployment)
    - [Workflow Completo](#application-deployment-completo)
    - [Workflow Semplificato](#application-deployment-semplificato)
+   - [Deploy e Stop (API Server → Gateway)](#deploy-e-stop-api-server--gateway)
    - [Compilazione e Creazione](#compilazione-e-creazione)
    - [Esecuzione su Device](#esecuzione-su-device)
    - [Monitoring e Management](#monitoring-e-management)
-3. [Error Handling](#error-handling)
+3. [DeviceInfo e capabilities](#deviceinfo-e-capabilities)
+4. [Error Handling](#error-handling)
 
 ---
 
@@ -206,12 +208,13 @@ sequenceDiagram
 
 ### Heartbeat e Monitoring
 
+Il Gateway riceve gli heartbeat via TLS, aggiorna lo stato in-memory (device_connections) e opzionalmente il Device CRD (PATCH status.last_heartbeat, health).
+
 ```mermaid
 sequenceDiagram
     participant MCU as IoT Device
     participant TLS_CLIENT as TLS Client
     participant GATEWAY as Gateway Server
-    participant DEVICE_MGR as Device Manager
     participant K8S_API as Kubernetes API
 
     Note over MCU,K8S_API: Heartbeat Setup
@@ -219,16 +222,16 @@ sequenceDiagram
     MCU->>MCU: Start Heartbeat Timer<br/>Set interval: 30 seconds<br/>Prepare CBOR heartbeat message<br/>Initialize device metrics<br/>Monitor device status
     MCU->>TLS_CLIENT: Send Heartbeat<br/>CBOR encoded heartbeat<br/>Device ID<br/>Timestamp<br/>Device status: Active<br/>Device metrics<br/>WASM runtime status
     TLS_CLIENT->>GATEWAY: Heartbeat Message<br/>Encrypted heartbeat via TLS 1.3<br/>Device status<br/>Device performance metrics<br/>Error counts<br/>WASM runtime health
-    GATEWAY->>DEVICE_MGR: Process Heartbeat<br/>Validate device ID<br/>Update last heartbeat time<br/>Check device health<br/>Process device metrics<br/>Monitor WASM runtime
-    DEVICE_MGR->>K8S_API: Update Device Heartbeat<br/>PATCH device resource<br/>Status.last_heartbeat: timestamp<br/>Status.health: healthy<br/>Status.device_metrics: data<br/>Status.wasm_runtime: ready
+    GATEWAY->>GATEWAY: Process Heartbeat<br/>Validate device ID (public_key_to_device)<br/>Update in-memory last_heartbeat<br/>Update Device CRD status
+    GATEWAY->>K8S_API: PATCH Device status<br/>Status.last_heartbeat: timestamp<br/>Status.health: healthy<br/>Status.device_metrics: data<br/>Status.wasm_runtime: ready
 
     Note over MCU,K8S_API: Continuous Monitoring
 
     loop Every 30 seconds
         MCU->>TLS_CLIENT: Periodic Heartbeat<br/>CBOR encoded heartbeat<br/>Device status<br/>Performance metrics<br/>Error counts
         TLS_CLIENT->>GATEWAY: Heartbeat Message<br/>Encrypted heartbeat<br/>Device health status<br/>Device metrics<br/>WASM runtime status
-        GATEWAY->>DEVICE_MGR: Process Heartbeat<br/>Update device status<br/>Monitor performance<br/>Check health indicators
-        DEVICE_MGR->>K8S_API: Update Device Status<br/>PATCH device resource<br/>Status.last_heartbeat: timestamp<br/>Status.health: healthy<br/>Status.metrics: updated
+        GATEWAY->>GATEWAY: Process Heartbeat<br/>Update device status<br/>Monitor performance<br/>Check health indicators
+        GATEWAY->>K8S_API: PATCH Device status<br/>Status.last_heartbeat: timestamp<br/>Status.health: healthy<br/>Status.metrics: updated
     end
 
     Note over MCU,K8S_API: Heartbeat Phase Active<br/>Device is continuously monitored<br/>with 30-second heartbeat intervals
@@ -271,42 +274,28 @@ sequenceDiagram
     ETCD->>K8S_API: Application Created<br/>Resource stored successfully<br/>Version: 1<br/>UID generated<br/>Namespace: wasmbed
     K8S_API->>API_SERVER: Application CRD Created<br/>HTTP 201 Created<br/>Resource metadata<br/>Location header<br/>Resource version
 
-    Note over USER,ETCD: Controller Notification
+    Note over USER,ETCD: Deploy via API Server → Gateway (owner of Application status)
 
-    K8S_API->>APP_CTRL: Watch Event: Application Added<br/>Event type: ADDED<br/>Object: Application resource<br/>Namespace: wasmbed<br/>Resource version<br/>WASM binary ready
-    APP_CTRL->>APP_CTRL: Reconcile Application<br/>Parse application resource<br/>Validate WASM binary<br/>Check target devices<br/>Update application phase
-    APP_CTRL->>DEVICE_MGR: Get Target Devices<br/>Query connected devices<br/>Check device status<br/>Verify device capabilities<br/>Validate target device list
-    DEVICE_MGR->>APP_CTRL: Target Devices Available<br/>IoT devices available<br/>Device status: Connected<br/>WASM runtime: Ready<br/>Device capabilities confirmed
+    DASHBOARD->>API_SERVER: POST deploy by application ID<br/>Request deploy for application<br/>Target devices from spec
+    API_SERVER->>K8S_API: Get Application CRD<br/>Read target devices, app name<br/>Resolve gateway endpoint per device
+    K8S_API->>API_SERVER: Application resource<br/>spec.targetDevices.deviceNames<br/>metadata.name (app_id)
+    loop Per target device
+        API_SERVER->>GATEWAY: POST /api/v1/devices/{device_id}/deploy<br/>Body: app_id, name, wasm_bytes (optional)<br/>HTTP to Gateway
+        GATEWAY->>K8S_API: PATCH Application status (subresource)<br/>phase: Deploying<br/>deviceStatuses[device_id]: Deploying<br/>lastUpdated
+        GATEWAY->>K8S_API: GET Application<br/>Load WASM from spec
+        K8S_API->>GATEWAY: Application (WASM binary in spec)
+        GATEWAY->>DEVICE: TLS: Send WASM / Deploy<br/>CBOR message<br/>WASM binary<br/>Application metadata
+        DEVICE->>DEVICE: Load and execute WASM<br/>Initialize runtime<br/>Run application
+        DEVICE->>GATEWAY: DeployAck (TLS)<br/>Success or error
+        GATEWAY->>K8S_API: PATCH Application status<br/>phase: Running (or Failed)<br/>deviceStatuses[device_id]: Running/Failed<br/>lastUpdated, error (if failed)
+    end
+    API_SERVER->>DASHBOARD: Deploy initiated<br/>initiated, errors per device
 
-    Note over USER,ETCD: Gateway Deployment
-
-    APP_CTRL->>GATEWAY: Deploy Application<br/>Application metadata<br/>WASM binary (base64)<br/>Target device IDs<br/>Deployment configuration<br/>TLS encrypted request
-    GATEWAY->>GATEWAY: Prepare WASM Runtime<br/>Initialize wasmtime engine<br/>Prepare WASM module<br/>Validate binary format<br/>Set up execution context
-    GATEWAY->>WASM_RT: Load WASM Module<br/>Parse WASM binary<br/>Validate module structure<br/>Initialize memory<br/>Prepare function exports<br/>Set up execution environment
-    WASM_RT->>WASM_RT: WASM Module Validation<br/>Validate WASM magic number<br/>Check module structure<br/>Verify function signatures<br/>Validate memory layout<br/>Check import/export compatibility
-    WASM_RT->>GATEWAY: Module Loaded Successfully<br/>WASM module ready<br/>Function exports available<br/>Memory initialized<br/>Execution context prepared
-
-    Note over USER,ETCD: Device Communication
-
-    GATEWAY->>DEVICE: TLS Connection<br/>Connect to IoT device<br/>Establish TLS 1.3 connection<br/>Mutual authentication<br/>Encrypted channel ready
-    DEVICE->>DEVICE: Prepare for Deployment<br/>Initialize WASM runtime<br/>Prepare memory allocation<br/>Set up execution environment<br/>Ready for binary transfer
-    GATEWAY->>DEVICE: Send WASM Binary<br/>CBOR encoded message<br/>WASM binary transfer<br/>Application metadata<br/>Deployment instructions<br/>TLS encrypted transmission
-    DEVICE->>DEVICE: Load WASM Application<br/>Receive WASM binary<br/>Parse CBOR message<br/>Load into wasmtime runtime<br/>Initialize application context<br/>Prepare for execution
-    DEVICE->>DEVICE: Execute WASM Application<br/>Start WASM execution<br/>Initialize application state<br/>Begin main function<br/>Monitor execution status<br/>Handle runtime events
-    DEVICE->>GATEWAY: Deployment Confirmation<br/>CBOR encoded response<br/>Status: Success<br/>Application ID<br/>Execution status<br/>Performance metrics
-
-    Note over USER,ETCD: Status Updates
-
-    GATEWAY->>APP_CTRL: Deployment Status Update<br/>Application deployed successfully<br/>Target device deployed<br/>WASM runtime: Active<br/>Performance metrics available
-    APP_CTRL->>K8S_API: Update Application Status<br/>PATCH application resource<br/>Status.phase: "Deployed"<br/>Status.deployed_devices<br/>Status.deployment_progress: 100%<br/>Status.metrics: performance_data
-    K8S_API->>ETCD: Update Application Status<br/>Update resource in etcd<br/>Increment resource version<br/>Generate watch events<br/>Persist deployment status
-
-    Note over USER,ETCD: Real-time Monitoring
+    Note over USER,ETCD: Real-time Monitoring (Gateway owner of Application status)
 
     DEVICE->>DEVICE: Application Execution<br/>WASM application running<br/>Monitor performance<br/>Collect metrics<br/>Handle events<br/>Maintain execution state
-    DEVICE->>GATEWAY: Periodic Status Updates<br/>CBOR encoded heartbeat<br/>Application status<br/>Performance metrics<br/>Error counts<br/>Resource usage
-    GATEWAY->>APP_CTRL: Process Status Updates<br/>Aggregate device metrics<br/>Update application status<br/>Monitor performance<br/>Detect issues<br/>Generate alerts
-    APP_CTRL->>K8S_API: Update Application Metrics<br/>PATCH application resource<br/>Status.metrics: updated_data<br/>Status.last_update: timestamp<br/>Status.performance: metrics<br/>Status.health: "healthy"
+    DEVICE->>GATEWAY: ApplicationStatus / Heartbeat (TLS)<br/>CBOR: app status, metrics<br/>cpu_usage, restart_count<br/>lastHeartbeat
+    GATEWAY->>K8S_API: PATCH Application status (subresource)<br/>deviceStatuses[device_id]: status, metrics<br/>lastUpdated<br/>phase unchanged or updated
 
     Note over USER,ETCD: Error Handling
 
@@ -316,15 +305,13 @@ sequenceDiagram
     end
 
     alt Deployment Failure
-        DEVICE->>GATEWAY: Deployment Error<br/>WASM binary invalid<br/>Memory allocation failed<br/>Runtime initialization error<br/>Device capability mismatch
-        GATEWAY->>APP_CTRL: Deployment Failed<br/>Error details<br/>Device status<br/>Failure reason<br/>Retry information
-        APP_CTRL->>K8S_API: Update Application Status<br/>PATCH application resource<br/>Status.phase: "Failed"<br/>Status.error: error_details<br/>Status.retry_count: incremented
+        DEVICE->>GATEWAY: DeployAck (error)<br/>WASM invalid / memory failed<br/>Runtime init error<br/>Device capability mismatch
+        GATEWAY->>K8S_API: PATCH Application status<br/>phase: Failed<br/>deviceStatuses[device_id]: Failed<br/>error: error_details
     end
 
     alt Runtime Error
-        DEVICE->>GATEWAY: Runtime Error<br/>WASM execution failed<br/>Memory access violation<br/>Function call error<br/>Resource exhaustion
-        GATEWAY->>APP_CTRL: Runtime Error Report<br/>Error details<br/>Stack trace<br/>Resource usage<br/>Recovery options
-        APP_CTRL->>K8S_API: Update Application Status<br/>PATCH application resource<br/>Status.phase: "Error"<br/>Status.error: runtime_error<br/>Status.health: "unhealthy"
+        DEVICE->>GATEWAY: ApplicationStatus / StopAck (error)<br/>Runtime error<br/>Memory / function error<br/>Resource exhaustion
+        GATEWAY->>K8S_API: PATCH Application status<br/>deviceStatuses[device_id]: Failed<br/>error: runtime_error
     end
 
     Note over USER,ETCD: Application Management
@@ -361,26 +348,25 @@ sequenceDiagram
     API_SERVER->>K8S_API: Create Application CRD<br/>POST application resource<br/>Application spec with WASM binary<br/>Status: Pending
     K8S_API->>API_SERVER: Application Created<br/>HTTP 201 Created<br/>Resource metadata<br/>Application ID generated
 
-    Note over USER,K8S_API: Gateway Deployment
+    Note over USER,K8S_API: Deploy (API Server → Gateway HTTP; Gateway owner status)
 
-    API_SERVER->>GATEWAY: Deploy Application<br/>Application metadata<br/>WASM binary (base64)<br/>Target device IDs<br/>TLS encrypted request
-    GATEWAY->>GATEWAY: Prepare WASM Runtime<br/>Initialize wasmtime engine<br/>Prepare WASM module<br/>Validate binary format
-    GATEWAY->>DEVICE: TLS Connection<br/>Connect to IoT device<br/>Establish TLS 1.3 connection<br/>Mutual authentication
-    DEVICE->>DEVICE: Prepare for Deployment<br/>Initialize WASM runtime<br/>Prepare memory allocation<br/>Ready for binary transfer
-    GATEWAY->>DEVICE: Send WASM Binary<br/>CBOR encoded message<br/>WASM binary transfer<br/>Application metadata<br/>TLS encrypted transmission
-    DEVICE->>DEVICE: Load WASM Application<br/>Receive WASM binary<br/>Parse CBOR message<br/>Load into wasmtime runtime<br/>Initialize application context
-    DEVICE->>DEVICE: Execute WASM Application<br/>Start WASM execution<br/>Initialize application state<br/>Begin main function<br/>Monitor execution status
-    DEVICE->>GATEWAY: Deployment Confirmation<br/>CBOR encoded response<br/>Status: Success<br/>Application ID<br/>Execution status<br/>Performance metrics
+    API_SERVER->>GATEWAY: POST /api/v1/devices/{id}/deploy<br/>app_id, name, wasm_bytes (optional)
+    GATEWAY->>K8S_API: PATCH Application status<br/>phase: Deploying<br/>deviceStatuses[device_id]: Deploying
+    GATEWAY->>K8S_API: GET Application (WASM from spec)
+    GATEWAY->>DEVICE: TLS: Send WASM / Deploy<br/>CBOR message
+    DEVICE->>DEVICE: Load and execute WASM
+    DEVICE->>GATEWAY: DeployAck (TLS)<br/>Success or error
+    GATEWAY->>K8S_API: PATCH Application status<br/>phase: Running or Failed<br/>deviceStatuses[device_id]<br/>lastUpdated, error (if failed)
 
     Note over USER,K8S_API: Status Updates
 
-    GATEWAY->>K8S_API: Update Application Status<br/>PATCH application resource<br/>Status.phase: Deployed<br/>Status.deployed_devices<br/>Status.metrics: performance_data
+    GATEWAY->>K8S_API: PATCH Application status (on ApplicationStatus/DeployAck)<br/>deviceStatuses[device_id]: metrics, status<br/>lastUpdated
 
     Note over USER,K8S_API: Real-time Monitoring
 
     DEVICE->>DEVICE: Application Execution<br/>WASM application running<br/>Monitor performance<br/>Collect metrics<br/>Handle events
-    DEVICE->>GATEWAY: Periodic Status Updates<br/>CBOR encoded heartbeat<br/>Application status<br/>Performance metrics<br/>Error counts<br/>Resource usage
-    GATEWAY->>K8S_API: Update Application Metrics<br/>PATCH application resource<br/>Status.metrics: updated_data<br/>Status.last_update: timestamp<br/>Status.health: healthy
+    DEVICE->>GATEWAY: ApplicationStatus / Heartbeat (TLS)<br/>Application status<br/>Performance metrics<br/>Error counts<br/>Resource usage
+    GATEWAY->>K8S_API: PATCH Application status<br/>deviceStatuses[device_id]: metrics<br/>lastUpdated<br/>Status.health: healthy
 
     Note over USER,K8S_API: Application Management
 
@@ -407,6 +393,39 @@ sequenceDiagram
         DEVICE->>GATEWAY: Runtime Error<br/>WASM execution failed<br/>Memory access violation<br/>Function call error
         GATEWAY->>K8S_API: Update Application Status<br/>PATCH application resource<br/>Status.phase: Error<br/>Status.health: unhealthy
     end
+```
+
+### Deploy e Stop (API Server → Gateway)
+
+Flusso attuale: l'API Server invia deploy/stop al Gateway via HTTP; il Gateway è owner dello status dell'Application CRD (phase, deviceStatuses, lastUpdated, error).
+
+```mermaid
+sequenceDiagram
+    participant DASHBOARD as Dashboard
+    participant API_SERVER as API Server
+    participant GATEWAY as Gateway
+    participant K8S_API as Kubernetes API
+    participant DEVICE as Device (TLS)
+
+    Note over DASHBOARD,DEVICE: Deploy
+
+    DASHBOARD->>API_SERVER: Deploy application by ID
+    API_SERVER->>K8S_API: Get Application (targetDevices, name)
+    API_SERVER->>GATEWAY: POST /api/v1/devices/{device_id}/deploy<br/>body: app_id, name, wasm_bytes
+    GATEWAY->>K8S_API: PATCH Application status<br/>phase: Deploying<br/>deviceStatuses[device_id]: Deploying
+    GATEWAY->>K8S_API: GET Application (WASM)
+    GATEWAY->>DEVICE: TLS: Deploy WASM
+    DEVICE->>GATEWAY: DeployAck (ok / error)
+    GATEWAY->>K8S_API: PATCH Application status<br/>phase: Running o Failed<br/>deviceStatuses[device_id]: Running/Failed
+
+    Note over DASHBOARD,DEVICE: Stop
+
+    DASHBOARD->>API_SERVER: Stop application by ID
+    API_SERVER->>GATEWAY: POST /api/v1/devices/{device_id}/stop/{app_id}
+    GATEWAY->>K8S_API: PATCH Application status<br/>phase: Stopping<br/>deviceStatuses[device_id]: Stopping
+    GATEWAY->>DEVICE: TLS: Stop app
+    DEVICE->>GATEWAY: StopAck (ok / error)
+    GATEWAY->>K8S_API: PATCH Application status<br/>phase: Stopped o Failed<br/>deviceStatuses[device_id]: Stopped/Failed
 ```
 
 ### Compilazione e Creazione
@@ -471,6 +490,8 @@ sequenceDiagram
 
 ### Monitoring e Management
 
+Il Gateway è owner dello status dell'Application CRD: aggiorna phase, deviceStatuses (per device), lastUpdated in risposta a ApplicationStatus, DeployAck, StopAck ricevuti via TLS dal device.
+
 ```mermaid
 sequenceDiagram
     participant USER as User
@@ -480,60 +501,49 @@ sequenceDiagram
     participant DEVICE as IoT Device
     participant K8S_API as Kubernetes API
 
-    Note over USER,K8S_API: Status Updates
+    Note over USER,K8S_API: Status (Gateway owner)
 
-    GATEWAY->>K8S_API: Update Application Status<br/>PATCH application resource<br/>Status.phase: Deployed<br/>Status.deployed_devices<br/>Status.deployment_progress: 100%<br/>Status.metrics: performance_data
+    GATEWAY->>K8S_API: PATCH Application status (subresource)<br/>phase, deviceStatuses[device_id]<br/>lastUpdated, error
 
     Note over USER,K8S_API: Real-time Monitoring
 
     DEVICE->>DEVICE: Application Execution<br/>WASM application running<br/>Monitor performance<br/>Collect metrics<br/>Handle events<br/>Maintain execution state
-    DEVICE->>GATEWAY: Periodic Status Updates<br/>CBOR encoded heartbeat<br/>Application status<br/>Performance metrics<br/>Error counts<br/>Resource usage
-    GATEWAY->>K8S_API: Update Application Metrics<br/>PATCH application resource<br/>Status.metrics: updated_data<br/>Status.last_update: timestamp<br/>Status.performance: metrics<br/>Status.health: healthy
+    DEVICE->>GATEWAY: ApplicationStatus / Heartbeat (TLS)<br/>CBOR: app status, metrics<br/>cpu_usage, restart_count<br/>lastHeartbeat
+    GATEWAY->>K8S_API: PATCH Application status<br/>deviceStatuses[device_id]: status, metrics<br/>lastUpdated
 
-    Note over USER,K8S_API: Application Management
+    Note over USER,K8S_API: Application Management (API Server legge status da K8S)
 
     USER->>DASHBOARD: Monitor Application<br/>View real-time status<br/>Check performance metrics<br/>Monitor device health<br/>View execution logs
-    DASHBOARD->>API_SERVER: GET /api/v1/applications/{id}<br/>Request application details<br/>Current status<br/>Performance metrics<br/>Device information
-    API_SERVER->>K8S_API: Get Application Resource<br/>GET application resource<br/>Current status<br/>Deployment information<br/>Performance data
-    K8S_API->>API_SERVER: Application Resource<br/>Application details<br/>Current status<br/>Metrics data<br/>Device information
-    API_SERVER->>DASHBOARD: Application Status<br/>Real-time status<br/>Performance metrics<br/>Device health<br/>Execution information
+    DASHBOARD->>API_SERVER: GET /api/v1/applications/{id}<br/>Request application details<br/>Current status<br/>Performance metrics<br/>failed_devices
+    API_SERVER->>K8S_API: kubectl get applications -o json<br/>Read status.deviceStatuses<br/>status.phase, status.error
+    K8S_API->>API_SERVER: Application resource<br/>status.deviceStatuses<br/>status.phase, status.error
+    API_SERVER->>DASHBOARD: Application Status<br/>Real-time status<br/>Performance metrics<br/>Device health<br/>failed_devices (count Failed in deviceStatuses)
     DASHBOARD->>USER: Display Application Status<br/>Real-time dashboard<br/>Performance graphs<br/>Device status<br/>Execution logs<br/>Health indicators
 
     Note over USER,K8S_API: Continuous Monitoring Loop
 
     loop Every 30 seconds
-        DEVICE->>GATEWAY: Status Update<br/>CBOR encoded status<br/>Application health<br/>Performance metrics<br/>Resource usage
-        GATEWAY->>K8S_API: Update Metrics<br/>PATCH application resource<br/>Status.metrics: updated<br/>Status.last_update: timestamp<br/>Status.health: healthy
+        DEVICE->>GATEWAY: ApplicationStatus / Heartbeat<br/>CBOR status, metrics
+        GATEWAY->>K8S_API: PATCH Application status<br/>deviceStatuses[device_id]<br/>lastUpdated
     end
 
-    Note over USER,K8S_API: Monitoring Phase Active<br/>Application is continuously monitored<br/>with real-time status updates
+    Note over USER,K8S_API: Monitoring Phase Active<br/>Gateway aggiorna Application status<br/>da messaggi TLS device (ApplicationStatus, DeployAck, StopAck)
 ```
+
+---
+
+## DeviceInfo e capabilities
+
+Quando il device invia un messaggio **DeviceInfo** sulla connessione TLS, il Gateway risolve il `device_id` dalla mappa `public_key_to_device` e aggiorna le capabilities nella struttura in-memory `device_connections` (nessun patch al CRD Device in questo step).
 
 ```mermaid
 sequenceDiagram
-    participant API_SERVER as API Server
-    participant GATEWAY as Gateway Server
-    participant WASM_RT as WASM Runtime
-    participant DEVICE as IoT Device
+    participant DEVICE as Device
+    participant GATEWAY as Gateway (TLS + HTTP API)
 
-    Note over API_SERVER,DEVICE: Gateway Preparation
-
-    API_SERVER->>GATEWAY: Deploy Application<br/>Application metadata<br/>WASM binary (base64)<br/>Target device IDs<br/>Deployment configuration<br/>TLS encrypted request
-    GATEWAY->>GATEWAY: Prepare WASM Runtime<br/>Initialize wasmtime engine<br/>Prepare WASM module<br/>Validate binary format<br/>Set up execution context
-    GATEWAY->>WASM_RT: Load WASM Module<br/>Parse WASM binary<br/>Validate module structure<br/>Initialize memory<br/>Prepare function exports<br/>Set up execution environment
-    WASM_RT->>WASM_RT: WASM Module Validation<br/>Validate WASM magic number<br/>Check module structure<br/>Verify function signatures<br/>Validate memory layout<br/>Check import/export compatibility
-    WASM_RT->>GATEWAY: Module Loaded Successfully<br/>WASM module ready<br/>Function exports available<br/>Memory initialized<br/>Execution context prepared
-
-    Note over API_SERVER,DEVICE: Device Communication
-
-    GATEWAY->>DEVICE: TLS Connection<br/>Connect to IoT device<br/>Establish TLS 1.3 connection<br/>Mutual authentication<br/>Encrypted channel ready
-    DEVICE->>DEVICE: Prepare for Deployment<br/>Initialize WASM runtime<br/>Prepare memory allocation<br/>Set up execution environment<br/>Ready for binary transfer
-    GATEWAY->>DEVICE: Send WASM Binary<br/>CBOR encoded message<br/>WASM binary transfer<br/>Application metadata<br/>Deployment instructions<br/>TLS encrypted transmission
-    DEVICE->>DEVICE: Load WASM Application<br/>Receive WASM binary<br/>Parse CBOR message<br/>Load into wasmtime runtime<br/>Initialize application context<br/>Prepare for execution
-    DEVICE->>DEVICE: Execute WASM Application<br/>Start WASM execution<br/>Initialize application state<br/>Begin main function<br/>Monitor execution status<br/>Handle runtime events
-    DEVICE->>GATEWAY: Deployment Confirmation<br/>CBOR encoded response<br/>Status: Success<br/>Application ID<br/>Execution status<br/>Performance metrics
-
-    Note over API_SERVER,DEVICE: Deployment Phase Complete<br/>Application is successfully deployed<br/>and running on the device
+    DEVICE->>GATEWAY: DeviceInfo (TLS, CBOR)<br/>Capabilities (es. wasm, tls, cbor)<br/>Altre info device
+    GATEWAY->>GATEWAY: Resolve device_id<br/>public_key_to_device[client_public_key]
+    GATEWAY->>GATEWAY: update_device_capabilities(device_id, capabilities)<br/>device_connections[device_id].capabilities = ...
 ```
 
 ---
@@ -571,15 +581,13 @@ sequenceDiagram
     end
 
     alt Deployment Failure
-        MCU->>GATEWAY: Deployment Error<br/>WASM binary invalid<br/>Memory allocation failed<br/>Runtime initialization error<br/>Device capability mismatch
-        GATEWAY->>DEVICE_MGR: Deployment Failed<br/>Error details<br/>Device status<br/>Failure reason<br/>Retry information
-        DEVICE_MGR->>K8S_API: Update Application Status<br/>PATCH application resource<br/>Status.phase: Failed<br/>Status.error: error_details<br/>Status.retry_count: incremented
+        MCU->>GATEWAY: DeployAck (error)<br/>WASM binary invalid<br/>Memory allocation failed<br/>Runtime initialization error<br/>Device capability mismatch
+        GATEWAY->>K8S_API: PATCH Application status<br/>phase: Failed<br/>deviceStatuses[device_id]: Failed<br/>error: error_details
     end
 
     alt Runtime Error
-        MCU->>GATEWAY: Runtime Error<br/>WASM execution failed<br/>Memory access violation<br/>Function call error<br/>Resource exhaustion
-        GATEWAY->>DEVICE_MGR: Runtime Error Report<br/>Error details<br/>Stack trace<br/>Resource usage<br/>Recovery options
-        DEVICE_MGR->>K8S_API: Update Application Status<br/>PATCH application resource<br/>Status.phase: Error<br/>Status.error: runtime_error<br/>Status.health: unhealthy
+        MCU->>GATEWAY: ApplicationStatus / StopAck (error)<br/>WASM execution failed<br/>Memory access violation<br/>Function call error<br/>Resource exhaustion
+        GATEWAY->>K8S_API: PATCH Application status<br/>deviceStatuses[device_id]: Failed<br/>error: runtime_error
     end
 
     Note over MCU,K8S_API: Certificate Error Handling
@@ -591,4 +599,6 @@ sequenceDiagram
     end
 
     Note over MCU,K8S_API: Error Handling Complete<br/>All error scenarios are handled<br/>with appropriate recovery actions
+```
+K8S_API: Error Handling Complete<br/>All error scenarios are handled<br/>with appropriate recovery actions
 ```

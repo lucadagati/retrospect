@@ -65,6 +65,9 @@ void main(void)
             wasmbed_protocol_handle_message(recv_buffer, received_len);
         }
 
+        /* Send periodic heartbeat to keep TLS connection alive (Gateway expects it for last_heartbeat) */
+        wasmbed_protocol_tick();
+
         /* Process WASM execution */
         wamr_process();
 

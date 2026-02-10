@@ -18,9 +18,19 @@ LOG_MODULE_REGISTER(wasmbed_protocol, LOG_LEVEL_INF);
 /* Memory address where Renode writes the gateway endpoint */
 #define GATEWAY_ENDPOINT_ADDR 0x20001000
 
+/* Heartbeat interval in milliseconds (keep below Gateway timeout, e.g. 90s) */
+#define HEARTBEAT_INTERVAL_MS 25000U
+
 static bool protocol_initialized = false;
 static char gateway_endpoint[64] = {0};
 static bool gateway_connected = false;
+static uint32_t last_heartbeat_uptime_ms = 0U;
+
+/* ClientMessage::Heartbeat = array(1), u32(0) => CBOR 0x81 0x00; wire = 4-byte len + CBOR */
+static const uint8_t heartbeat_packet[] = {
+    0x00, 0x00, 0x00, 0x02, 0x81, 0x00
+};
+#define HEARTBEAT_PACKET_LEN sizeof(heartbeat_packet)
 
 /* Read gateway endpoint from memory (written by Renode) */
 static int read_gateway_endpoint(void)
@@ -118,6 +128,177 @@ int wasmbed_protocol_init(void)
     return 0;
 }
 
+/* Max WASM module size we accept (copy to static buffer for WAMR) */
+#define MAX_WASM_SIZE (128 * 1024)
+#define MAX_APP_ID_LEN 64
+
+static uint8_t wasm_copy_buf[MAX_WASM_SIZE];
+static char deploy_app_id_buf[MAX_APP_ID_LEN];
+
+/* Read CBOR text at *pp into buf (max buf_size), null-term; advance *pp. Return 0 or -1. */
+static int cbor_read_text(const uint8_t **pp, const uint8_t *end, char *buf, size_t buf_size)
+{
+    const uint8_t *p = *pp;
+    if (p >= end || buf_size == 0) return -1;
+    uint32_t len;
+    if (*p >= 0x60 && *p <= 0x77) {
+        len = *p - 0x60;
+        p += 1;
+    } else if (*p == 0x78 && p + 2 <= end) {
+        len = p[1];
+        p += 2;
+    } else if (*p == 0x79 && p + 3 <= end) {
+        len = (uint32_t)p[1] << 8 | p[2];
+        p += 3;
+    } else {
+        return -1;
+    }
+    if (p + len > end) return -1;
+    if (len >= buf_size) len = (uint32_t)(buf_size - 1);
+    memcpy(buf, p, len);
+    buf[len] = '\0';
+    *pp = p + len;
+    return 0;
+}
+
+/* Advance *pp past a CBOR text (skip). */
+static int cbor_skip_text(const uint8_t **pp, const uint8_t *end)
+{
+    const uint8_t *p = *pp;
+    if (p >= end) return -1;
+    uint32_t len;
+    if (*p >= 0x60 && *p <= 0x77) {
+        len = *p - 0x60;
+        p += 1;
+    } else if (*p == 0x78 && p + 2 <= end) {
+        len = p[1];
+        p += 2;
+    } else if (*p == 0x79 && p + 3 <= end) {
+        len = (uint32_t)p[1] << 8 | p[2];
+        p += 3;
+    } else {
+        return -1;
+    }
+    if (p + len > end) return -1;
+    *pp = p + len;
+    return 0;
+}
+
+/* Read CBOR byte string at *pp; set *out_ptr, *out_len; advance *pp. Return 0 or -1. */
+static int cbor_read_bytes(const uint8_t **pp, const uint8_t *end, const uint8_t **out_ptr, uint32_t *out_len)
+{
+    const uint8_t *p = *pp;
+    if (p >= end) return -1;
+    uint32_t len;
+    const uint8_t *start;
+    if (*p >= 0x40 && *p <= 0x57) {
+        len = *p - 0x40;
+        start = p + 1;
+    } else if (*p == 0x58 && p + 2 <= end) {
+        len = p[1];
+        start = p + 2;
+    } else if (*p == 0x59 && p + 3 <= end) {
+        len = (uint32_t)p[1] << 8 | p[2];
+        start = p + 3;
+    } else {
+        return -1;
+    }
+    if (start + len > end) return -1;
+    *out_ptr = start;
+    *out_len = len;
+    *pp = start + len;
+    return 0;
+}
+
+/* Skip one CBOR item. */
+static const uint8_t *cbor_skip_one(const uint8_t *p, const uint8_t *end)
+{
+    if (p >= end) return end;
+    if (*p >= 0x60 && *p <= 0x77) { return p + 1 + (*p - 0x60); }
+    if (*p == 0x78 && p + 2 <= end) { return p + 2 + p[1]; }
+    if (*p == 0x79 && p + 3 <= end) { return p + 3 + ((uint32_t)p[1]<<8|p[2]); }
+    if (*p >= 0x40 && *p <= 0x57) { return p + 1 + (*p - 0x40); }
+    if (*p == 0x58 && p + 2 <= end) { return p + 2 + p[1]; }
+    if (*p == 0x59 && p + 3 <= end) { return p + 3 + ((uint32_t)p[1]<<8|p[2]); }
+    if (*p == 0xf6 || *p == 0xf4 || *p == 0xf5) return p + 1;
+    if (*p >= 0x00 && *p <= 0x17) return p + 1;
+    if (*p == 0x18 && p + 2 <= end) return p + 2;
+    if (*p == 0x19 && p + 3 <= end) return p + 3;
+    if (*p == 0x1b && p + 9 <= end) return p + 9;
+    if (*p >= 0x80 && *p <= 0x97) {
+        unsigned n = *p - 0x80;
+        p++;
+        for (; n > 0 && p < end; n--) p = cbor_skip_one(p, end);
+        return p;
+    }
+    if (*p >= 0xa0 && *p <= 0xb7) {
+        unsigned n = *p - 0xa0;
+        p++;
+        for (unsigned i = 0; i < n * 2 && p < end; i++) p = cbor_skip_one(p, end);
+        return p;
+    }
+    return end;
+}
+
+/*
+ * Wire format from Gateway: 4 bytes length (big-endian u32) + CBOR(ServerMessage).
+ * DeployApplication CBOR: array(5) = 0x85, u32(5), app_id (text), name (text), wasm_bytes (bytes), config (null/object).
+ */
+static int handle_deploy_application(const uint8_t *cbor, uint32_t cbor_len,
+                                     const uint8_t *wasm_ptr, uint32_t wasm_len)
+{
+    uint32_t module_id = 0, instance_id = 0;
+    int ret;
+
+    if (wasm_len == 0 || wasm_len > MAX_WASM_SIZE) {
+        LOG_ERR("WASM size invalid: %u", (unsigned)wasm_len);
+        return -1;
+    }
+    memcpy(wasm_copy_buf, wasm_ptr, wasm_len);
+
+    ret = wamr_load_module(wasm_copy_buf, wasm_len, &module_id);
+    if (ret != 0) {
+        LOG_ERR("wamr_load_module failed");
+        return -1;
+    }
+    ret = wamr_instantiate(module_id, &instance_id);
+    if (ret != 0) {
+        LOG_ERR("wamr_instantiate failed");
+        return -1;
+    }
+    LOG_INF("WASM deployed: app_id=%s module_id=%u instance_id=%u", deploy_app_id_buf, (unsigned)module_id, (unsigned)instance_id);
+    (void)instance_id;
+    return 0;
+}
+
+/* Encode and send ApplicationDeployAck: array(4), tag 5, app_id (str), success (bool), error (null). */
+static void send_deploy_ack(const char *app_id, bool success, const char *error_msg)
+{
+    uint8_t buf[4 + 64 + 16];
+    uint32_t app_id_len = (uint32_t)strlen(app_id);
+    if (app_id_len >= 64) app_id_len = 63;
+    uint32_t off = 4; /* leave space for length prefix */
+    buf[off++] = 0x84;
+    buf[off++] = 0x05;
+    if (app_id_len <= 23) {
+        buf[off++] = (uint8_t)(0x60 + app_id_len);
+    } else {
+        buf[off++] = 0x78;
+        buf[off++] = (uint8_t)app_id_len;
+    }
+    memcpy(buf + off, app_id, app_id_len);
+    off += app_id_len;
+    buf[off++] = success ? 0xf5 : 0xf4;
+    buf[off++] = 0xf6; /* null error */
+    uint32_t cbor_len = off - 4;
+    buf[0] = (uint8_t)(cbor_len >> 24);
+    buf[1] = (uint8_t)(cbor_len >> 16);
+    buf[2] = (uint8_t)(cbor_len >> 8);
+    buf[3] = (uint8_t)cbor_len;
+    (void)error_msg;
+    wasmbed_protocol_send_message(buf, off);
+}
+
 /* Handle incoming message from gateway */
 int wasmbed_protocol_handle_message(const uint8_t *data, uint32_t data_len)
 {
@@ -131,20 +312,43 @@ int wasmbed_protocol_handle_message(const uint8_t *data, uint32_t data_len)
         return -1;
     }
 
-    LOG_INF("Handling message from gateway (size: %u bytes)", data_len);
-
-    /* TODO: Parse CBOR message
-     * - Extract message type (deploy, heartbeat, etc.)
-     * - Handle WASM deployment: call wamr_load_module()
-     * - Handle other message types
-     * 
-     * For now, just log the message
-     */
-    LOG_INF("Received message (first 32 bytes):");
-    for (uint32_t i = 0; i < data_len && i < 32; i++) {
-        LOG_INF("  [%u] = 0x%02x", i, data[i]);
+    /* Wire format: 4 byte big-endian length + CBOR payload */
+    if (data_len >= 4) {
+        uint32_t payload_len = (uint32_t)data[0] << 24 | (uint32_t)data[1] << 16 |
+                               (uint32_t)data[2] << 8 | (uint32_t)data[3];
+        if (data_len >= 4 + payload_len && payload_len >= 2) {
+            const uint8_t *cbor = data + 4;
+            const uint8_t *cbor_end = cbor + payload_len;
+            /* DeployApplication is array(5) = 0x85, tag u32(5) = 0x05, then app_id, name, wasm_bytes, config */
+            if (cbor[0] == 0x85 && cbor[1] == 0x05) {
+                const uint8_t *p = cbor + 2;
+                if (cbor_read_text(&p, cbor_end, deploy_app_id_buf, MAX_APP_ID_LEN) != 0) {
+                    LOG_ERR("DeployApplication: failed to read app_id");
+                    send_deploy_ack("", false, "parse app_id");
+                    return 0;
+                }
+                if (cbor_skip_text(&p, cbor_end) != 0) {
+                    LOG_ERR("DeployApplication: failed to skip name");
+                    send_deploy_ack(deploy_app_id_buf, false, "parse name");
+                    return 0;
+                }
+                const uint8_t *wasm_ptr = NULL;
+                uint32_t wasm_len = 0;
+                if (cbor_read_bytes(&p, cbor_end, &wasm_ptr, &wasm_len) != 0) {
+                    LOG_ERR("DeployApplication: failed to read wasm_bytes");
+                    send_deploy_ack(deploy_app_id_buf, false, "parse wasm_bytes");
+                    return 0;
+                }
+                if (handle_deploy_application(cbor, payload_len, wasm_ptr, wasm_len) == 0) {
+                    send_deploy_ack(deploy_app_id_buf, true, NULL);
+                } else {
+                    send_deploy_ack(deploy_app_id_buf, false, "load/instantiate failed");
+                }
+            }
+        }
     }
 
+    LOG_DBG("Handling message from gateway (size: %u bytes)", data_len);
     return 0;
 }
 
@@ -166,14 +370,30 @@ int wasmbed_protocol_send_message(const uint8_t *data, uint32_t data_len)
         return -1;
     }
 
-    LOG_INF("Sending message to gateway (size: %u bytes)", data_len);
+    LOG_DBG("Sending message to gateway (size: %u bytes)", data_len);
 
-    /* Send via network connection (TCP bridge handles TLS) */
     if (network_send(data, data_len) != 0) {
         LOG_ERR("Failed to send message to gateway");
         return -1;
     }
 
     return 0;
+}
+
+int wasmbed_protocol_send_heartbeat(void)
+{
+    return wasmbed_protocol_send_message(heartbeat_packet, HEARTBEAT_PACKET_LEN);
+}
+
+void wasmbed_protocol_tick(void)
+{
+    if (!gateway_connected) return;
+    uint32_t now = k_uptime_get_32();
+    if (now - last_heartbeat_uptime_ms >= HEARTBEAT_INTERVAL_MS) {
+        if (wasmbed_protocol_send_heartbeat() == 0) {
+            last_heartbeat_uptime_ms = now;
+            LOG_DBG("Heartbeat sent");
+        }
+    }
 }
 

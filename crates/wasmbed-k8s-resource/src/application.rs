@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
     group = "wasmbed.github.io",
     version = "v1alpha1",
     kind = "Application",
-    namespaced
+    namespaced,
+    status = "ApplicationStatus"
 )]
 pub struct ApplicationSpec {
     /// Application name
@@ -130,6 +131,7 @@ pub struct ApplicationMetadata {
 
 /// Application status
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ApplicationStatus {
     /// Application phase
     pub phase: ApplicationPhase,

@@ -20,5 +20,11 @@ int wasmbed_protocol_handle_message(const uint8_t *data, uint32_t data_len);
 /* Send message to gateway */
 int wasmbed_protocol_send_message(const uint8_t *data, uint32_t data_len);
 
+/* Send periodic heartbeat (ClientMessage::Heartbeat = CBOR [0]) to keep TLS connection alive */
+int wasmbed_protocol_send_heartbeat(void);
+
+/* Call periodically from main loop; sends heartbeat every HEARTBEAT_INTERVAL_SEC */
+void wasmbed_protocol_tick(void);
+
 #endif /* WASMBED_PROTOCOL_H */
 

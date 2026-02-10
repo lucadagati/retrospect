@@ -15,9 +15,12 @@ use tracing::{Level, error, info, warn, debug};
 use tracing_subscriber::FmtSubscriber;
 use base64;
 
-use wasmbed_k8s_resource::{Device, DeviceStatusUpdate, Application, DevicePhase, ApplicationPhase, Gateway};
+use wasmbed_k8s_resource::{
+    Application, ApplicationPhase, ApplicationStatusUpdate, Device, DeviceApplicationPhase,
+    DeviceApplicationStatus, DevicePhase, DeviceStatusUpdate, Gateway,
+};
 use wasmbed_protocol::{ClientMessage, ServerMessage, DeviceUuid};
-use wasmbed_tls_utils::{TlsUtils, GatewayServer, GatewayServerConfig, ServerIdentity, AuthorizationResult, MessageContextWithKey, OnClientConnectWithKey, OnClientDisconnectWithKey, OnClientMessageWithKey};
+use wasmbed_tls_utils::{TlsUtils, GatewayServer, GatewayServerConfig, ServerIdentity, AuthorizationResult, MessageContextWithKey, OnClientConnectWithKey, OnClientDisconnectWithKey, OnClientMessageWithKey, OnConnectionReadyWithKey};
 use wasmbed_types::{GatewayReference, PublicKey};
 use rustls;
 
@@ -177,6 +180,16 @@ impl Callbacks {
         })
     }
 
+    fn on_connection_ready(&self) -> OnConnectionReadyWithKey {
+        let http_server = self.http_server.clone();
+        Box::new(move |public_key: Vec<u8>, sender: tokio::sync::mpsc::Sender<ServerMessage>| {
+            let http_server = http_server.clone();
+            Box::pin(async move {
+                http_server.set_device_tls_sender(&public_key, sender).await;
+            })
+        })
+    }
+
     fn on_message(&self) -> OnClientMessageWithKey {
         let api = self.api.clone();
         let gateway_reference = self.gateway_reference.clone();
@@ -201,11 +214,16 @@ impl Callbacks {
                         let public_key_obj = PublicKey::from(public_key_bytes.as_slice());
                         match Device::find(api.clone(), public_key_obj.clone()).await {
                             Ok(Some(device)) => {
-                                if let Err(e) = DeviceStatusUpdate::default()
-                                    .update_heartbeat()
-                                    .apply(api.clone(), device.clone())
-                                    .await
-                                {
+                                // Recovery: if device was Unreachable (heartbeat timeout), transition back to Connected
+                                let update = if matches!(device.status.as_ref(), Some(s) if s.phase == DevicePhase::Unreachable) {
+                                    info!("Device {} sent heartbeat while Unreachable, recovering to Connected", device.name_any());
+                                    DeviceStatusUpdate::default()
+                                        .mark_connected(gateway_reference.clone())
+                                        .last_heartbeat(Some(chrono::Utc::now()))
+                                } else {
+                                    DeviceStatusUpdate::default().update_heartbeat()
+                                };
+                                if let Err(e) = update.apply(api.clone(), device.clone()).await {
                                     error!("Error updating heartbeat: {e}");
                                 }
                                 // Update heartbeat in HTTP API
@@ -320,8 +338,8 @@ impl Callbacks {
                         let _ = ctx.reply(ServerMessage::EnrollmentCompleted);
                         info!("Enrollment completed successfully");
                     },
-                    Some(ClientMessage::ApplicationStatus { app_id, status, error, metrics }) => {
-                        info!("Received application status for {}: {:?}", app_id, status);
+                    Some(ClientMessage::ApplicationStatus { app_id, status: _status, error, metrics }) => {
+                        info!("Received application status for {}: {:?}", app_id, _status);
                         if let Some(err) = error {
                             warn!("Application {} error: {}", app_id, err);
                         }
@@ -329,48 +347,105 @@ impl Callbacks {
                             debug!("Application {} metrics: memory={}, cpu={}%, uptime={}s, calls={}", 
                                    app_id, m.memory_usage, m.cpu_usage, m.uptime, m.function_calls);
                         }
-                        // TODO: Update Application CRD status
+                        let key_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, ctx.client_public_key());
+                        let device_id = http_server.public_key_to_device.read().await.get(&key_b64).cloned();
+                        if let Some(device_id) = device_id {
+                            if let Ok(app) = http_server.application_api.get(&app_id).await {
+                                let dev_phase = if error.is_some() { DeviceApplicationPhase::Failed } else { DeviceApplicationPhase::Running };
+                                let metrics_opt = metrics.as_ref().map(|m| wasmbed_k8s_resource::ApplicationMetrics {
+                                    memory_usage: Some(m.memory_usage),
+                                    cpu_usage: Some(m.cpu_usage as f64),
+                                    uptime: Some(m.uptime),
+                                    function_calls: Some(m.function_calls),
+                                });
+                                let dev_status = DeviceApplicationStatus {
+                                    status: dev_phase,
+                                    last_heartbeat: Some(chrono::Utc::now().to_rfc3339()),
+                                    metrics: metrics_opt,
+                                    error: error.clone(),
+                                    restart_count: 0,
+                                };
+                                if let Err(e) = ApplicationStatusUpdate::default()
+                                    .device_status(device_id, dev_status)
+                                    .apply(&http_server.application_api, &app)
+                                    .await
+                                {
+                                    error!("Failed to patch Application {} status from telemetry: {}", app_id, e);
+                                }
+                            }
+                        }
                     },
                     Some(ClientMessage::ApplicationDeployAck { app_id, success, error }) => {
                         info!("Received deployment acknowledgment for {}: success={}", app_id, success);
-                        
-                        if *success {
-                            info!("Application {} deployed successfully", app_id);
-                            // Update Application CRD status to Running
-                            if let Err(e) = update_application_status(&http_server.application_api, &app_id, ApplicationPhase::Running, None).await {
-                                error!("Error updating Application CRD status to Running: {}", e);
-                            }
+                        let key_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, ctx.client_public_key());
+                        let device_id = http_server.public_key_to_device.read().await.get(&key_b64).cloned();
+                        let (phase, dev_phase, err_msg) = if *success {
+                            (ApplicationPhase::Running, DeviceApplicationPhase::Running, None as Option<String>)
                         } else {
                             error!("Application {} deployment failed: {}", app_id, error.as_deref().unwrap_or("Unknown error"));
-                            // Update Application CRD status to Failed
-                            if let Err(e) = update_application_status(&http_server.application_api, &app_id, ApplicationPhase::Failed, error.as_deref()).await {
-                                error!("Error updating Application CRD status to Failed: {}", e);
+                            (ApplicationPhase::Failed, DeviceApplicationPhase::Failed, error.clone())
+                        };
+                        if let Ok(app) = http_server.application_api.get(&app_id).await {
+                            let mut update = ApplicationStatusUpdate::default().phase(phase).error(err_msg.clone());
+                            if let Some(ref did) = device_id {
+                                let dev_status = DeviceApplicationStatus {
+                                    status: dev_phase,
+                                    last_heartbeat: Some(chrono::Utc::now().to_rfc3339()),
+                                    metrics: None,
+                                    error: err_msg,
+                                    restart_count: 0,
+                                };
+                                update = update.device_status(did.clone(), dev_status);
                             }
+                            if let Err(e) = update.apply(&http_server.application_api, &app).await {
+                                error!("Error updating Application CRD status (DeployAck): {}", e);
+                            }
+                        } else {
+                            let _ = update_application_status(&http_server.application_api, &app_id, phase, error.as_deref()).await;
                         }
                     },
                     Some(ClientMessage::ApplicationStopAck { app_id, success, error }) => {
                         info!("Received stop acknowledgment for {}: success={}", app_id, success);
-                        
-                        if *success {
-                            info!("Application {} stopped successfully", app_id);
-                            // Update Application CRD status to Stopped
-                            if let Err(e) = update_application_status(&http_server.application_api, &app_id, ApplicationPhase::Stopped, None).await {
-                                error!("Error updating Application CRD status to Stopped: {}", e);
-                            }
+                        let key_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, ctx.client_public_key());
+                        let device_id = http_server.public_key_to_device.read().await.get(&key_b64).cloned();
+                        let (phase, dev_phase, err_msg) = if *success {
+                            (ApplicationPhase::Stopped, DeviceApplicationPhase::Stopped, None as Option<String>)
                         } else {
                             error!("Application {} stop failed: {}", app_id, error.as_deref().unwrap_or("Unknown error"));
-                            // Update Application CRD status to Failed
-                            if let Err(e) = update_application_status(&http_server.application_api, &app_id, ApplicationPhase::Failed, error.as_deref()).await {
-                                error!("Error updating Application CRD status to Failed: {}", e);
+                            (ApplicationPhase::Failed, DeviceApplicationPhase::Failed, error.clone())
+                        };
+                        if let Ok(app) = http_server.application_api.get(&app_id).await {
+                            let mut update = ApplicationStatusUpdate::default().phase(phase).error(err_msg.clone());
+                            if let Some(ref did) = device_id {
+                                let dev_status = DeviceApplicationStatus {
+                                    status: dev_phase,
+                                    last_heartbeat: Some(chrono::Utc::now().to_rfc3339()),
+                                    metrics: None,
+                                    error: err_msg,
+                                    restart_count: 0,
+                                };
+                                update = update.device_status(did.clone(), dev_status);
                             }
+                            if let Err(e) = update.apply(&http_server.application_api, &app).await {
+                                error!("Error updating Application CRD status (StopAck): {}", e);
+                            }
+                        } else {
+                            let _ = update_application_status(&http_server.application_api, &app_id, phase, error.as_deref()).await;
                         }
                     },
                     Some(ClientMessage::DeviceInfo { available_memory, cpu_arch, wasm_features, max_app_size }) => {
                         info!("Received device info: arch={}, memory={}MB, max_app_size={}KB, features={:?}", 
                               cpu_arch, available_memory / 1024 / 1024, max_app_size / 1024, wasm_features);
-                        
-                        // TODO: Update device capabilities in HTTP API when we have device identification
-                        // For now, just log the information
+                        let key_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, ctx.client_public_key());
+                        if let Some(device_id) = http_server.public_key_to_device.read().await.get(&key_b64).cloned() {
+                            let capabilities = DeviceCapabilities {
+                                available_memory: *available_memory,
+                                cpu_arch: cpu_arch.clone(),
+                                wasm_features: wasm_features.clone(),
+                                max_app_size: *max_app_size,
+                            };
+                            http_server.update_device_capabilities(&device_id, capabilities).await;
+                        }
                     },
                     None => {
                         debug!("Received message without content from device");
@@ -446,7 +521,7 @@ async fn update_application_status(
         // In a real implementation, we'd store the app_id in metadata or labels
         if app.spec.name.contains(app_id) || app.metadata.name.as_ref().unwrap().contains(app_id) {
             // Validate state transition
-            let current_phase = app.status().as_ref().map(|s| s.phase).unwrap_or(ApplicationPhase::Creating);
+            let current_phase = app.status.as_ref().map(|s| s.phase).unwrap_or(ApplicationPhase::Creating);
             if !ApplicationPhase::validate_transition(current_phase, phase) {
                 warn!("Invalid state transition from {:?} to {:?} for application {}", current_phase, phase, app.metadata.name.as_ref().unwrap());
                 // Still proceed with the update but log the invalid transition
@@ -466,7 +541,7 @@ async fn update_application_status(
             }));
             
             let patch_params = PatchParams::default();
-            if let Err(e) = api.patch(&app.metadata.name.as_ref().unwrap(), &patch_params, &patch).await {
+            if let Err(e) = api.patch_status(&app.metadata.name.as_ref().unwrap(), &patch_params, &patch).await {
                 error!("Failed to patch Application {} status: {}", app.metadata.name.as_ref().unwrap(), e);
                 return Err(e.into());
             } else {
@@ -666,6 +741,7 @@ async fn main() -> Result<()> {
         on_client_connect: Arc::new(callbacks.on_connect()),
         on_client_disconnect: Arc::new(callbacks.on_disconnect()),
         on_client_message: Arc::new(callbacks.on_message()),
+        on_connection_ready: Some(Arc::new(callbacks.on_connection_ready())),
         shutdown: shutdown.clone(),
     };
 
