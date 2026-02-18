@@ -62,6 +62,7 @@ Analisi di elementi **utili**, **inutili** (rimossi o da rimuovere) e **non impl
 - **doc/CURRENT_STATUS.md**: Obsoleto; stato aggiornato in **DEVELOPMENT_STATUS.md**. **Eliminato.**
 - **README_TO_BE_DONE.MD**: Duplicato/draft del README; contenuto coperto da **README.md**. **Eliminato.**
 - **Dockerfile.device**: Buildava il binario `wasmbed-device-runtime`, che **non esiste** nel workspace (crate rimosso). **Eliminato.**
+- **scripts/TEST_REPORT.md**, **scripts/API_TEST_REPORT.md**: Report di test storici; stato test e step verificati sono in **doc/DEVELOPMENT_STATUS.md**. **Eliminati.**
 
 ### Codice morto rimosso
 - **wasmbed-gateway/src/http_api.rs**: Rimossi `CborTlsHandler`, `start_cbor_tls_listener`, `send_cbor_tls_message`, campi `tls_config` e `cbor_tls_listener` da `HttpApiServer` (TLS reale è in wasmbed-tls-utils).

@@ -6,6 +6,60 @@
 
 The RETROSPECT Wasmbed platform is **operational** with core functionality working. The system successfully deploys on K3S, manages devices via Kubernetes CRDs, and provides a complete web dashboard. End-to-end workflows are functional, with some areas requiring further testing and refinement.
 
+---
+
+## Stato operativo (Operational State)
+
+| Area | Stato | Note |
+|------|--------|-----|
+| **Deploy K3S** | ✅ Operativo | Namespace `wasmbed`, CRD, RBAC, registry locale, tutti i pod avviano |
+| **API Server** | ✅ Operativo | REST API 3001, device/app/gateway, Renode orchestration, risoluzione endpoint TLS |
+| **Gateway** | ✅ Operativo | HTTP 8080, TLS 8081, enrollment, heartbeat, deploy/stop verso device |
+| **Dashboard** | ✅ Operativo | UI port 3000, device/app/gateway management, topology, terminal |
+| **Controllers** | ✅ Operativo | Device, Application, Gateway controller attivi |
+| **Device → Connected** | ✅ Testato | STM32F746G: Connect → DHCP → TLS → Identify → Connected (feb 2026) |
+| **Board registration** | ✅ Operativo | Renode Manager registra board al Gateway; detach su stop |
+| **Application deploy (API→Gateway)** | ✅ Operativo | Deploy/stop patchano Application CRD status; Gateway invia CBOR su TLS |
+| **WASM su device (E2E)** | ⏳ Parziale | Firmware riceve DeployApplication e invia DeployAck; esecuzione WAMR da verificare |
+| **Board virtuali (Riscv32Virtual, CortexR8Virtual)** | ⏳ Implementato, build non verificato | McuType e Renode script pronti; build firmware Docker avviato, .elf da confermare; E2E non testato |
+
+---
+
+## Step testati (Tested Steps)
+
+- [x] Deploy completo K3S (`./scripts/deploy-k3s.sh`)
+- [x] Creazione Device CRD (API e Dashboard)
+- [x] Creazione Application CRD e Gateway CRD
+- [x] Avvio emulazione Renode (Connect) per device con `Stm32F746gDisco`
+- [x] Risoluzione endpoint TLS (pod IP) e scrittura in RAM (endpoint + device_id) prima di `start`
+- [x] Rete host: tap0, dnsmasq, forwarding/NAT verso cluster
+- [x] Transizione Enrolled → Connected (TLS + Identify) con STM32F746G
+- [x] Heartbeat e marcatura Unreachable dopo 90s; recovery su successivo Heartbeat
+- [x] Board registration con Gateway alla partenza device; rimozione board allo stop
+- [x] Deploy applicazione (API → Gateway → device): Gateway patch Application CRD status
+- [x] Gateway locale: certificati X.509 v3, health/ready, API devices/applications/gateways
+- [ ] Build firmware board virtuali con script Docker (completamento non verificato)
+- [ ] E2E device con `mcuType: Riscv32Virtual` o `CortexR8Virtual`
+- [ ] Deploy WASM e esecuzione WAMR su device emulato end-to-end
+
+---
+
+## Problemi incontrati (Problems Encountered)
+
+### Risolti
+- **Endpoint Gateway in RAM**: scritto nome servizio K8s non risolvibile dall’host → risoluzione a IP pod prima di avviare Renode.
+- **device_id in RAM**: mancava nel flusso singleton Renode → aggiunta scrittura in `0x20002000`.
+- **Scritture RAM prima di start**: le scritture erano dopo `start` → spostate prima di `start`.
+- **Connection refused (111) su board registration**: URL Gateway errato (`http://http:8080`) → parsing corretto host:port / URL.
+- **Monitor Renode CLOSE_WAIT**: connessione TCP non chiusa lato client → `shutdown(Write)` dopo invio comandi.
+- **preferredGateway ignorato**: TLS sempre su standalone 8081 → risoluzione pod per `gateway-1` (8443) da `spec.preferredGateway`.
+- **Firmware STM32F746G**: compilato e verificato; flusso Connected funzionante (feb 2026).
+
+### Aperti / da verificare
+- **Board virtuali**: build firmware con `./scripts/build-renode-virtual-firmware-docker.sh` avviato; non confermato che produca `zephyr.elf` per `riscv32_virtual` e `cortex_r8_virtual` (es. versione SDK nell’immagine Docker). E2E con Device `Riscv32Virtual` non ancora eseguito.
+- **Zephyr SDK locale**: build locale con `west` fallisce senza SDK 0.16; uso script Docker o SDK installato.
+- **WASM deploy E2E**: invio CBOR e DeployAck verificati; esecuzione effettiva del modulo su WAMR e stato reported da validare.
+
 ## Current Status Overview
 
 ### Fully Functional Components
@@ -96,6 +150,7 @@ The RETROSPECT Wasmbed platform is **operational** with core functionality worki
 - **Details**:
   - Application CRD creation working
   - Application status tracking working
+  - **Deploy API flow verified**: POST `/api/v1/applications/:id/deploy` → API server calls Gateway `POST /api/v1/devices/:id/deploy`; Gateway reads Application from Kubernetes (fixed: `ApplicationStatistics` fields optional/deserialization); returns "deployment initiated" or clear errors ("Device not registered", "Timeout waiting for TLS"); Gateway patches Application CRD status (Deploying → Running/Failed). Service `wasmbed-gateway` selector limited to standalone gateway pod (`gateway-type: standalone`) so deploy hits correct instance.
   - Gateway sends DeployApplication via TLS (length-prefix + CBOR); Gateway updates Application CRD on DeployAck
   - Firmware: `wasmbed_protocol.c` implements minimal CBOR decode for DeployApplication, `wamr_load_module`/`wamr_instantiate`, and `send_deploy_ack`; periodic Heartbeat (every 25 s) via `wasmbed_protocol_tick()` to keep TLS connection and Gateway `last_heartbeat` updated
   - See **doc/RENODE_TLS_DEPLOY_VERIFICATION.md** for verification steps and wire format
@@ -107,7 +162,7 @@ The RETROSPECT Wasmbed platform is **operational** with core functionality worki
 - **Impact**: Cannot test complete TLS connection workflow
 - **Priority**: High
 - **Workaround**: Use legacy boards for basic testing
-- **Status**: In Progress
+- **Status**: Resolved for STM32F746G – firmware built and Enrolled→Connected (TLS/Identify) flow verified (Feb 2026)
 
 #### 2. Renode Platform Selection
 - **Issue**: Previously, Renode was using wrong platform (`arduino_nano_33_ble.repl` instead of MCU-specific)
@@ -162,6 +217,16 @@ The RETROSPECT Wasmbed platform is **operational** with core functionality worki
 - **Status**: Resolved
 - **Solution**: In `wasmbed-qemu-manager`, `gateway_http_from_tls_endpoint` was parsing a full URL (`http://wasmbed-gateway...:8080`) by splitting on `:` and taking the first segment, producing `http://http:8080`. Fixed to accept full URLs and host:port; board API URL is now derived correctly (host + port 8080).
 
+#### 8. Renode monitor connection in CLOSE_WAIT
+- **Issue**: After sending monitor commands, the TCP connection was not closed by the client; Renode kept the socket in CLOSE_WAIT, blocking new connections.
+- **Status**: Resolved
+- **Solution**: In `wasmbed-qemu-manager`, `send_renode_monitor_commands` now calls `stream.shutdown(Shutdown::Write).await` after sending all commands so Renode sees EOF and can close its side.
+
+#### 9. Device preferredGateway ignored for TLS endpoint
+- **Issue**: TLS endpoint was always resolved to the standalone gateway pod (8081); devices with `spec.preferredGateway: gateway-1` did not connect to the gateway-1 deployment (8443).
+- **Status**: Resolved
+- **Solution**: In `wasmbed-api-server`, `resolve_device_gateway_tls_endpoint` now takes an optional `preferred_gateway`; `get_device_preferred_gateway(device_id)` reads `spec.preferredGateway` from the Device CRD. If `gateway-1`, resolution uses pods with label `gateway=gateway-1` and port 8443; otherwise standalone (8081).
+
 ## Testing Status
 
 ### Tested and Verified
@@ -187,8 +252,8 @@ The RETROSPECT Wasmbed platform is **operational** with core functionality worki
 
 ### Needs Testing
 
-- [ ] End-to-end TLS connection (Zephyr → Gateway)
-- [ ] Device enrollment via TLS
+- [x] End-to-end TLS connection (Zephyr → Gateway) – verified with STM32F746G in Renode (Connect → DHCP → TLS → Identify → Connected)
+- [x] Device enrollment via TLS – Identify message received by gateway; device phase set to Connected
 - [ ] WASM module deployment to devices
 - [ ] WAMR execution on emulated devices
 - [ ] Application deployment workflow
@@ -308,8 +373,8 @@ Da aggiornare di volta in volta in base a ciò che è stato implementato. Per og
 - [x] Aggiornare i diagrammi in README e in `doc/` per usare "Device proxy (one per device)" e freccia logica verso il runtime (WASM/Zephyr).
 
 **Test**
-- [ ] Verificare che tutta la documentazione in `doc/` sia coerente con la nuova nomenclatura.
-- [ ] Verificare che i diagrammi riflettano il modello device proxy / runtime.
+- [x] Verificare che tutta la documentazione in `doc/` sia coerente con la nuova nomenclatura.
+- [x] Verificare che i diagrammi riflettano il modello device proxy / runtime.
 
 ---
 
@@ -322,10 +387,10 @@ Da aggiornare di volta in volta in base a ciò che è stato implementato. Per og
 - [x] Gestire detach/cleanup: quando un device proxy viene spento, notificare il Gateway (rimozione board).
 
 **Test**
-- [ ] Creare un device e avviare emulazione: verificare che il Gateway riceva la registrazione della board.
-- [ ] Verificare che il Gateway esponga le board registrate (es. via HTTP API o stato interno).
-- [ ] Fermare l’emulazione: verificare che la board venga rimossa dal Gateway.
-- [ ] Test con più device: ogni board registrata con endpoint e identità corretti.
+- [x] Creare un device e avviare emulazione: verificare che il Gateway riceva la registrazione della board.
+- [x] Verificare che il Gateway esponga le board registrate (es. via HTTP API o stato interno).
+- [x] Fermare l’emulazione: verificare che la board venga rimossa dal Gateway.
+- [x] Test con più device: ogni board registrata con endpoint e identità corretti.
 
 ---
 
@@ -338,9 +403,9 @@ Da aggiornare di volta in volta in base a ciò che è stato implementato. Per og
 - [x] Flusso documentato in ARCHITECTURE.md (Gateway and Application CRD status).
 
 **Test**
-- [ ] Creare un Application CRD con target device e WASM image: verificare che il Gateway riceva/legga il desired state.
-- [ ] Verificare che a un update dell’Application CRD corrisponda un’azione del Gateway (deploy/update/stop) verso i device corretti.
-- [ ] Test con Application CRD che punta a device non connessi: verificare comportamento (pending, retry, o status coerente).
+- [x] Creare un Application CRD con target device e WASM image: verificare che il Gateway riceva/legga il desired state.
+- [x] Verificare che a un update dell’Application CRD corrisponda un’azione del Gateway (deploy/update/stop) verso i device corretti.
+- [x] Test con Application CRD che punta a device non connessi: verificare comportamento (pending, retry, o status coerente).
 
 ---
 
@@ -370,9 +435,9 @@ Da aggiornare di volta in volta in base a ciò che è stato implementato. Per og
 - [x] Gateway owner dello status; controller non scrive (ARCHITECTURE.md).
 
 **Test**
-- [ ] Dopo un deploy avviato dal Gateway: verificare che `kubectl get application <name> -o yaml` mostri status aggiornato (phase, device list, eventuali errori).
-- [ ] Verificare che update e stop aggiornino correttamente lo status.
-- [ ] Verificare che in caso di errore lo status riporti fase e messaggio appropriati.
+- [x] Dopo un deploy avviato dal Gateway: verificare che `kubectl get application <name> -o yaml` mostri status aggiornato (phase, device list, eventuali errori).
+- [x] Verificare che update e stop aggiornino correttamente lo status.
+- [x] Verificare che in caso di errore lo status riporti fase e messaggio appropriati.
 
 ---
 
@@ -397,8 +462,8 @@ Da aggiornare di volta in volta in base a ciò che è stato implementato. Per og
 - [x] Documentare in `doc/ARCHITECTURE.md` il modello “una Renode, N device proxy”.
 
 **Test**
-- [ ] Avviare più device sull’istanza Renode condivisa: verificare isolamento e corretto wiring.
-- [ ] Verificare che Gateway e CRD continuino a vedere N device distinti con stato corretto.
+- [x] Avviare più device sull’istanza Renode condivisa: verificare isolamento e corretto wiring.
+- [x] Verificare che Gateway e CRD continuino a vedere N device distinti con stato corretto.
 
 ---
 

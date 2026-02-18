@@ -9,6 +9,7 @@
 - [Repository Structure](#repository-structure)
 - [Deployment Locations](#deployment-locations)
 - [Quick Start](#quick-start)
+- [Emulated device networking (TAP + DHCP + routing)](#emulated-device-networking-tap--dhcp--routing)
 - [Documentation](#documentation)
 - [Components](#components)
 - [Technologies](#technologies)
@@ -575,6 +576,39 @@ curl -X POST http://localhost:3001/api/v1/devices \
 curl -X POST http://localhost:3001/api/v1/devices/my-device/renode/start
 ```
 
+### Emulated device networking (TAP + DHCP + routing)
+
+When you use an **Ethernet-capable** board (e.g. `Stm32F746gDisco`) and call **Connect**, Renode creates a **TAP** interface on the host (`tap0`) so the emulated device can use the network. For the firmware to get an IP via DHCP and reach the Gateway pod (TLS), you must configure the host once per session (or after each reboot if you use the same machine).
+
+**1. After Connect, configure the TAP interface** (requires sudo):
+
+```bash
+sudo ip addr add 192.168.1.1/24 dev tap0
+sudo ip link set tap0 up
+```
+
+**2. Install and run DHCP on tap0** (so the emulated device gets an IP, e.g. 192.168.1.2):
+
+```bash
+sudo apt-get update && sudo apt-get install -y dnsmasq
+sudo systemctl stop dnsmasq 2>/dev/null
+sudo systemctl mask dnsmasq 2>/dev/null
+sudo dnsmasq -p 0 --bind-interfaces -i tap0 --listen-address=192.168.1.1 \
+  --dhcp-range=192.168.1.2,192.168.1.254,255.255.255.0,1h \
+  --dhcp-option=3,192.168.1.1 -k &
+```
+
+**3. Enable forwarding and NAT** toward the cluster (so 192.168.1.x can reach the Gateway pod, e.g. 10.42.0.43):
+
+```bash
+sudo sysctl -w net.ipv4.ip_forward=1
+sudo iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -o cni0 -j MASQUERADE
+sudo iptables -A FORWARD -i tap0 -o cni0 -j ACCEPT
+sudo iptables -A FORWARD -i cni0 -o tap0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+```
+
+**Summary:** `tap0` is created by Renode at Connect; you give it the address 192.168.1.1/24 and bring it up. dnsmasq provides DHCP on that subnet so the firmware gets an IP; IP forwarding and NAT allow that traffic to reach the Kubernetes pod network (e.g. Gateway at 10.42.0.43). Without this setup, the device stays in "Enrolled" and never reaches "Connected" (no TLS).
+
 ## Documentation
 
 Complete documentation is available in the [`doc/`](doc/) directory:
@@ -873,28 +907,22 @@ This section outlines the implementation tasks required to achieve the Gateway-C
 
 ## Development Status
 
-For detailed information about the current development status, known issues, and planned features, see [DEVELOPMENT_STATUS.md](doc/DEVELOPMENT_STATUS.md).
+Per stato operativo dettagliato, step testati e problemi incontrati vedi **[DEVELOPMENT_STATUS.md](doc/DEVELOPMENT_STATUS.md)** (sezioni *Stato operativo*, *Step testati*, *Problemi incontrati*).
 
 ### Quick Status Summary
 
-**Working**:
-- Kubernetes deployment on K3S
-- All core services (API Server, Gateway, Dashboard, Controllers)
-- Device CRD creation and management
-- Renode container orchestration
-- MCU type support (13 MCU types)
-- Dashboard UI and API integration
-- Basic TLS connection between devices and Gateway
-- Basic device enrollment
+**Operativo**:
+- Deploy K3S, API Server, Gateway, Dashboard, Controllers
+- Device CRD, Renode orchestration, 13+ MCU types (inclusi Riscv32Virtual, CortexR8Virtual)
+- Flusso Enrolled → Connected (TLS + Identify) con STM32F746G testato
+- Board registration con Gateway; deploy/stop applicazioni (API → Gateway → device)
 
-**In Progress**:
-- Gateway-Centric Architecture implementation (see Roadmap above)
-- End-to-end WASM deployment workflow
-- CBOR protocol formalization
-- Real hardware device integration
+**In corso / da verificare**:
+- Build firmware board virtuali (script Docker); test E2E con Riscv32Virtual/CortexR8Virtual
+- Esecuzione WASM su device end-to-end (DeployAck verificato; WAMR da validare)
 
-**Known Issues**:
-- See [DEVELOPMENT_STATUS.md](doc/DEVELOPMENT_STATUS.md) for detailed list
+**Problemi noti**:
+- Vedi [DEVELOPMENT_STATUS.md](doc/DEVELOPMENT_STATUS.md) per l’elenco aggiornato (risolti e aperti)
 
 ## License
 

@@ -16,7 +16,7 @@ Wasmbed now supports multiple MCU types with emphasis on boards that have Ethern
 - **Renode Platform**: `stm32f7_discovery-bb`
 - **Zephyr Board**: `stm32f746g_disco`
 - **UART**: `usart1`
-- **Status**: Code ready, firmware compilation pending
+- **Status**: Firmware compilato e testato; flusso Enrolled → Connected verificato (feb 2026)
 - **Recommended**: **Yes** - Best choice for network testing
 
 #### 2. FRDM-K64F (`FrdmK64f`)
@@ -66,6 +66,15 @@ Wasmbed now supports multiple MCU types with emphasis on boards that have Ethern
 - **UART**: `uart0`
 - **Status**: Code ready, firmware exists
 - **Recommended**: **No** - BLE only, no Ethernet/WiFi
+
+### Board virtuali Zephyr+Renode (no rete in emulatore)
+
+Board virtuali ufficiali Zephyr; firmware sample hello_world. Il device viene registrato al Gateway alla partenza dall'API server (nessuna connessione TLS dal firmware).
+
+- **Riscv32Virtual** – RISCV32 Virtual; Renode platform da `zephyr/boards/renode/riscv32_virtual/support/riscv32_virtual.repl`
+- **CortexR8Virtual** – Cortex-R8 Virtual; Renode platform da `zephyr/boards/renode/cortex_r8_virtual/support/cortex_r8_virtual.repl`
+
+**Stato**: Implementati in wasmbed-qemu-manager; build firmware (script Docker) e test E2E da verificare. Vedi scripts/README.md e doc/DEVELOPMENT_STATUS.md.
 
 ### Legacy Boards
 
@@ -197,6 +206,21 @@ west build -b esp32_devkitc_wroom ../zephyr-app --pristine --build-dir build/esp
 
 Firmware output: `build/esp32_devkitc_wroom/zephyr/zephyr.elf`
 
+## Boards selectable for emulation (TLS-capable first)
+
+The platform exposes all Renode-compatible boards via **GET /api/v1/boards**. Each board includes:
+
+- `id`: API/CRD identifier (e.g. `Stm32F746gDisco`, `FrdmK64f`)
+- `displayName`: Human-readable name
+- `hasEthernet` / `hasWifi`: Network capability
+- `recommendedForTls`: `true` for Ethernet and WiFi boards (use these for TLS and app deploy in emulation)
+
+**Ethernet (recommended for TLS):** Stm32F746gDisco, FrdmK64f  
+**WiFi:** Esp32DevkitC  
+**No network (no TLS in emulation):** Stm32F4Disco, Nrf52840DK, legacy types
+
+The dashboard Device creation form loads this list and shows "Recommended for TLS" for Ethernet/WiFi boards. Build firmware for at least one Ethernet board (see Compilation Steps) before building the API server image so that connect + deploy can complete TLS.
+
 ## Device Creation
 
 ### Via API
@@ -260,13 +284,15 @@ For new devices, use:
 
 ### Pending
 
-- [ ] Zephyr SDK installation
-- [ ] Firmware compilation for STM32F746G Discovery
 - [ ] Firmware compilation for FRDM-K64F
 - [ ] Firmware compilation for ESP32 DevKitC
-- [ ] End-to-end testing with Ethernet boards
-- [ ] TLS connection verification
-- [ ] WAMR execution testing
+- [ ] Build firmware board virtuali (Docker) verificato; E2E con Riscv32Virtual/CortexR8Virtual
+- [ ] WAMR execution testing (deploy E2E)
+
+### Done
+
+- [x] Firmware STM32F746G Discovery compilato; TLS + Identify → Connected verificato
+- [x] Supporto McuType Riscv32Virtual e CortexR8Virtual (Renode script, path firmware)
 
 ## Known Issues
 

@@ -97,6 +97,33 @@ Rimozione completa del deployment Wasmbed.
 
 ## MCU Types Supportati
 
+### Board virtuali Zephyr+Renode
+Queste board sono ufficialmente supportate da Zephyr per Renode; il firmware è un sample (hello_world). L’API server registra il device al gateway alla partenza (nessuna rete nell’emulatore).
+
+- **Riscv32Virtual** - RISCV32 Virtual (Zephyr+Renode)
+- **CortexR8Virtual** - Cortex-R8 Virtual (Zephyr+Renode)
+
+**Stato**: McuType e comandi Renode implementati; build firmware **non ancora verificato** (script Docker avviato, presenza dei `.elf` da confermare). Test E2E con device `Riscv32Virtual` non ancora eseguito. Vedi doc/DEVELOPMENT_STATUS.md.
+
+**Build firmware (locale, richiede west + Zephyr SDK):**
+```bash
+./scripts/build-renode-virtual-firmware.sh
+```
+Produce `build/riscv32_virtual/zephyr/zephyr.elf` e `build/cortex_r8_virtual/zephyr/zephyr.elf`.
+
+**Build firmware (Docker, senza SDK locale):**
+```bash
+./scripts/build-renode-virtual-firmware-docker.sh
+```
+Monta `zephyr-workspace` e usa immagine `ghcr.io/zephyrproject-rtos/zephyr-build:latest`. Verificare che al termine esistano i file `.elf` in `zephyr-workspace/build/riscv32_virtual/zephyr/` e `.../cortex_r8_virtual/zephyr/`.
+
+**Esempio Device CRD con board virtuale:**
+```yaml
+spec:
+  mcuType: Riscv32Virtual
+  # ... altri campi
+```
+
 ### Con Ethernet (Raccomandati)
 - **Stm32F746gDisco** - STM32F746G Discovery (default)
 - **FrdmK64f** - NXP FRDM-K64F
