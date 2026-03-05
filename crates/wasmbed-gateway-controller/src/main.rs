@@ -472,7 +472,7 @@ impl GatewayController {
                         service_account_name: Some("wasmbed-gateway".to_string()),
                         containers: vec![k8s_openapi::api::core::v1::Container {
                             name: "gateway".to_string(),
-                            image: Some("wasmbed/gateway:latest".to_string()),
+                            image: Some("localhost:5000/wasmbed/gateway:latest".to_string()),
                             image_pull_policy: Some("Never".to_string()),
                             command: Some(vec![
                                 "/usr/local/bin/wasmbed-gateway".to_string(),

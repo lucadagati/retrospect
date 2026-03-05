@@ -146,21 +146,26 @@ fn ensure_renode_container_running() -> Result<(), anyhow::Error> {
     let _ = Command::new("docker")
         .args(&["volume", "create", WASMBED_FIRMWARE_VOLUME])
         .output();
-    // Start singleton Renode with monitor on port
+    // Start singleton Renode with monitor on port.
+    // Use "sleep infinity | renode ..." to keep stdin open (without stdin input, --console mode exits).
+    let renode_cmd = format!(
+        "sleep infinity | renode --console --disable-gui -P {}",
+        RENODE_MONITOR_PORT
+    );
     let status = Command::new("docker")
         .args(&[
             "run", "-d", "--restart=unless-stopped",
+            "--net=host",
             "--name", WASMBED_RENODE_CONTAINER_NAME,
             "-v", &format!("{}:/firmware:ro", WASMBED_FIRMWARE_VOLUME),
-            "-p", &format!("{}:{}", RENODE_MONITOR_PORT, RENODE_MONITOR_PORT),
             "antmicro/renode:nightly",
-            "renode", "--console", "--disable-gui", "-P", &RENODE_MONITOR_PORT.to_string(),
+            "sh", "-c", &renode_cmd,
         ])
         .status()?;
     if !status.success() {
         return Err(anyhow::anyhow!("Failed to start Renode container"));
     }
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(4));
     Ok(())
 }
 
@@ -1169,8 +1174,13 @@ impl RenodeManager {
     }
 
     fn get_firmware_path(&self, mcu_type: &McuType) -> Result<std::path::PathBuf, std::io::Error> {
-        let current_dir = std::env::current_dir().unwrap_or_default();
-        let zephyr_workspace = current_dir.join("zephyr-workspace");
+        // Use ZEPHYR_WORKSPACE env var if set (needed when running inside a k8s pod)
+        let zephyr_workspace = if let Ok(ws) = std::env::var("ZEPHYR_WORKSPACE") {
+            std::path::PathBuf::from(ws)
+        } else {
+            let current_dir = std::env::current_dir().unwrap_or_default();
+            current_dir.join("zephyr-workspace")
+        };
         let zephyr_firmware_nrf52840 = zephyr_workspace.join("build/nrf52840dk/nrf52840/zephyr/zephyr.elf");
         let zephyr_firmware_stm32f4 = zephyr_workspace.join("build/stm32f4/zephyr/zephyr.elf");
         let zephyr_firmware_arduino_nano = zephyr_workspace.join("build/nrf52840dk/nrf52840/zephyr/zephyr.elf");
