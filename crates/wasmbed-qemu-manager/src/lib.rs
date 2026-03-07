@@ -36,6 +36,31 @@ fn gateway_http_from_tls_endpoint(tls_endpoint: &str) -> String {
     }
 }
 
+/// Translate a ClusterIP TLS endpoint (e.g. "10.43.192.162:8443") to a host-visible NodePort endpoint.
+/// Emulated devices run on the host network (--net=host) but cannot reach ClusterIP addresses.
+/// The NodePort address is read from two env vars:
+///   RENODE_GATEWAY_HOST  (default: 192.168.100.179)
+///   RENODE_GATEWAY_PORT  (default: 30443)
+/// If the endpoint does not look like a Kubernetes ClusterIP (10.43.x.x) it is returned as-is.
+fn translate_to_nodeport_endpoint(endpoint: &str) -> String {
+    let s = endpoint.trim();
+    // Only translate ClusterIP addresses (10.43.x.x range used by k3s services)
+    let is_cluster_ip = s.starts_with("10.43.") || {
+        // Also handle "hostname:port" style k8s DNS names
+        let host = s.splitn(2, ':').next().unwrap_or("");
+        host.ends_with(".svc.cluster.local") || host.ends_with(".wasmbed")
+    };
+    if is_cluster_ip {
+        let host = std::env::var("RENODE_GATEWAY_HOST")
+            .unwrap_or_else(|_| "192.168.100.179".to_string());
+        let port = std::env::var("RENODE_GATEWAY_PORT")
+            .unwrap_or_else(|_| "30443".to_string());
+        format!("{}:{}", host, port)
+    } else {
+        s.to_string()
+    }
+}
+
 /// Request body for board registration (matches Gateway's BoardRegisterRequest).
 #[derive(Debug, Serialize)]
 struct BoardRegisterRequest {
@@ -123,9 +148,16 @@ async fn unregister_board_from_gateway(gateway_http: &str, device_id: &str) {
     }
 }
 
-// --- Single Renode instance (one container, N devices) ---
+// --- Per-device Renode containers ---
 const WASMBED_RENODE_CONTAINER_NAME: &str = "wasmbed-renode";
 const WASMBED_FIRMWARE_VOLUME: &str = "wasmbed-firmware-store";
+
+/// Build a unique, stable Docker container name for one device's Renode instance.
+fn renode_container_name(device_id: &str) -> String {
+    // Use a prefix of the device_id to keep names short and valid for Docker.
+    let suffix = &device_id[..device_id.len().min(16)];
+    format!("{}-{}", WASMBED_RENODE_CONTAINER_NAME, suffix)
+}
 const RENODE_MONITOR_PORT: u16 = 9999;
 
 /// Ensure the singleton Renode container is running. Start it if not.
@@ -147,26 +179,23 @@ fn ensure_renode_container_running() -> Result<(), anyhow::Error> {
         .args(&["volume", "create", WASMBED_FIRMWARE_VOLUME])
         .output();
     // Start singleton Renode with monitor on TCP port.
-    // NOTE: --disable-gui sets HideMonitor internally and prevents -P from opening a TCP socket.
-    //       -P alone is sufficient: it tells Renode to listen on that port instead of opening a window.
-    let renode_cmd = format!(
-        "renode -P {}",
-        RENODE_MONITOR_PORT
-    );
+    // -t allocates a pseudo-TTY so Renode's stdin never receives EOF → process stays alive.
+    // Passing args directly (not via sh -c) avoids an extra shell layer.
     let status = Command::new("docker")
         .args(&[
-            "run", "-d", "--restart=unless-stopped",
+            "run", "-dt", "--restart=unless-stopped",
             "--net=host",
             "--name", WASMBED_RENODE_CONTAINER_NAME,
             "-v", &format!("{}:/firmware:ro", WASMBED_FIRMWARE_VOLUME),
             "antmicro/renode:nightly",
-            "sh", "-c", &renode_cmd,
+            "renode", "-P", &RENODE_MONITOR_PORT.to_string(), "--plain",
         ])
         .status()?;
     if !status.success() {
         return Err(anyhow::anyhow!("Failed to start Renode container"));
     }
-    std::thread::sleep(Duration::from_secs(4));
+    // Give Renode time to initialize and bind the TCP port (typically 5-8s)
+    std::thread::sleep(Duration::from_secs(8));
     Ok(())
 }
 
@@ -191,18 +220,34 @@ fn copy_firmware_to_shared_volume(device_id: &str, firmware_path: &std::path::Pa
 }
 
 /// Send monitor commands to the running Renode instance (TCP, line-based).
+/// Retries the connection up to 5 times with 2s backoff (Renode may still be initialising).
 async fn send_renode_monitor_commands(addr: &str, commands: &str) -> Result<(), anyhow::Error> {
-    let mut stream = tokio::net::TcpStream::connect(addr).await?;
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    let filtered: String = commands
-        .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .map(|l| format!("{}\n", l))
-        .collect();
-    stream.write_all(filtered.as_bytes()).await?;
-    stream.flush().await?;
-    Ok(())
+    let mut last_err = anyhow::anyhow!("connection not attempted");
+    for attempt in 0..5u32 {
+        match tokio::net::TcpStream::connect(addr).await {
+            Ok(mut stream) => {
+                // Wait briefly for Renode's welcome banner before sending commands
+                tokio::time::sleep(Duration::from_millis(1500)).await;
+                let filtered: String = commands
+                    .lines()
+                    .map(|l| l.trim())
+                    .filter(|l| !l.is_empty() && !l.starts_with('#'))
+                    .map(|l| format!("{}\n", l))
+                    .collect();
+                stream.write_all(filtered.as_bytes()).await?;
+                stream.flush().await?;
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("Renode monitor not ready at {} (attempt {}): {}", addr, attempt + 1, e);
+                last_err = anyhow::anyhow!("{}", e);
+                if attempt < 4 {
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                }
+            }
+        }
+    }
+    Err(anyhow::anyhow!("Failed to connect to Renode monitor at {}: {}", addr, last_err))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -724,104 +769,43 @@ impl RenodeManager {
                     .replace("-service", "")
             };
             
-            // Get TLS port (default 8081 - gateway uses 8081 for TLS, 8080 for HTTP)
-            let tls_port = if gateway_ep.contains(":8081") {
-                8081
-            } else if gateway_ep.contains(":8443") {
+            // Get TLS port (default 8443 - gateway service always uses 8443 for TLS, 8080 for HTTP)
+            let tls_port = if gateway_ep.contains(":8443") {
                 8443
-            } else if gateway_ep.contains(":8080") {
-                // HTTP port specified, use TLS port 8081
+            } else if gateway_ep.contains(":8081") {
                 8081
             } else {
-                // Try to get from gateway CRD
-                let gateway_crd_output = Command::new("kubectl")
-                    .args(&["get", "gateway", &gateway_name, "-n", "wasmbed", "-o", "jsonpath={.spec.tlsPort}"])
-                    .output();
-                
-                if let Ok(crd_output) = gateway_crd_output {
-                    if crd_output.status.success() {
-                        let port_str = String::from_utf8_lossy(&crd_output.stdout).trim().to_string();
-                        if !port_str.is_empty() {
-                            port_str.parse::<u16>().unwrap_or(8081)
-                        } else {
-                            8081
-                        }
-                    } else {
-                        8081
-                    }
-                } else {
-                    8081
-                }
+                // HTTP port or unknown: use 8443 for TLS
+                8443
             };
             
-            // Get gateway pod IP using kubectl
-            // Strategy:
-            // 1. If gateway_name is specific (not empty), try to find pod by name pattern
-            // 2. Otherwise, get first available gateway pod
-            // 3. Pods are labeled with app=wasmbed-gateway, not gateway={name}
-            eprintln!("Resolving gateway pod IP for gateway_name: '{}'", gateway_name);
-            let pod_ip_output = if !gateway_name.is_empty() {
-                // Try to find pod by name pattern first (e.g., gateway-2 -> wasmbed-gateway-*)
-                // Get all gateway pods and find one that matches the gateway name pattern
-                let all_pods_output = Command::new("kubectl")
-                    .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-gateway", "-o", "jsonpath={.items[*].metadata.name}"])
-                    .output();
-                
-                if let Ok(output) = all_pods_output {
-                    if output.status.success() {
-                        let pod_names = String::from_utf8_lossy(&output.stdout);
-                        let pod_names_vec: Vec<&str> = pod_names.trim().split_whitespace().collect();
-                        eprintln!("Found gateway pods: {:?}", pod_names_vec);
-                        
-                        // Try to find a pod that contains the gateway name
-                        let matching_pod = pod_names_vec.iter().find(|name| {
-                            name.contains(&gateway_name) || gateway_name.contains(name.trim_start_matches("wasmbed-gateway-").split('-').next().unwrap_or(""))
-                        });
-                        
-                        if let Some(pod_name) = matching_pod {
-                            eprintln!("Found matching pod by name: {}", pod_name);
-                            // Get IP of specific pod
-                            Command::new("kubectl")
-                                .args(&["get", "pod", pod_name.trim(), "-n", "wasmbed", "-o", "jsonpath={.status.podIP}"])
-                                .output()
-                        } else {
-                            eprintln!("No matching pod found by name, using first available pod");
-                            // Fallback: get first available gateway pod
-                            Command::new("kubectl")
-                                .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-gateway", "-o", "jsonpath={.items[0].status.podIP}"])
-                                .output()
-                        }
-                    } else {
-                        eprintln!("Failed to list gateway pods, using first available pod");
-                        Command::new("kubectl")
-                            .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-gateway", "-o", "jsonpath={.items[0].status.podIP}"])
-                            .output()
-                    }
-                } else {
-                    eprintln!("Failed to execute kubectl to list pods, using first available pod");
-                    Command::new("kubectl")
-                        .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-gateway", "-o", "jsonpath={.items[0].status.podIP}"])
-                        .output()
-                }
+            // Get gateway service ClusterIP (accessible from --net=host Renode container)
+            eprintln!("Resolving gateway ClusterIP for gateway_name: '{}'", gateway_name);
+            let svc_name = if !gateway_name.is_empty() {
+                format!("{}-service", gateway_name)
             } else {
-                // Use first available gateway pod
-                eprintln!("Using first available gateway pod (gateway_name is fallback or empty)");
-                Command::new("kubectl")
-                    .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-gateway", "-o", "jsonpath={.items[0].status.podIP}"])
-                    .output()
+                // Try to extract service name directly from the original host_part
+                if host_part.ends_with("-service") {
+                    host_part.split('.').next().unwrap_or("gateway-1-service").to_string()
+                } else {
+                    format!("{}-service", host_part.split('.').next().unwrap_or("gateway-1"))
+                }
             };
+            eprintln!("Looking up ClusterIP for k8s service: {}", svc_name);
+            let cluster_ip_output = Command::new("kubectl")
+                .args(&["get", "svc", &svc_name, "-n", "wasmbed", "-o", "jsonpath={.spec.clusterIP}"])
+                .output();
             
-            if let Ok(output) = pod_ip_output {
+            if let Ok(output) = cluster_ip_output {
                 if output.status.success() {
-                    let pod_ip = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if !pod_ip.is_empty() {
-                        let gateway_pod_endpoint = format!("{}:{}", pod_ip, tls_port);
-                        println!("Resolved gateway endpoint for device {}: {} (pod IP: {}, TLS port: {})", device_id, gateway_pod_endpoint, pod_ip, tls_port);
-                        eprintln!("Resolved gateway endpoint for device {}: {} (pod IP: {}, TLS port: {})", device_id, gateway_pod_endpoint, pod_ip, tls_port);
-                        // Also write to a file for debugging
+                    let cluster_ip = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !cluster_ip.is_empty() {
+                        let gateway_pod_endpoint = format!("{}:{}", cluster_ip, tls_port);
+                        println!("Resolved gateway endpoint for device {}: {} (service ClusterIP: {}, TLS port: {})", device_id, gateway_pod_endpoint, cluster_ip, tls_port);
+                        eprintln!("Resolved gateway endpoint for device {}: {} (service ClusterIP: {}, TLS port: {})", device_id, gateway_pod_endpoint, cluster_ip, tls_port);
                         let _ = std::fs::write(
                             std::env::temp_dir().join(format!("gateway_endpoint_{}.txt", device_id)),
-                            format!("Resolved gateway endpoint for device {}: {} (pod IP: {}, TLS port: {})", device_id, gateway_pod_endpoint, pod_ip, tls_port)
+                            format!("Resolved gateway endpoint for device {}: {} (service ClusterIP: {}, TLS port: {})", device_id, gateway_pod_endpoint, cluster_ip, tls_port)
                         );
                         
                         // Store the resolved endpoint in device for later use in build_renode_args
@@ -831,14 +815,14 @@ impl RenodeManager {
                         }
                         drop(devices);
                     } else {
-                        eprintln!("Warning: Could not resolve gateway pod IP for device {} (empty response), will use fallback", device_id);
+                        eprintln!("Warning: Could not resolve gateway ClusterIP for device {} (empty response), will use fallback", device_id);
                     }
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    eprintln!("Warning: Failed to get gateway pod IP for device {}: {} (status: {})", device_id, stderr, output.status);
+                    eprintln!("Warning: Failed to get gateway ClusterIP for device {}: {} (status: {})", device_id, stderr, output.status);
                 }
             } else {
-                eprintln!("Warning: Failed to execute kubectl to get gateway pod IP for device {}, will use fallback", device_id);
+                eprintln!("Warning: Failed to execute kubectl to get gateway ClusterIP for device {}, will use fallback", device_id);
             }
         } else {
             // No gateway endpoint provided - try to get from device CRD
@@ -851,46 +835,26 @@ impl RenodeManager {
                 if output.status.success() {
                     let gateway_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     if !gateway_name.is_empty() {
-                        // Get TLS port from gateway CRD (default 8081)
-                        let tls_port = {
-                            let gateway_crd_output = Command::new("kubectl")
-                                .args(&["get", "gateway", &gateway_name, "-n", "wasmbed", "-o", "jsonpath={.spec.tlsPort}"])
-                                .output();
-                            
-                            if let Ok(crd_output) = gateway_crd_output {
-                                if crd_output.status.success() {
-                                    let port_str = String::from_utf8_lossy(&crd_output.stdout).trim().to_string();
-                                    if !port_str.is_empty() {
-                                        port_str.parse::<u16>().unwrap_or(8081)
-                                    } else {
-                                        8081
-                                    }
-                                } else {
-                                    8081
-                                }
-                            } else {
-                                8081
-                            }
-                        };
+                        // Use TLS port 8443 (gateway service always exposes 8443 for TLS)
+                        let tls_port: u16 = 8443;
                         
-                        // Get gateway pod IP
-                        // Pods are labeled with app=wasmbed-gateway, not gateway={name}
-                        eprintln!("Resolving gateway pod IP for gateway_name: {}", gateway_name);
-                        let pod_ip_output = Command::new("kubectl")
-                            .args(&["get", "pods", "-n", "wasmbed", "-l", "app=wasmbed-gateway", "-o", "jsonpath={.items[0].status.podIP}"])
+                        // Get gateway service ClusterIP (accessible from --net=host Renode container)
+                        let svc_name = format!("{}-service", gateway_name);
+                        eprintln!("Resolving gateway ClusterIP for gateway_name: {}, service: {}", gateway_name, svc_name);
+                        let cluster_ip_output = Command::new("kubectl")
+                            .args(&["get", "svc", &svc_name, "-n", "wasmbed", "-o", "jsonpath={.spec.clusterIP}"])
                             .output();
                         
-                        if let Ok(output) = pod_ip_output {
+                        if let Ok(output) = cluster_ip_output {
                             if output.status.success() {
-                                let pod_ip = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                                if !pod_ip.is_empty() {
-                                    let gateway_pod_endpoint = format!("{}:{}", pod_ip, tls_port);
-                                    println!("Resolved gateway endpoint for device {}: {} (pod IP: {}, TLS port: {})", device_id, gateway_pod_endpoint, pod_ip, tls_port);
-                                    eprintln!("Resolved gateway endpoint for device {}: {} (pod IP: {}, TLS port: {})", device_id, gateway_pod_endpoint, pod_ip, tls_port);
-                                    // Also write to a file for debugging
+                                let cluster_ip = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                                if !cluster_ip.is_empty() {
+                                    let gateway_pod_endpoint = format!("{}:{}", cluster_ip, tls_port);
+                                    println!("Resolved gateway endpoint for device {}: {} (service ClusterIP: {}, TLS port: {})", device_id, gateway_pod_endpoint, cluster_ip, tls_port);
+                                    eprintln!("Resolved gateway endpoint for device {}: {} (service ClusterIP: {}, TLS port: {})", device_id, gateway_pod_endpoint, cluster_ip, tls_port);
                                     let _ = std::fs::write(
                                         std::env::temp_dir().join(format!("gateway_endpoint_{}.txt", device_id)),
-                                        format!("Resolved gateway endpoint for device {}: {} (pod IP: {}, TLS port: {})", device_id, gateway_pod_endpoint, pod_ip, tls_port)
+                                        format!("Resolved gateway endpoint for device {}: {} (service ClusterIP: {}, TLS port: {})", device_id, gateway_pod_endpoint, cluster_ip, tls_port)
                                     );
                                     
                                     // Store the resolved endpoint in device for later use in build_renode_args
@@ -928,7 +892,8 @@ impl RenodeManager {
 
         let use_docker = std::env::var("RENODE_USE_DOCKER").unwrap_or_else(|_| "true".to_string()) == "true";
 
-        // Single Renode instance (one container, N devices): send commands to monitor
+        // Per-device Renode container using a .resc startup script (no TCP monitor required).
+        // Each device gets its own container named wasmbed-renode-{device_id_prefix}.
         if use_docker {
             let firmware_path = self.get_firmware_path(&device.mcu_type)?;
             let firmware_filename = firmware_path
@@ -936,29 +901,86 @@ impl RenodeManager {
                 .unwrap_or_else(|| std::ffi::OsStr::new("zephyr.elf"))
                 .to_string_lossy()
                 .to_string();
-            let gateway_endpoint_str = device.gateway_endpoint.as_deref().unwrap_or("127.0.0.1:8081").to_string();
+            let gateway_endpoint_str = device.gateway_endpoint.as_deref().unwrap_or("127.0.0.1:8443").to_string();
+            // In Docker mode the emulated device runs on the HOST network (--net=host), but
+            // ClusterIP addresses are only reachable inside the k8s overlay. Translate the
+            // ClusterIP endpoint to the host-visible NodePort endpoint so Zephyr firmware
+            // can actually reach the gateway.
+            let firmware_gateway_endpoint = translate_to_nodeport_endpoint(&gateway_endpoint_str);
             let gateway_http = device.gateway_endpoint.as_ref().map(|s| gateway_http_from_tls_endpoint(s.as_str()));
             let endpoint = device.endpoint.clone();
             let mcu_type_fmt = format!("{:?}", device.mcu_type);
             let has_eth = device.mcu_type.has_ethernet();
             let has_wifi = device.mcu_type.has_wifi();
+            let _mcu_type_clone = device.mcu_type.clone();
             drop(devices);
 
-            ensure_renode_container_running()?;
+            // Create shared volume if needed
+            let _ = Command::new("docker")
+                .args(&["volume", "create", WASMBED_FIRMWARE_VOLUME])
+                .output();
+
+            // Copy firmware into the shared volume
             copy_firmware_to_shared_volume(device_id, &firmware_path, &firmware_filename)?;
 
-            let commands = {
+            // Build the .resc startup script
+            let resc_content = {
                 let devices = self.devices.lock().await;
                 let device = devices.get(device_id).ok_or_else(|| anyhow::anyhow!("Device not found"))?;
-                self.build_renode_commands_string(
+                self.build_resc_script(
                     device,
                     device_id,
-                    &gateway_endpoint_str,
+                    &firmware_gateway_endpoint,
                     &format!("/firmware/{}/{}", device_id, firmware_filename),
-                ).map_err(|e| anyhow::anyhow!("build_renode_commands_string: {}", e))?
+                ).map_err(|e| anyhow::anyhow!("build_resc_script: {}", e))?
             };
-            let monitor_addr = std::env::var("RENODE_MONITOR_ADDR").unwrap_or_else(|_| "127.0.0.1:9999".to_string());
-            send_renode_monitor_commands(&monitor_addr, &commands).await?;
+
+            // Write the .resc file to the zephyr-workspace host path.
+            // The api-server pod mounts ZEPHYR_WORKSPACE as a hostPath volume (same path as on host),
+            // so std::fs::write here lands on the HOST filesystem where Docker can also read it.
+            let zephyr_ws = std::env::var("ZEPHYR_WORKSPACE")
+                .unwrap_or_else(|_| "/home/ubuntu/retrospect/zephyr-workspace".to_string());
+            let resc_dir = format!("{}/renode-scripts", zephyr_ws);
+            std::fs::create_dir_all(&resc_dir)
+                .map_err(|e| anyhow::anyhow!("Failed to create renode-scripts dir: {}", e))?;
+            let resc_host_path = format!("{}/{}.resc", resc_dir, device_id);
+            std::fs::write(&resc_host_path, &resc_content)
+                .map_err(|e| anyhow::anyhow!("Failed to write .resc file: {}", e))?;
+
+            eprintln!("Renode .resc written to {} for device {}:\n{}", resc_host_path, device_id, resc_content);
+
+            // Remove any stale container for this device
+            let container_name = renode_container_name(device_id);
+            let _ = Command::new("docker")
+                .args(&["rm", "-f", &container_name])
+                .output();
+
+            // Start per-device Renode container.
+            // Mount the host-side zephyr-workspace (for the .resc script) and the firmware volume (for the ELF).
+            // -t allocates a pseudo-TTY so Renode's stdin never gets EOF → simulation keeps running.
+            // --cap-add=NET_ADMIN + --device=/dev/net/tun: required for TAP/TUN ethernet emulation.
+            let resc_container_path = format!("/scripts/{}.resc", device_id);
+            let status = Command::new("docker")
+                .args(&[
+                    "run", "-dt",
+                    "--net=host",
+                    "--cap-add=NET_ADMIN",
+                    "--device=/dev/net/tun",
+                    "--name", &container_name,
+                    "-v", &format!("{}:/scripts:ro", resc_dir),
+                    "-v", &format!("{}:/firmware:ro", WASMBED_FIRMWARE_VOLUME),
+                    "antmicro/renode:nightly",
+                    "renode", "--plain",
+                    &resc_container_path,
+                ])
+                .status()?;
+
+            if !status.success() {
+                return Err(anyhow::anyhow!("Failed to start Renode container for device {}", device_id));
+            }
+
+            // Give Renode a moment to start the simulation
+            std::thread::sleep(Duration::from_secs(4));
 
             if let Some(ref gw) = gateway_http {
                 register_board_with_gateway(gw, device_id, &endpoint, &mcu_type_fmt, has_eth, has_wifi).await;
@@ -1079,14 +1101,17 @@ impl RenodeManager {
 
         if use_docker {
             device.status = QemuDeviceStatus::Stopping;
-            let monitor_addr = std::env::var("RENODE_MONITOR_ADDR").unwrap_or_else(|_| "127.0.0.1:9999".to_string());
-            let pause_commands = format!("mach set \"{}\"\npause", device_id);
+            let device_id_str = device_id.to_string();
             drop(guard.take());
-            if let Err(e) = send_renode_monitor_commands(&monitor_addr, &pause_commands).await {
-                eprintln!("Failed to pause machine in Renode (non-fatal): {}", e);
-            }
+
+            // Stop the per-device Renode container
+            let container_name = renode_container_name(&device_id_str);
+            let _ = Command::new("docker")
+                .args(&["rm", "-f", &container_name])
+                .output();
+
             let mut devices = self.devices.lock().await;
-            let device = devices.get_mut(device_id).ok_or_else(|| anyhow::anyhow!("Device {} not found", device_id))?;
+            let device = devices.get_mut(&device_id_str).ok_or_else(|| anyhow::anyhow!("Device {} not found", device_id_str))?;
             device.process_id = None;
             device.status = QemuDeviceStatus::Stopped;
         } else if let Some(pid) = device.process_id {
@@ -1352,6 +1377,87 @@ impl RenodeManager {
             endpoint_write.push_str(&format!("\nsysbus WriteDoubleWord 0x{:08x} 0x{:08x}", 0x20001004 + (i as u32 * 4), word));
         }
         Ok(format!("{}{}", renode_commands, endpoint_write))
+    }
+
+    /// Build a self-contained .resc startup script for one device.
+    /// Passes @-prefixed paths (Renode convention) and ends with `start`.
+    /// No TCP monitor connection needed — Renode executes the script and runs.
+    fn build_resc_script(
+        &self,
+        device: &QemuDevice,
+        device_id: &str,
+        gateway_endpoint_str: &str,
+        firmware_path_in_container: &str,
+    ) -> Result<String, std::io::Error> {
+        let mcu = &device.mcu_type;
+        let platform = mcu.renode_platform();
+        let uart = mcu.get_uart_name();
+
+        let ethernet_block = if mcu.has_ethernet() {
+            match mcu {
+                McuType::Stm32F746gDisco => {
+                    "emulation CreateSwitch \"ethernet_switch\"\n\
+                     emulation CreateTap \"tap0\" \"ethernet_tap\"\n\
+                     sysbus.ethernet MAC \"00:11:22:33:44:55\"\n\
+                     connector Connect sysbus.ethernet ethernet_switch\n\
+                     connector Connect host.ethernet_tap ethernet_switch\n\
+                     host.ethernet_tap Start"
+                }
+                McuType::FrdmK64f => {
+                    "emulation CreateSwitch \"ethernet_switch\"\n\
+                     emulation CreateTap \"tap0\" \"ethernet_tap\"\n\
+                     sysbus.ethernet MAC \"00:11:22:33:44:66\"\n\
+                     connector Connect sysbus.ethernet ethernet_switch\n\
+                     connector Connect host.ethernet_tap ethernet_switch\n\
+                     host.ethernet_tap Start"
+                }
+                _ => "",
+            }
+        } else {
+            ""
+        };
+
+        let pc_sp = if *mcu == McuType::RenodeArduinoNano33Ble {
+            "sysbus.cpu PC 0x866b\nsysbus.cpu SP 0x20020000\n"
+        } else {
+            ""
+        };
+
+        // Encode gateway endpoint address into memory at a known location
+        let endpoint_bytes = gateway_endpoint_str.as_bytes();
+        let mut endpoint_write = format!("sysbus WriteDoubleWord 0x20001000 0x{:08x}", endpoint_bytes.len());
+        for (i, chunk) in endpoint_bytes.chunks(4).enumerate() {
+            let mut word: u32 = 0;
+            for (j, &byte) in chunk.iter().enumerate() {
+                word |= (byte as u32) << (j * 8);
+            }
+            endpoint_write.push_str(&format!("\nsysbus WriteDoubleWord 0x{:08x} 0x{:08x}", 0x20001004 + (i as u32 * 4), word));
+        }
+
+        let mut script = format!(
+            "using sysbus\n\
+             mach create \"{id}\"\n\
+             machine LoadPlatformDescription @platforms/boards/{platform}.repl\n\
+             showAnalyzer sysbus.{uart}\n\
+             sysbus LoadELF @{elf}\n",
+            id = device_id,
+            platform = platform,
+            uart = uart,
+            elf = firmware_path_in_container,
+        );
+
+        if !ethernet_block.is_empty() {
+            script.push_str(ethernet_block);
+            script.push('\n');
+        }
+
+        script.push_str(&endpoint_write);
+        script.push('\n');
+        script.push_str(pc_sp);
+        script.push_str("logLevel -1\n");
+        script.push_str("start\n");
+
+        Ok(script)
     }
 
     fn build_renode_args(&self, device: &QemuDevice, device_id: &str) -> Result<Vec<String>, std::io::Error> {

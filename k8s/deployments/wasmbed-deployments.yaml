@@ -27,7 +27,7 @@ spec:
         - name: RUST_LOG
           value: "info"
         - name: WASMBED_API_SERVER_URL
-          value: "http://172.18.0.1:3001"
+          value: "http://wasmbed-api-server.wasmbed.svc.cluster.local:3001"
 ---
 apiVersion: apps/v1
 kind: Deployment

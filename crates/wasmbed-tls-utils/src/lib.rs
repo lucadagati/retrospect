@@ -171,11 +171,11 @@ pub type OnClientMessage = Box<dyn Fn(MessageContext) -> std::pin::Pin<Box<dyn s
 
 /// Enhanced callback types for gateway with PublicKey support
 pub type OnClientConnectWithKey = Box<dyn Fn(Vec<u8>) -> std::pin::Pin<Box<dyn std::future::Future<Output = AuthorizationResult> + Send>> + Send + Sync>;
-pub type OnClientDisconnectWithKey = Box<dyn Fn(Vec<u8>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
+pub type OnClientDisconnectWithKey = Box<dyn Fn(Vec<u8>, String) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
 pub type OnClientMessageWithKey = Box<dyn Fn(MessageContextWithKey) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
 
-/// Callback when a TLS connection is ready to receive server messages (public_key, sender to push ServerMessage)
-pub type OnConnectionReadyWithKey = Box<dyn Fn(Vec<u8>, mpsc::Sender<ServerMessage>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
+/// Callback when a TLS connection is ready to receive server messages (public_key, connection_id, sender to push ServerMessage)
+pub type OnConnectionReadyWithKey = Box<dyn Fn(Vec<u8>, String, mpsc::Sender<ServerMessage>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
 
 /// Server Configuration for compatibility
 pub struct ServerConfig {
@@ -924,7 +924,18 @@ impl GatewayServer {
         println!("[DEBUG] Calling ServerConfig::builder()");
         println!("[DEBUG] Certificate: {:?}", self.config.identity.certificate());
         println!("[DEBUG] Private key: {:?}", self.config.identity.private_key());
-        let server_config = ServerConfig::builder()
+        // Use ECDHE-ECDSA-AES128-GCM-SHA256 (P-256) for TLS 1.2 — ECDSA certs are much smaller
+        // than RSA, critical for constrained IoT devices with limited MbedTLS heap.
+        let mut provider = rustls::crypto::ring::default_provider();
+        provider.cipher_suites = vec![
+            rustls::crypto::ring::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+        ];
+        let server_config = ServerConfig::builder_with_provider(provider.into())
+            .with_protocol_versions(&[&rustls::version::TLS12])
+            .map_err(|e| {
+                log::error!("Failed to configure TLS 1.2 with cipher suites: {:?}", e);
+                e
+            })?
             .with_no_client_auth()
             .with_single_cert(
                 vec![self.config.identity.certificate().clone()],
@@ -936,7 +947,7 @@ impl GatewayServer {
             })?;
         println!("[DEBUG] ServerConfig created successfully");
         
-        log::info!("TLS server configuration created successfully");
+        log::info!("TLS server configuration created successfully (TLS 1.2 only)");
         
         let acceptor = TlsAcceptor::from(Arc::new(server_config));
         log::info!("TlsAcceptor created successfully");
@@ -947,20 +958,24 @@ impl GatewayServer {
         loop {
             match listener.accept().await {
                 Ok((stream, addr)) => {
+                    println!("[TLS] New connection from {}", addr);
                     log::info!("New connection from {}", addr);
                     
                     // Accept TLS connection
                     match acceptor.accept(stream).await {
                         Ok(tls_stream) => {
+                            println!("[TLS] Handshake OK for {}", addr);
                             log::info!("TLS handshake completed for {}", addr);
                             self.handle_tls_connection(tls_stream, addr).await?;
                         }
                         Err(e) => {
+                            println!("[TLS] Handshake FAILED for {}: {}", addr, e);
                             log::error!("TLS handshake failed for {}: {}", addr, e);
                         }
                     }
                 }
                 Err(e) => {
+                    println!("[TLS] Accept error: {}", e);
                     log::error!("Failed to accept connection: {}", e);
                 }
             }
@@ -984,15 +999,18 @@ impl GatewayServer {
             vec![]
         };
         
+        println!("[TLS] Client public key: {} bytes", public_key.len());
         log::info!("Client public key: {} bytes", public_key.len());
         
         // Call on_client_connect callback with public key
         let auth_result = (self.config.on_client_connect)(public_key.clone()).await;
         match auth_result {
             AuthorizationResult::Authorized => {
+                println!("[TLS] Client AUTHORIZED (key {} bytes)", public_key.len());
                 log::info!("Client authorized with public key: {} bytes", public_key.len());
             }
             AuthorizationResult::Unauthorized => {
+                println!("[TLS] Client UNAUTHORIZED (key {} bytes) → closing", public_key.len());
                 log::warn!("Client unauthorized with public key: {} bytes", public_key.len());
                 return Ok(());
             }
@@ -1048,7 +1066,7 @@ impl GatewayServer {
                 }
                 let mut ctx = MessageContextWithKey::new(
                     public_key_clone.clone(),
-                    format!("gateway-connection-{}", addr),
+                    addr.to_string(),
                 );
                 match minicbor::decode::<ClientMessage>(&payload) {
                     Ok(client_message) => ctx.set_message(client_message),
@@ -1061,11 +1079,11 @@ impl GatewayServer {
                 }));
                 (on_client_message)(ctx).await;
             }
-            (on_client_disconnect)(public_key_clone).await;
+            (on_client_disconnect)(public_key_clone, addr.to_string()).await;
         });
 
         if let Some(ref cb) = self.config.on_connection_ready {
-            (cb)(public_key, tx).await;
+            (cb)(public_key, addr.to_string(), tx).await;
         }
 
         Ok(())
@@ -1124,7 +1142,7 @@ impl GatewayServer {
         }
         
         // Call on_client_disconnect callback
-        (self.config.on_client_disconnect)(public_key.clone()).await;
+        (self.config.on_client_disconnect)(public_key.clone(), "legacy-connection".to_string()).await;
         
         Ok(())
     }

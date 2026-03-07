@@ -70,6 +70,7 @@ impl Callbacks {
             let gateway_reference = gateway_reference.clone();
             let http_server = http_server.clone();
             Box::pin(async move {
+                println!("[on_connect] public_key={} bytes", public_key.len());
                 // Convert Vec<u8> to PublicKey for device lookup
                 let public_key_obj = PublicKey::from(public_key.as_slice());
                 
@@ -127,19 +128,26 @@ impl Callbacks {
                         }
                     },
                     Ok(None) => {
-                        // Device doesn't exist, check if pairing mode is enabled for enrollment
-                        let pairing_mode = *http_server.pairing_mode.read().await;
-                        if pairing_mode {
-                            warn!("TLS client authentication: unknown device attempting connection for enrollment: {:?}", public_key_obj);
-                            warn!("Pairing mode enabled - allowing enrollment");
+                        // No TLS client cert (anonymous connection): always allow.
+                        // Device identity will be established via CBOR enrollment.
+                        if public_key.is_empty() {
+                            println!("[on_connect] Anonymous connection → Authorized");
+                            debug!("Anonymous TLS connection accepted; awaiting CBOR enrollment");
                             AuthorizationResult::Authorized
                         } else {
-                            error!("TLS client authentication failed: unknown device and pairing mode disabled");
-                            error!("Device {:?} not found and pairing mode is disabled", public_key_obj);
-                            AuthorizationResult::Unauthorized
+                            // Device sent a cert that's not registered yet; check pairing mode.
+                            let pairing_mode = *http_server.pairing_mode.read().await;
+                            if pairing_mode {
+                                warn!("Unknown device attempting connection for enrollment: {:?}", public_key_obj);
+                                AuthorizationResult::Authorized
+                            } else {
+                                error!("Unknown device and pairing mode disabled: {:?}", public_key_obj);
+                                AuthorizationResult::Unauthorized
+                            }
                         }
                     },
                     Err(e) => {
+                        println!("[on_connect] K8s error → Unauthorized: {}", e);
                         error!("TLS client authentication failed: unable to check Device status: {e}");
                         AuthorizationResult::Unauthorized
                     },
@@ -150,31 +158,38 @@ impl Callbacks {
 
     fn on_disconnect(&self) -> OnClientDisconnectWithKey {
         let api = self.api.clone();
-        Box::new(move |public_key: Vec<u8>| {
+        let http_server = self.http_server.clone();
+        Box::new(move |public_key: Vec<u8>, connection_id: String| {
             let api = api.clone();
+            let http_server = http_server.clone();
             Box::pin(async move {
-                // Convert Vec<u8> to PublicKey for device lookup
-                let public_key_obj = PublicKey::from(public_key.as_slice());
-                
-                // Mark device as disconnected when TLS connection is lost
-                match Device::find(api.clone(), public_key_obj.clone()).await {
-                    Ok(Some(device)) => {
-                        if let Err(e) = DeviceStatusUpdate::default()
-                            .mark_disconnected()
-                            .apply(api.clone(), device.clone())
-                            .await
-                        {
-                            error!("Error updating DeviceStatus on disconnect: {e}");
-                        } else {
-                            info!("Device marked as disconnected: {:?}", public_key_obj);
-                        }
-                    },
-                    Ok(None) => {
-                        debug!("Unknown device disconnected: {:?}", public_key_obj);
-                    },
-                    Err(e) => {
-                        error!("Error checking device status on disconnect: {e}");
-                    },
+                // Clean up in-memory connection state unconditionally.
+                http_server.remove_connection(&connection_id).await;
+
+                // Mark device as disconnected in K8s (only when we have a key to look it up).
+                if !public_key.is_empty() {
+                    let public_key_obj = PublicKey::from(public_key.as_slice());
+                    match Device::find(api.clone(), public_key_obj.clone()).await {
+                        Ok(Some(device)) => {
+                            if let Err(e) = DeviceStatusUpdate::default()
+                                .mark_disconnected()
+                                .apply(api.clone(), device.clone())
+                                .await
+                            {
+                                error!("Error updating DeviceStatus on disconnect: {e}");
+                            } else {
+                                info!("Device marked as disconnected: {:?}", public_key_obj);
+                            }
+                        },
+                        Ok(None) => {
+                            debug!("Unknown device disconnected: {:?}", public_key_obj);
+                        },
+                        Err(e) => {
+                            error!("Error checking device status on disconnect: {e}");
+                        },
+                    }
+                } else {
+                    info!("Anonymous device disconnected (connection {})", connection_id);
                 }
             })
         })
@@ -182,10 +197,17 @@ impl Callbacks {
 
     fn on_connection_ready(&self) -> OnConnectionReadyWithKey {
         let http_server = self.http_server.clone();
-        Box::new(move |public_key: Vec<u8>, sender: tokio::sync::mpsc::Sender<ServerMessage>| {
+        Box::new(move |public_key: Vec<u8>, connection_id: String, sender: tokio::sync::mpsc::Sender<ServerMessage>| {
             let http_server = http_server.clone();
             Box::pin(async move {
-                http_server.set_device_tls_sender(&public_key, sender).await;
+                // Always park the sender under the connection_id so that CBOR enrollment
+                // can activate it once the device's identity is known.
+                http_server.store_pending_sender(&connection_id, sender.clone()).await;
+                // If the device connected with a TLS client certificate (already enrolled),
+                // also register by public key so existing lookup paths continue to work.
+                if !public_key.is_empty() {
+                    http_server.set_device_tls_sender(&public_key, sender).await;
+                }
             })
         })
     }
@@ -199,136 +221,150 @@ impl Callbacks {
             let gateway_reference = gateway_reference.clone();
             let http_server = http_server.clone();
             Box::pin(async move {
-                // Mark device as having active TLS connection when first message is received
-                let public_key_bytes = ctx.client_public_key();
-                let public_key_obj = PublicKey::from(public_key_bytes.as_slice());
-                if let Ok(Some(device)) = Device::find(api.clone(), public_key_obj.clone()).await {
-                    let device_id = device.name_any();
-                    http_server.mark_device_tls_connected(&device_id).await;
-                }
-                
+                use base64::{engine::general_purpose::STANDARD as BASE64_STD, Engine as _};
+                let key_b64_top = BASE64_STD.encode(ctx.client_public_key());
+
+                // Resolve device_id for this message (works for both cert-authenticated
+                // and anonymous CBOR-enrolled devices).
+                let resolved_device_id = http_server
+                    .resolve_device_id(&ctx.connection_id, &key_b64_top)
+                    .await;
+
                 match ctx.message() {
                     Some(ClientMessage::Heartbeat) => {
-                        // Update heartbeat timestamp for the device
-                        let public_key_bytes = ctx.client_public_key();
-                        let public_key_obj = PublicKey::from(public_key_bytes.as_slice());
-                        match Device::find(api.clone(), public_key_obj.clone()).await {
-                            Ok(Some(device)) => {
-                                // Recovery: if device was Unreachable (heartbeat timeout), transition back to Connected
-                                let update = if matches!(device.status.as_ref(), Some(s) if s.phase == DevicePhase::Unreachable) {
-                                    info!("Device {} sent heartbeat while Unreachable, recovering to Connected", device.name_any());
-                                    DeviceStatusUpdate::default()
-                                        .mark_connected(gateway_reference.clone())
-                                        .last_heartbeat(Some(chrono::Utc::now()))
-                                } else {
-                                    DeviceStatusUpdate::default().update_heartbeat()
-                                };
-                                if let Err(e) = update.apply(api.clone(), device.clone()).await {
-                                    error!("Error updating heartbeat: {e}");
-                                }
-                                // Update heartbeat in HTTP API
-                                http_server.update_heartbeat(&device.name_any()).await;
-                            },
-                            Ok(None) => {
-                                debug!("Heartbeat from unknown device: {:?}", public_key_obj);
-                            },
-                            Err(e) => {
-                                error!("Error checking device status for heartbeat: {e}");
-                            },
-                        }
                         let _ = ctx.reply(ServerMessage::HeartbeatAck);
-                    },
-                    Some(ClientMessage::EnrollmentRequest) => {
-                        info!("Received enrollment request from device");
-                        
-                        // Check if pairing mode is enabled
-                        let pairing_mode = *http_server.pairing_mode.read().await;
-                        if pairing_mode {
-                            info!("Pairing mode enabled - accepting enrollment request");
-                            
-                            // Mark device as enrolling
-                            let public_key_bytes = ctx.client_public_key();
-                            let public_key_obj = PublicKey::from(public_key_bytes.as_slice());
-                            match Device::find(api.clone(), public_key_obj.clone()).await {
-                                Ok(Some(device)) => {
-                                    if let Err(e) = DeviceStatusUpdate::default()
-                                        .mark_enrolling()
-                                        .apply(api.clone(), device.clone())
-                                        .await
-                                    {
-                                        error!("Error updating device status to Enrolling: {e}");
+                        // Process heartbeat against K8s only when we know the device.
+                        if let Some(ref device_id) = resolved_device_id {
+                            http_server.update_heartbeat(device_id).await;
+                            match api.get(device_id).await {
+                                Ok(device) => {
+                                    let update = if matches!(device.status.as_ref(), Some(s) if s.phase == DevicePhase::Unreachable) {
+                                        info!("Device {} sent heartbeat while Unreachable, recovering to Connected", device_id);
+                                        DeviceStatusUpdate::default()
+                                            .mark_connected(gateway_reference.clone())
+                                            .last_heartbeat(Some(chrono::Utc::now()))
                                     } else {
-                                        info!("Device marked as Enrolling: {:?}", public_key_obj);
+                                        DeviceStatusUpdate::default().update_heartbeat()
+                                    };
+                                    if let Err(e) = update.apply(api.clone(), device).await {
+                                        error!("Error updating heartbeat for {}: {e}", device_id);
                                     }
                                 },
-                                Ok(None) => {
-                                    // Device doesn't exist yet, will be created during enrollment
-                                    debug!("Device not found yet, will be created during enrollment");
-                                },
-                                Err(e) => {
-                                    error!("Error checking device status for enrollment: {e}");
-                                },
+                                Err(e) => error!("K8s error on heartbeat for {}: {e}", device_id),
                             }
-                            
-                            let _ = ctx.reply(ServerMessage::EnrollmentAccepted);
                         } else {
-                            error!("Enrollment request rejected - pairing mode disabled");
-                            let _ = ctx.reply(ServerMessage::EnrollmentRejected { 
-                                reason: "Pairing mode disabled - enrollment not allowed".as_bytes().to_vec() 
-                            });
+                            debug!("Heartbeat from connection {} — device not yet identified", ctx.connection_id);
                         }
+                    },
+                    Some(ClientMessage::EnrollmentRequest) => {
+                        info!("Received enrollment request");
+                        // Accept unconditionally here; the pairing-mode gate is applied
+                        // in the PublicKey handler when the device reveals its key.
+                        let _ = ctx.reply(ServerMessage::EnrollmentAccepted);
                     },
                     Some(ClientMessage::PublicKey { key }) => {
                         info!("Received public key during enrollment: {} bytes", key.len());
-                        
-                        // Verify that the public key in the message matches the TLS certificate public key.
-                        // When the client connected without a TLS client certificate, tls_public_key_bytes
-                        // is empty — in that case skip the check (anonymous enrollment allowed in pairing mode).
+
+                        // Guard: TLS cert key must match CBOR key when a cert is present.
                         let tls_public_key_bytes = ctx.client_public_key();
-                        let tls_public_key_obj = PublicKey::from(tls_public_key_bytes.as_slice());
-                        let message_public_key = PublicKey::from(key.as_slice());
-                        
-                        if !tls_public_key_bytes.is_empty() && tls_public_key_obj != message_public_key {
-                            error!("TLS client authentication failed during enrollment: public key mismatch");
-                            let _ = ctx.reply(ServerMessage::EnrollmentRejected { 
-                                reason: "Public key mismatch with TLS certificate".as_bytes().to_vec() 
+                        if !tls_public_key_bytes.is_empty() && tls_public_key_bytes != key {
+                            error!("Public key mismatch between TLS certificate and CBOR message");
+                            let _ = ctx.reply(ServerMessage::EnrollmentRejected {
+                                reason: "Public key mismatch with TLS certificate".as_bytes().to_vec()
                             });
                             return;
                         }
-                        
-                        info!("TLS client authentication verified during enrollment");
-                        
-                        // Generate a unique UUID for this device
-                        let uuid = uuid::Uuid::new_v4();
-                        let device_uuid = DeviceUuid::new(*uuid.as_bytes());
-                        
-                        // Convert Vec<u8> to PublicKey for device lookup
+
+                        use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+                        let key_b64 = BASE64.encode(key);
                         let public_key_obj = PublicKey::from(key.as_slice());
-                        
-                        // Create a new Device CRD in Kubernetes
-                        match create_device_crd(&key, &device_uuid, &api, &gateway_reference).await {
-                            Ok(device_name) => {
-                                info!("Created Device CRD: {}", device_name);
-                                
-                                // Mark device as enrolled
-                                if let Ok(Some(device)) = Device::find(api.clone(), public_key_obj.clone()).await {
-                                    if let Err(e) = DeviceStatusUpdate::default()
-                                        .mark_enrolled()
-                                        .apply(api.clone(), device.clone())
-                                        .await
-                                    {
-                                        error!("Error updating device status to Enrolled: {e}");
-                                    } else {
-                                        info!("Device marked as Enrolled: {:?}", public_key_obj);
+
+                        match Device::find(api.clone(), public_key_obj.clone()).await {
+                            Ok(Some(existing_device)) => {
+                                // RECONNECT: device was previously enrolled — skip pairing mode.
+                                let device_id = existing_device.name_any();
+                                // Reconstruct the UUID from the device name ("device-<32hexchars>").
+                                let uuid_hex = device_id.trim_start_matches("device-");
+                                let existing_uuid = uuid::Uuid::parse_str(uuid_hex)
+                                    .map(|u| DeviceUuid::new(*u.as_bytes()))
+                                    .unwrap_or_else(|_| DeviceUuid::new(*uuid::Uuid::new_v4().as_bytes()));
+
+                                info!("Device {} reconnected (previously enrolled)", device_id);
+
+                                // Upsert device in HTTP registry.
+                                let capabilities = DeviceCapabilities {
+                                    available_memory: 0,
+                                    cpu_arch: "unknown".to_string(),
+                                    wasm_features: vec![],
+                                    max_app_size: 0,
+                                };
+                                http_server.register_device(device_id.clone(), key_b64.clone(), capabilities).await;
+                                http_server.activate_device_sender(&ctx.connection_id, &device_id, &key_b64).await;
+
+                                // Update K8s status to Connected.
+                                if let Err(e) = DeviceStatusUpdate::default()
+                                    .mark_connected(gateway_reference.clone())
+                                    .apply(api.clone(), existing_device.clone())
+                                    .await
+                                {
+                                    error!("Error updating device status to Connected on reconnect: {e}");
+                                }
+
+                                let _ = ctx.reply(ServerMessage::DeviceUuid { uuid: existing_uuid });
+                            },
+                            Ok(None) => {
+                                // NEW ENROLLMENT: check pairing mode.
+                                let pairing_mode = *http_server.pairing_mode.read().await;
+                                if !pairing_mode {
+                                    error!("Enrollment rejected: pairing mode disabled");
+                                    let _ = ctx.reply(ServerMessage::EnrollmentRejected {
+                                        reason: "Pairing mode disabled".as_bytes().to_vec()
+                                    });
+                                    return;
+                                }
+
+                                let uuid = uuid::Uuid::new_v4();
+                                let device_uuid = DeviceUuid::new(*uuid.as_bytes());
+
+                                match create_device_crd(key, &device_uuid, &api, &gateway_reference).await {
+                                    Ok(device_name) => {
+                                        info!("Created Device CRD: {}", device_name);
+
+                                        // Register and activate sender.
+                                        let capabilities = DeviceCapabilities {
+                                            available_memory: 0,
+                                            cpu_arch: "unknown".to_string(),
+                                            wasm_features: vec![],
+                                            max_app_size: 0,
+                                        };
+                                        http_server.register_device(device_name.clone(), key_b64.clone(), capabilities).await;
+                                        http_server.activate_device_sender(&ctx.connection_id, &device_name, &key_b64).await;
+
+                                        // Mark device as enrolled in K8s.
+                                        if let Ok(Some(device)) = Device::find(api.clone(), public_key_obj.clone()).await {
+                                            if let Err(e) = DeviceStatusUpdate::default()
+                                                .mark_enrolled()
+                                                .apply(api.clone(), device.clone())
+                                                .await
+                                            {
+                                                error!("Error updating device status to Enrolled: {e}");
+                                            }
+                                        }
+
+                                        let _ = ctx.reply(ServerMessage::DeviceUuid { uuid: device_uuid });
+                                    },
+                                    Err(e) => {
+                                        error!("Failed to create Device CRD: {}", e);
+                                        let _ = ctx.reply(ServerMessage::EnrollmentRejected {
+                                            reason: format!("Failed to create device: {}", e).into_bytes()
+                                        });
                                     }
                                 }
-                                
-                                let _ = ctx.reply(ServerMessage::DeviceUuid { uuid: device_uuid });
                             },
                             Err(e) => {
-                                error!("Failed to create Device CRD: {}", e);
-                                let _ = ctx.reply(ServerMessage::EnrollmentRejected { 
-                                    reason: format!("Failed to create device: {}", e).into_bytes() 
+                                error!("K8s error while looking up device: {}", e);
+                                let _ = ctx.reply(ServerMessage::EnrollmentRejected {
+                                    reason: "Internal error".as_bytes().to_vec()
                                 });
                             }
                         }
@@ -349,8 +385,8 @@ impl Callbacks {
                             debug!("Application {} metrics: memory={}, cpu={}%, uptime={}s, calls={}", 
                                    app_id, m.memory_usage, m.cpu_usage, m.uptime, m.function_calls);
                         }
-                        let key_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, ctx.client_public_key());
-                        let device_id = http_server.public_key_to_device.read().await.get(&key_b64).cloned();
+                        let key_b64 = BASE64_STD.encode(ctx.client_public_key());
+                        let device_id = http_server.resolve_device_id(&ctx.connection_id, &key_b64).await;
                         if let Some(device_id) = device_id {
                             if let Ok(app) = http_server.application_api.get(&app_id).await {
                                 let dev_phase = if error.is_some() { DeviceApplicationPhase::Failed } else { DeviceApplicationPhase::Running };
@@ -379,8 +415,8 @@ impl Callbacks {
                     },
                     Some(ClientMessage::ApplicationDeployAck { app_id, success, error }) => {
                         info!("Received deployment acknowledgment for {}: success={}", app_id, success);
-                        let key_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, ctx.client_public_key());
-                        let device_id = http_server.public_key_to_device.read().await.get(&key_b64).cloned();
+                        let key_b64 = BASE64_STD.encode(ctx.client_public_key());
+                        let device_id = http_server.resolve_device_id(&ctx.connection_id, &key_b64).await;
                         let (phase, dev_phase, err_msg) = if *success {
                             (ApplicationPhase::Running, DeviceApplicationPhase::Running, None as Option<String>)
                         } else {
@@ -408,8 +444,8 @@ impl Callbacks {
                     },
                     Some(ClientMessage::ApplicationStopAck { app_id, success, error }) => {
                         info!("Received stop acknowledgment for {}: success={}", app_id, success);
-                        let key_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, ctx.client_public_key());
-                        let device_id = http_server.public_key_to_device.read().await.get(&key_b64).cloned();
+                        let key_b64 = BASE64_STD.encode(ctx.client_public_key());
+                        let device_id = http_server.resolve_device_id(&ctx.connection_id, &key_b64).await;
                         let (phase, dev_phase, err_msg) = if *success {
                             (ApplicationPhase::Stopped, DeviceApplicationPhase::Stopped, None as Option<String>)
                         } else {
@@ -438,8 +474,8 @@ impl Callbacks {
                     Some(ClientMessage::DeviceInfo { available_memory, cpu_arch, wasm_features, max_app_size }) => {
                         info!("Received device info: arch={}, memory={}MB, max_app_size={}KB, features={:?}", 
                               cpu_arch, available_memory / 1024 / 1024, max_app_size / 1024, wasm_features);
-                        let key_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, ctx.client_public_key());
-                        if let Some(device_id) = http_server.public_key_to_device.read().await.get(&key_b64).cloned() {
+                        let key_b64 = BASE64_STD.encode(ctx.client_public_key());
+                        if let Some(device_id) = http_server.resolve_device_id(&ctx.connection_id, &key_b64).await {
                             let capabilities = DeviceCapabilities {
                                 available_memory: *available_memory,
                                 cpu_arch: cpu_arch.clone(),
@@ -498,10 +534,23 @@ async fn create_device_crd(
         status: Some(device_status),
     };
     
-    // Apply to Kubernetes
-    api.create(&kube::api::PostParams::default(), &device).await?;
-    
-    Ok(device_name)
+    // Apply to Kubernetes (get-or-create: tolerate 409 Conflict on reconnect).
+    match api.create(&kube::api::PostParams::default(), &device).await {
+        Ok(d) => Ok(d.name_any()),
+        Err(kube::Error::Api(e)) if e.code == 409 => {
+            // Device CRD already exists (e.g. reconnect after gateway restart).
+            // Look it up by public key and return its name.
+            let public_key_obj = PublicKey::from(public_key);
+            match Device::find(api.clone(), public_key_obj).await? {
+                Some(d) => {
+                    info!("Device CRD already exists (409), reusing: {}", d.name_any());
+                    Ok(d.name_any())
+                }
+                None => Err(anyhow::anyhow!("Device 409 but could not find existing CRD")),
+            }
+        }
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// Update Application CRD status based on MCU feedback
@@ -610,9 +659,11 @@ async fn main() -> Result<()> {
         .expect("Failed to install rustls crypto provider");
     
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
+        .with_max_level(Level::DEBUG)
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
+    // Bridge `log` crate → tracing so wasmbed-tls-utils messages are visible.
+    tracing_log::LogTracer::init().ok();
 
     let args = Args::parse();
 

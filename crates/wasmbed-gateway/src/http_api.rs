@@ -46,6 +46,10 @@ pub struct HttpApiServer {
     pub device_connections: Arc<RwLock<HashMap<String, DeviceConnection>>>,
     /// Map public_key (base64) -> device_id for looking up device when TLS connection is ready
     pub public_key_to_device: Arc<RwLock<HashMap<String, String>>>,
+    /// Map connection_id (socket addr string) -> sender, for devices that haven't identified yet
+    pub pending_senders: Arc<RwLock<HashMap<String, mpsc::Sender<ServerMessage>>>>,
+    /// Map connection_id -> device_id, set after CBOR enrollment completes
+    pub connection_to_device: Arc<RwLock<HashMap<String, String>>>,
     pub applications: Arc<RwLock<HashMap<String, DeployedApplication>>>,
     /// Board registry: device_id -> BoardRegistration (boards registered by Renode Manager)
     pub board_registry: Arc<RwLock<HashMap<String, BoardRegistration>>>,
@@ -181,6 +185,8 @@ impl HttpApiServer {
         Ok(Self {
             device_connections: Arc::new(RwLock::new(HashMap::new())),
             public_key_to_device: Arc::new(RwLock::new(HashMap::new())),
+            pending_senders: Arc::new(RwLock::new(HashMap::new())),
+            connection_to_device: Arc::new(RwLock::new(HashMap::new())),
             applications: Arc::new(RwLock::new(HashMap::new())),
             board_registry: Arc::new(RwLock::new(HashMap::new())),
             device_api,
@@ -301,6 +307,68 @@ impl HttpApiServer {
         if let Some(connection) = connections.get_mut(device_id) {
             connection.last_heartbeat = SystemTime::now();
             debug!("Updated heartbeat for device {}", device_id);
+        }
+    }
+
+    /// Store a pending TLS sender before the device has identified itself via CBOR enrollment.
+    pub async fn store_pending_sender(&self, connection_id: &str, sender: mpsc::Sender<ServerMessage>) {
+        self.pending_senders.write().await.insert(connection_id.to_string(), sender);
+        debug!("Stored pending sender for connection {}", connection_id);
+    }
+
+    /// Wire the pending sender to a device after CBOR enrollment reveals its identity.
+    pub async fn activate_device_sender(&self, connection_id: &str, device_id: &str, public_key_b64: &str) {
+        let sender = self.pending_senders.write().await.remove(connection_id);
+        {
+            let mut map = self.connection_to_device.write().await;
+            map.insert(connection_id.to_string(), device_id.to_string());
+        }
+        {
+            let mut map = self.public_key_to_device.write().await;
+            map.insert(public_key_b64.to_string(), device_id.to_string());
+        }
+        if let Some(sender) = sender {
+            let mut connections = self.device_connections.write().await;
+            if let Some(conn) = connections.get_mut(device_id) {
+                conn.tls_sender = Some(Arc::new(sender));
+                conn.tls_connected = true;
+                info!("TLS sender activated for device {}", device_id);
+            }
+        } else {
+            warn!("No pending sender found for connection {} when activating device {}", connection_id, device_id);
+        }
+    }
+
+    /// Resolve device_id from connection_id (fast) or public_key (fallback).
+    pub async fn resolve_device_id(&self, connection_id: &str, public_key_b64: &str) -> Option<String> {
+        {
+            let map = self.connection_to_device.read().await;
+            if let Some(id) = map.get(connection_id) {
+                return Some(id.clone());
+            }
+        }
+        if !public_key_b64.is_empty() {
+            let map = self.public_key_to_device.read().await;
+            if let Some(id) = map.get(public_key_b64) {
+                return Some(id.clone());
+            }
+        }
+        None
+    }
+
+    /// Clean up in-memory connection state on TLS disconnect.
+    pub async fn remove_connection(&self, connection_id: &str) {
+        self.pending_senders.write().await.remove(connection_id);
+        let device_id = self.connection_to_device.write().await.remove(connection_id);
+        if let Some(device_id) = device_id {
+            let mut connections = self.device_connections.write().await;
+            if let Some(conn) = connections.get_mut(&device_id) {
+                conn.tls_sender = None;
+                conn.tls_connected = false;
+                info!("TLS sender cleared for device {} (connection {})", device_id, connection_id);
+            }
+        } else {
+            debug!("Connection {} removed (was anonymous/unenrolled)", connection_id);
         }
     }
 

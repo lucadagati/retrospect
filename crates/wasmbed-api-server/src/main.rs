@@ -2041,11 +2041,38 @@ spec:
             }
         }
 
-        // Get gateway endpoint from environment or use Kubernetes service
-        let gateway_endpoint = Some(
-            std::env::var("WASMBED_API_SERVER_GATEWAY_ENDPOINT")
-                .unwrap_or_else(|_| "http://wasmbed-gateway.wasmbed.svc.cluster.local:8080".to_string())
-        );
+        // Look up the device's assigned gateway from the Kubernetes CRD
+        let gateway_endpoint = {
+            let output = tokio::process::Command::new("kubectl")
+                .args(&["get", "device", &device_id, "-n", "wasmbed", "-o", "json"])
+                .output()
+                .await;
+            match output {
+                Ok(output) if output.status.success() => {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    if let Ok(k8s_device) = serde_json::from_str::<serde_json::Value>(&stdout) {
+                        if let Some(gw_name) = k8s_device["status"]["gateway"]["name"].as_str() {
+                            let gateway_host = format!("{}-service.wasmbed.svc.cluster.local", gw_name);
+                            let gateway_tls_port = Self::get_gateway_tls_port(&gateway_host).await.unwrap_or(8443);
+                            let ep = format!("{}:{}", gateway_host, gateway_tls_port);
+                            info!("Resolved gateway endpoint for device {}: {}", device_id, ep);
+                            Some(ep)
+                        } else {
+                            warn!("Device {} has no gateway assigned in CRD, using env fallback", device_id);
+                            Some(std::env::var("WASMBED_API_SERVER_GATEWAY_ENDPOINT")
+                                .unwrap_or_else(|_| "http://wasmbed-gateway.wasmbed.svc.cluster.local:8080".to_string()))
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => {
+                    warn!("Could not fetch device {} from CRD, using env fallback", device_id);
+                    Some(std::env::var("WASMBED_API_SERVER_GATEWAY_ENDPOINT")
+                        .unwrap_or_else(|_| "http://wasmbed-gateway.wasmbed.svc.cluster.local:8080".to_string()))
+                }
+            }
+        };
 
         match state.renode_manager.start_device(&device_id, gateway_endpoint).await {
             Ok(_) => {

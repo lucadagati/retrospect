@@ -418,7 +418,12 @@ impl DeviceController {
                     let gateway_endpoint = if gateway_ref.endpoint.is_empty() {
                         "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string()
                     } else {
-                        gateway_ref.endpoint.clone()
+                        let ep = gateway_ref.endpoint.clone();
+                        if ep.starts_with("http://") || ep.starts_with("https://") {
+                            ep
+                        } else {
+                            format!("http://{}", ep)
+                        }
                     };
                     
                     // Verify TLS connection is active

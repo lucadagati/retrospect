@@ -45,6 +45,67 @@ static const uint8_t enrollment_ack_pkt[] = {
 };
 
 /*
+ * Receive a complete length-prefixed frame from the network.
+ * Accumulates data from multiple network_receive calls until the full
+ * frame (4-byte BE header + payload) is available.
+ * Returns 0 on success, -1 on error/timeout.
+ */
+static int recv_frame(uint8_t *buf, uint32_t buf_len, uint32_t *total_len,
+                      int timeout_ms)
+{
+    uint32_t got = 0;
+    int64_t deadline = k_uptime_get() + timeout_ms;
+
+    /* Accumulate until we have at least the 4-byte header */
+    while (got < 4) {
+        uint32_t chunk = 0;
+        int r = network_receive(buf + got, buf_len - got, &chunk);
+        if (r < 0) {
+            return -1;
+        }
+        got += chunk;
+        if (got < 4) {
+            if (k_uptime_get() >= deadline) {
+                LOG_ERR("recv_frame: header timeout (got %u)", got);
+                return -1;
+            }
+            k_sleep(K_MSEC(50));
+        }
+    }
+
+    /* Parse payload length from the 4-byte BE header */
+    uint32_t payload_len = ((uint32_t)buf[0] << 24) |
+                           ((uint32_t)buf[1] << 16) |
+                           ((uint32_t)buf[2] <<  8) |
+                           ((uint32_t)buf[3]);
+    uint32_t frame_len = 4 + payload_len;
+    if (frame_len > buf_len) {
+        LOG_ERR("recv_frame: frame too large (%u)", frame_len);
+        return -1;
+    }
+
+    /* Accumulate remaining payload bytes */
+    while (got < frame_len) {
+        uint32_t chunk = 0;
+        int r = network_receive(buf + got, buf_len - got, &chunk);
+        if (r < 0) {
+            return -1;
+        }
+        got += chunk;
+        if (got < frame_len) {
+            if (k_uptime_get() >= deadline) {
+                LOG_ERR("recv_frame: payload timeout (got %u/%u)", got, frame_len);
+                return -1;
+            }
+            k_sleep(K_MSEC(50));
+        }
+    }
+
+    *total_len = frame_len;
+    return 0;
+}
+
+/*
  * Perform enrollment handshake with the gateway.
  * Flow:
  *   C→S  EnrollmentRequest  (0x81 0x01)
@@ -71,9 +132,8 @@ static int do_enrollment(void)
     LOG_INF("Sent EnrollmentRequest");
 
     /* Step 2: Receive EnrollmentAccepted (wire: 00 00 00 02 81 01) */
-    k_sleep(K_MSEC(500));
     rx_len = 0;
-    ret = network_receive(rx_buf, sizeof(rx_buf), &rx_len);
+    ret = recv_frame(rx_buf, sizeof(rx_buf), &rx_len, 5000);
     if (ret < 0 || rx_len < 6) {
         LOG_ERR("No enrollment response: ret=%d len=%u", ret, rx_len);
         return -1;
@@ -128,9 +188,8 @@ static int do_enrollment(void)
     LOG_INF("Sent PublicKey (%u bytes)", key_len);
 
     /* Step 5: Receive DeviceUuid (wire: 00 00 00 13  82 03 50 <16 bytes>) */
-    k_sleep(K_MSEC(1000));
     rx_len = 0;
-    ret = network_receive(rx_buf, sizeof(rx_buf), &rx_len);
+    ret = recv_frame(rx_buf, sizeof(rx_buf), &rx_len, 5000);
     if (ret < 0 || rx_len < 6) {
         LOG_ERR("No DeviceUuid response: ret=%d len=%u", ret, rx_len);
         return -1;
@@ -150,9 +209,8 @@ static int do_enrollment(void)
     LOG_INF("Sent EnrollmentAcknowledgment");
 
     /* Step 7: Receive EnrollmentCompleted (wire: 00 00 00 02  81 04) — optional */
-    k_sleep(K_MSEC(500));
     rx_len = 0;
-    network_receive(rx_buf, sizeof(rx_buf), &rx_len);
+    recv_frame(rx_buf, sizeof(rx_buf), &rx_len, 3000);
     if (rx_len >= 6 && rx_buf[4] == 0x81 && rx_buf[5] == 0x04) {
         LOG_INF("Enrollment completed successfully!");
     } else {
@@ -520,14 +578,56 @@ int wasmbed_protocol_send_heartbeat(void)
     return wasmbed_protocol_send_message(heartbeat_packet, HEARTBEAT_PACKET_LEN);
 }
 
+/* Reconnect interval: try every 30 seconds when not connected */
+#define RECONNECT_INTERVAL_MS 30000U
+
+static uint32_t last_reconnect_attempt_ms = 0U;
+
+/* Attempt to connect to gateway and perform enrollment */
+static int try_connect_gateway(void)
+{
+    char host[64];
+    uint16_t port;
+    if (parse_endpoint(gateway_endpoint, host, sizeof(host), &port) != 0) {
+        return -1;
+    }
+    LOG_INF("Retrying TLS connection to gateway: %s:%u", host, port);
+    if (network_connect_tls(host, port) != 0) {
+        return -1;
+    }
+    gateway_connected = true;
+    LOG_INF("Connected to gateway via TLS");
+    if (do_enrollment() != 0) {
+        LOG_WRN("Enrollment failed - continuing with heartbeats only");
+    }
+    return 0;
+}
+
 void wasmbed_protocol_tick(void)
 {
-    if (!gateway_connected) return;
     uint32_t now = k_uptime_get_32();
+
+    if (!gateway_connected) {
+        /* Retry connection periodically */
+        if (now - last_reconnect_attempt_ms >= RECONNECT_INTERVAL_MS) {
+            last_reconnect_attempt_ms = now;
+            if (try_connect_gateway() != 0) {
+                LOG_WRN("Gateway reconnect failed - will retry in %u s",
+                        RECONNECT_INTERVAL_MS / 1000U);
+            }
+        }
+        return;
+    }
+
     if (now - last_heartbeat_uptime_ms >= HEARTBEAT_INTERVAL_MS) {
         if (wasmbed_protocol_send_heartbeat() == 0) {
             last_heartbeat_uptime_ms = now;
             LOG_DBG("Heartbeat sent");
+        } else {
+            /* Heartbeat failed - connection likely dropped */
+            LOG_WRN("Heartbeat failed - marking gateway as disconnected");
+            gateway_connected = false;
+            last_reconnect_attempt_ms = now - RECONNECT_INTERVAL_MS; /* retry immediately */
         }
     }
 }

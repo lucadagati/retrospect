@@ -68,13 +68,45 @@ int network_init(void)
 #if defined(CONFIG_NET_DHCPV4)
     net_dhcpv4_start(net_iface);
     LOG_INF("DHCP client started");
+
+    /* Wait for DHCP to assign an IP address (up to 120 seconds) */
+    {
+        int dhcp_wait = 120;
+        bool got_ip = false;
+        while (dhcp_wait > 0) {
+            struct net_if_addr *unicast;
+            struct net_if_ipv4 *ipv4 = net_iface->config.ip.ipv4;
+            if (ipv4 != NULL) {
+                for (int i = 0; i < NET_IF_MAX_IPV4_ADDR; i++) {
+                    unicast = &ipv4->unicast[i];
+                    if (unicast->is_used &&
+                        unicast->addr_state == NET_ADDR_PREFERRED &&
+                        unicast->addr_type == NET_ADDR_DHCP) {
+                        got_ip = true;
+                        break;
+                    }
+                }
+            }
+            if (got_ip) {
+                break;
+            }
+            k_sleep(K_SECONDS(1));
+            dhcp_wait--;
+            if (dhcp_wait % 10 == 0) {
+                LOG_INF("Waiting for DHCP... (%d s remaining)", dhcp_wait);
+            }
+        }
+        if (got_ip) {
+            LOG_INF("DHCP address acquired");
+        } else {
+            LOG_WRN("DHCP timeout - proceeding without IP");
+        }
+    }
 #else
     /* Static IP configuration would go here */
     LOG_INF("Using static IP configuration (DHCP disabled)");
-#endif
-
-    /* Wait a bit for network to be ready */
     k_sleep(K_SECONDS(2));
+#endif
 
     network_initialized = true;
     LOG_INF("Network stack initialized");
@@ -177,8 +209,19 @@ int network_connect_tls(const char *host, uint16_t port)
         LOG_WRN("Failed to set TLS_PEER_VERIFY_NONE: %d", errno);
     }
 
-    /* Note: For development, we skip certificate verification.
-     * In production, load a CA cert and use TLS_PEER_VERIFY_REQUIRED. */
+    /* Set TLS hostname for SNI (required by some servers even with PEER_VERIFY_NONE) */
+    if (zsock_setsockopt(socket_fd, SOL_TLS, TLS_HOSTNAME, host, strlen(host)) < 0) {
+        LOG_WRN("Failed to set TLS_HOSTNAME (SNI): %d", errno);
+    }
+
+    /* Set send/connect timeout to 30 seconds to avoid blocking indefinitely */
+    struct zsock_timeval tv = { .tv_sec = 30, .tv_usec = 0 };
+    if (zsock_setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0) {
+        LOG_WRN("Failed to set SO_SNDTIMEO: %d", errno);
+    }
+    if (zsock_setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+        LOG_WRN("Failed to set SO_RCVTIMEO: %d", errno);
+    }
 
     /* Setup address structure */
     struct sockaddr_in addr;
@@ -248,6 +291,55 @@ int network_receive(uint8_t *buffer, uint32_t buffer_len, uint32_t *received_len
     }
 
     *received_len = (uint32_t)received;
+    return 0;
+}
+
+/* Receive a framed message: 4-byte BE length header + payload.
+ * Uses individual recv calls for header and payload. */
+int network_receive_framed(uint8_t *buffer, uint32_t buffer_len, uint32_t *received_len)
+{
+    if (socket_fd < 0) {
+        return -1;
+    }
+
+    *received_len = 0;
+
+    /* Read 4-byte length header — single blocking recv */
+    ssize_t r = zsock_recv(socket_fd, buffer, 4, 0);
+    if (r <= 0) {
+        return -1;
+    }
+    /* Handle partial header read by accumulating */
+    uint32_t hdr_got = (uint32_t)r;
+    while (hdr_got < 4) {
+        r = zsock_recv(socket_fd, buffer + hdr_got, 4 - hdr_got, 0);
+        if (r <= 0) {
+            return -1;
+        }
+        hdr_got += (uint32_t)r;
+    }
+
+    uint32_t payload_len = ((uint32_t)buffer[0] << 24) |
+                           ((uint32_t)buffer[1] << 16) |
+                           ((uint32_t)buffer[2] <<  8) |
+                           ((uint32_t)buffer[3]);
+
+    if (4 + payload_len > buffer_len) {
+        LOG_ERR("Frame too large: %u bytes", payload_len);
+        return -1;
+    }
+
+    /* Read payload — accumulate until complete */
+    uint32_t got = 0;
+    while (got < payload_len) {
+        r = zsock_recv(socket_fd, buffer + 4 + got, payload_len - got, 0);
+        if (r <= 0) {
+            return -1;
+        }
+        got += (uint32_t)r;
+    }
+
+    *received_len = 4 + payload_len;
     return 0;
 }
 

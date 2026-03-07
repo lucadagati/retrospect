@@ -29,5 +29,10 @@ int network_send(const uint8_t *data, uint32_t data_len);
 /* Receive data from network */
 int network_receive(uint8_t *buffer, uint32_t buffer_len, uint32_t *received_len);
 
+/* Receive a length-prefixed framed message (4-byte BE header + CBOR payload).
+ * buffer receives the full frame (header + payload), buffer_len is the max size.
+ * received_len is set to total bytes read (header + payload). */
+int network_receive_framed(uint8_t *buffer, uint32_t buffer_len, uint32_t *received_len);
+
 #endif /* NETWORK_HANDLER_H */
 
