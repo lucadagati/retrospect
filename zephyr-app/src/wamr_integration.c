@@ -15,8 +15,11 @@ LOG_MODULE_REGISTER(wamr_integration, LOG_LEVEL_INF);
 /* WAMR runtime state */
 static bool wamr_initialized = false;
 
-/* WAMR heap buffer (64KB) */
-#define WAMR_HEAP_SIZE (64 * 1024)
+/* WAMR heap buffer: pool passato a wasm_runtime_full_init (Alloc_With_Pool).
+ * 48 KB sono sufficienti per caricare moduli piccoli + metadati istanza.
+ * Il pool globale interno di WAMR (WAMR_BUILD_GLOBAL_HEAP_POOL) è disabilitato
+ * in CMakeLists per evitare duplicati. */
+#define WAMR_HEAP_SIZE (48 * 1024)
 static uint8_t wamr_heap_buffer[WAMR_HEAP_SIZE] __aligned(8);
 
 /* Module registry */
@@ -172,7 +175,7 @@ int wamr_instantiate(uint32_t module_id, uint32_t *instance_id)
     }
 
     /* Default stack size: 64KB */
-    uint32_t stack_size = 64 * 1024;
+    uint32_t stack_size = 16 * 1024;  /* stack esecuzione WASM per istanza */
     uint32_t heap_size = 0; /* Use default */
 
     /* Error buffer for WAMR */

@@ -26,9 +26,9 @@ set(WAMR_BUILD_LIBC_WASI 0)
 set(WAMR_BUILD_MULTI_MODULE 1)
 set(WAMR_BUILD_FAST_INTERP 1)
 
-# Global heap configuration
-set(WAMR_BUILD_GLOBAL_HEAP_POOL 1)
-set(WAMR_BUILD_GLOBAL_HEAP_SIZE 131072)  # 128 KB
+# Global heap configuration: disabilitato — usiamo Alloc_With_Pool in wamr_init()
+# Non definire WAMR_BUILD_GLOBAL_HEAP_POOL per evitare di allocare un BSS statico
+# duplicato da 128 KB dentro WAMR stesso.
 
 # Include WAMR build script
 set(WAMR_ROOT_DIR ${WAMR_ROOT})
