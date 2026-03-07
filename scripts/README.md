@@ -61,6 +61,26 @@ Verifica mantenimento TLS (heartbeat, unreachable, recovery) e deploy WASM su de
 
 Vedi `doc/RENODE_TLS_DEPLOY_VERIFICATION.md` per i dettagli.
 
+### `test_enrollment.py`
+Script Python per testare il flusso di enrollment TLS end-to-end direttamente contro il gateway, senza necessità di avviare Renode o il firmware.
+
+**Prerequisiti:** solo stdlib Python 3 (nessuna dipendenza esterna).
+
+**Utilizzo:**
+```bash
+# 1. Abilita pairing mode sul gateway
+curl -X POST http://<GATEWAY_HTTP_IP>:8080/api/v1/admin/pairing-mode \
+     -H 'Content-Type: application/json' -d '{"enabled":true}'
+
+# 2. Esegui il test (modifica GATEWAY_HOST/PORT se necessario)
+python3 scripts/test_enrollment.py
+```
+
+Simula la sequenza completa: TLS handshake → EnrollmentRequest → PublicKey → DeviceUuid → EnrollmentAcknowledgment → EnrollmentCompleted → Heartbeat.
+Alla fine viene creato un Device CRD in Kubernetes con `phase: Enrolled`.
+
+Vedi `doc/TLS_ENROLLMENT_FIX.md` per la documentazione tecnica dei bug risolti.
+
 ### `cleanup-k3s.sh`
 Rimozione completa del deployment Wasmbed.
 

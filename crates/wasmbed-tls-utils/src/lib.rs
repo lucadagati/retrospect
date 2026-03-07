@@ -999,44 +999,67 @@ impl GatewayServer {
         }
 
         let (tx, mut rx) = mpsc::channel::<ServerMessage>(32);
+        // Clone tx for reply_fn and to keep the channel alive regardless of what
+        // on_connection_ready does with its copy.
+        let tx_for_read = tx.clone();
         let on_client_message = self.config.on_client_message.clone();
         let on_client_disconnect = self.config.on_client_disconnect.clone();
         let public_key_clone = public_key.clone();
 
         tokio::spawn(async move {
-            let mut buffer = [0u8; 4096];
-            loop {
-                tokio::select! {
-                    maybe_msg = rx.recv() => {
-                        match maybe_msg {
-                            Some(msg) => {
-                                if let Ok(cbor) = minicbor::to_vec(&msg) {
-                                    let len = cbor.len() as u32;
-                                    let _ = tls_stream.write_all(&len.to_be_bytes()).await;
-                                    let _ = tls_stream.write_all(&cbor).await;
-                                    let _ = tls_stream.flush().await;
-                                }
-                            }
-                            None => break,
-                        }
-                    }
-                    result = tls_stream.read(&mut buffer) => {
-                        match result {
-                            Ok(0) => break,
-                            Ok(n) => {
-                                let mut ctx = MessageContextWithKey::new(
-                                    public_key_clone.clone(),
-                                    format!("gateway-connection-{}", addr),
-                                );
-                                if let Ok(client_message) = minicbor::decode::<ClientMessage>(&buffer[..n]) {
-                                    ctx.set_message(client_message);
-                                }
-                                (on_client_message)(ctx).await;
-                            }
-                            Err(_) => break,
-                        }
+            use tokio::io::AsyncReadExt;
+            use tokio::io::AsyncWriteExt;
+
+            // Split the stream so the read loop and write loop don't interfere.
+            let (mut reader, mut writer) = tokio::io::split(tls_stream);
+
+            // Writer task: forwards queued ServerMessage → client.
+            tokio::spawn(async move {
+                while let Some(msg) = rx.recv().await {
+                    if let Ok(cbor) = minicbor::to_vec(&msg) {
+                        let len = cbor.len() as u32;
+                        let _ = writer.write_all(&len.to_be_bytes()).await;
+                        let _ = writer.write_all(&cbor).await;
+                        let _ = writer.flush().await;
                     }
                 }
+            });
+
+            // Reader loop: reads framed messages (4-byte BE length + CBOR) from client.
+            // Holds tx_for_read to keep the writer channel alive even if on_connection_ready
+            // drops its copy of tx (e.g. when the device has no known device_id yet).
+            let _tx_keep = tx_for_read.clone();
+            loop {
+                // Read 4-byte big-endian length prefix
+                let mut len_buf = [0u8; 4];
+                match reader.read_exact(&mut len_buf).await {
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+                let msg_len = u32::from_be_bytes(len_buf) as usize;
+                if msg_len == 0 || msg_len > 65536 {
+                    log::warn!("Invalid message length {} from {}, closing", msg_len, addr);
+                    break;
+                }
+                // Read CBOR payload
+                let mut payload = vec![0u8; msg_len];
+                if reader.read_exact(&mut payload).await.is_err() {
+                    break;
+                }
+                let mut ctx = MessageContextWithKey::new(
+                    public_key_clone.clone(),
+                    format!("gateway-connection-{}", addr),
+                );
+                match minicbor::decode::<ClientMessage>(&payload) {
+                    Ok(client_message) => ctx.set_message(client_message),
+                    Err(e) => log::warn!("CBOR decode error from {}: {}", addr, e),
+                }
+                // Wire reply_fn so handlers can send responses back via the channel.
+                let tx_reply = tx_for_read.clone();
+                ctx.set_reply_fn(Box::new(move |msg: ServerMessage| {
+                    tx_reply.try_send(msg).map_err(|e| anyhow::anyhow!("Reply send failed: {}", e))
+                }));
+                (on_client_message)(ctx).await;
             }
             (on_client_disconnect)(public_key_clone).await;
         });

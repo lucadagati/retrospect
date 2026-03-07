@@ -146,10 +146,11 @@ fn ensure_renode_container_running() -> Result<(), anyhow::Error> {
     let _ = Command::new("docker")
         .args(&["volume", "create", WASMBED_FIRMWARE_VOLUME])
         .output();
-    // Start singleton Renode with monitor on port.
-    // Use "sleep infinity | renode ..." to keep stdin open (without stdin input, --console mode exits).
+    // Start singleton Renode with monitor on TCP port.
+    // NOTE: --disable-gui sets HideMonitor internally and prevents -P from opening a TCP socket.
+    //       -P alone is sufficient: it tells Renode to listen on that port instead of opening a window.
     let renode_cmd = format!(
-        "sleep infinity | renode --console --disable-gui -P {}",
+        "renode -P {}",
         RENODE_MONITOR_PORT
     );
     let status = Command::new("docker")

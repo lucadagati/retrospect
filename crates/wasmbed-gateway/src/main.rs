@@ -281,12 +281,14 @@ impl Callbacks {
                     Some(ClientMessage::PublicKey { key }) => {
                         info!("Received public key during enrollment: {} bytes", key.len());
                         
-                        // Verify that the public key in the message matches the TLS certificate public key
+                        // Verify that the public key in the message matches the TLS certificate public key.
+                        // When the client connected without a TLS client certificate, tls_public_key_bytes
+                        // is empty — in that case skip the check (anonymous enrollment allowed in pairing mode).
                         let tls_public_key_bytes = ctx.client_public_key();
                         let tls_public_key_obj = PublicKey::from(tls_public_key_bytes.as_slice());
                         let message_public_key = PublicKey::from(key.as_slice());
                         
-                        if tls_public_key_obj != message_public_key {
+                        if !tls_public_key_bytes.is_empty() && tls_public_key_obj != message_public_key {
                             error!("TLS client authentication failed during enrollment: public key mismatch");
                             let _ = ctx.reply(ServerMessage::EnrollmentRejected { 
                                 reason: "Public key mismatch with TLS certificate".as_bytes().to_vec() 
@@ -472,7 +474,7 @@ async fn create_device_crd(
     // Create Device spec
     let device_spec = wasmbed_k8s_resource::DeviceSpec {
         public_key: public_key_b64,
-        mcu_type: Some("mps2-an385".to_string()),
+        mcu_type: Some("Stm32F746gDisco".to_string()),
         preferred_gateway: None, // No preferred gateway during auto-enrollment
     };
     

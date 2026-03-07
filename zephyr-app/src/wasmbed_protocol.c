@@ -17,6 +17,8 @@ LOG_MODULE_REGISTER(wasmbed_protocol, LOG_LEVEL_INF);
 
 /* Memory address where Renode writes the gateway endpoint */
 #define GATEWAY_ENDPOINT_ADDR 0x20001000
+/* Memory address where Renode writes the device public key (4-byte LE length + key bytes) */
+#define DEVICE_KEY_ADDR       0x20002000
 
 /* Heartbeat interval in milliseconds (keep below Gateway timeout, e.g. 90s) */
 #define HEARTBEAT_INTERVAL_MS 25000U
@@ -31,6 +33,134 @@ static const uint8_t heartbeat_packet[] = {
     0x00, 0x00, 0x00, 0x02, 0x81, 0x00
 };
 #define HEARTBEAT_PACKET_LEN sizeof(heartbeat_packet)
+
+/* ClientMessage::EnrollmentRequest = array(1), u32(1) => CBOR 0x81 0x01 */
+static const uint8_t enrollment_request_pkt[] = {
+    0x00, 0x00, 0x00, 0x02, 0x81, 0x01
+};
+
+/* ClientMessage::EnrollmentAcknowledgment = array(1), u32(3) => CBOR 0x81 0x03 */
+static const uint8_t enrollment_ack_pkt[] = {
+    0x00, 0x00, 0x00, 0x02, 0x81, 0x03
+};
+
+/*
+ * Perform enrollment handshake with the gateway.
+ * Flow:
+ *   C→S  EnrollmentRequest  (0x81 0x01)
+ *   S→C  EnrollmentAccepted (0x81 0x01)
+ *   C→S  PublicKey { key }  (0x82 0x02 0x58 <len> <key bytes>)
+ *   S→C  DeviceUuid         (0x82 0x03 0x50 <16 bytes>)
+ *   C→S  EnrollmentAcknowledgment (0x81 0x03)
+ *   S→C  EnrollmentCompleted (0x81 0x04)
+ */
+static int do_enrollment(void)
+{
+    uint8_t rx_buf[64];
+    uint32_t rx_len;
+    int ret;
+
+    LOG_INF("Starting enrollment with gateway...");
+
+    /* Step 1: Send EnrollmentRequest */
+    ret = network_send(enrollment_request_pkt, sizeof(enrollment_request_pkt));
+    if (ret < 0) {
+        LOG_ERR("Failed to send EnrollmentRequest");
+        return -1;
+    }
+    LOG_INF("Sent EnrollmentRequest");
+
+    /* Step 2: Receive EnrollmentAccepted (wire: 00 00 00 02 81 01) */
+    k_sleep(K_MSEC(500));
+    rx_len = 0;
+    ret = network_receive(rx_buf, sizeof(rx_buf), &rx_len);
+    if (ret < 0 || rx_len < 6) {
+        LOG_ERR("No enrollment response: ret=%d len=%u", ret, rx_len);
+        return -1;
+    }
+    if (rx_buf[4] != 0x81 || rx_buf[5] != 0x01) {
+        LOG_ERR("Enrollment rejected: 0x%02x 0x%02x", rx_buf[4], rx_buf[5]);
+        return -1;
+    }
+    LOG_INF("Enrollment accepted by gateway");
+
+    /* Step 3: Read 32-byte device public key from 0x20002000 (set by Renode).
+     * Format: 4-byte LE length, then key bytes.
+     * Fall back to a static test key if not set. */
+    uint8_t pub_key[32];
+    uint32_t key_len;
+    {
+        volatile uint32_t *klen_ptr = (volatile uint32_t *)DEVICE_KEY_ADDR;
+        key_len = *klen_ptr;
+        if (key_len == 0 || key_len > sizeof(pub_key)) {
+            LOG_WRN("No device key in memory (len=%u), using static test key", key_len);
+            memset(pub_key, 0xAB, sizeof(pub_key));
+            key_len = sizeof(pub_key);
+        } else {
+            volatile uint8_t *kdata_ptr = (volatile uint8_t *)(DEVICE_KEY_ADDR + 4);
+            for (uint32_t i = 0; i < key_len; i++) {
+                pub_key[i] = kdata_ptr[i];
+            }
+        }
+    }
+
+    /* Step 4: Build and send PublicKey message.
+     * CBOR: array(2) uint(2) bytes(32) = 82 02 58 20 <32 bytes> = 36 CBOR bytes
+     * Wire: 00 00 00 24  82 02 58 20 <32 bytes> = 40 bytes total
+     */
+    uint8_t pub_key_pkt[8 + 32];  /* header(4) + cbor-prefix(4) + key(32) */
+    uint32_t cbor_len = 4 + key_len; /* 82 02 58 <klen> + key bytes */
+    pub_key_pkt[0] = 0x00;
+    pub_key_pkt[1] = 0x00;
+    pub_key_pkt[2] = (uint8_t)((cbor_len >> 8) & 0xFF);
+    pub_key_pkt[3] = (uint8_t)(cbor_len & 0xFF);
+    pub_key_pkt[4] = 0x82;            /* array(2) */
+    pub_key_pkt[5] = 0x02;            /* uint(2) = ClientMessage::PublicKey tag */
+    pub_key_pkt[6] = 0x58;            /* bytes with following 1-byte length */
+    pub_key_pkt[7] = (uint8_t)key_len;
+    memcpy(&pub_key_pkt[8], pub_key, key_len);
+
+    ret = network_send(pub_key_pkt, sizeof(pub_key_pkt));
+    if (ret < 0) {
+        LOG_ERR("Failed to send PublicKey");
+        return -1;
+    }
+    LOG_INF("Sent PublicKey (%u bytes)", key_len);
+
+    /* Step 5: Receive DeviceUuid (wire: 00 00 00 13  82 03 50 <16 bytes>) */
+    k_sleep(K_MSEC(1000));
+    rx_len = 0;
+    ret = network_receive(rx_buf, sizeof(rx_buf), &rx_len);
+    if (ret < 0 || rx_len < 6) {
+        LOG_ERR("No DeviceUuid response: ret=%d len=%u", ret, rx_len);
+        return -1;
+    }
+    if (rx_buf[4] != 0x82 || rx_buf[5] != 0x03) {
+        LOG_ERR("Unexpected PublicKey response: 0x%02x 0x%02x", rx_buf[4], rx_buf[5]);
+        return -1;
+    }
+    LOG_INF("Received DeviceUuid from gateway");
+
+    /* Step 6: Send EnrollmentAcknowledgment */
+    ret = network_send(enrollment_ack_pkt, sizeof(enrollment_ack_pkt));
+    if (ret < 0) {
+        LOG_ERR("Failed to send EnrollmentAcknowledgment");
+        return -1;
+    }
+    LOG_INF("Sent EnrollmentAcknowledgment");
+
+    /* Step 7: Receive EnrollmentCompleted (wire: 00 00 00 02  81 04) — optional */
+    k_sleep(K_MSEC(500));
+    rx_len = 0;
+    network_receive(rx_buf, sizeof(rx_buf), &rx_len);
+    if (rx_len >= 6 && rx_buf[4] == 0x81 && rx_buf[5] == 0x04) {
+        LOG_INF("Enrollment completed successfully!");
+    } else {
+        LOG_WRN("EnrollmentCompleted not received (len=%u) - continuing anyway", rx_len);
+    }
+
+    return 0;
+}
 
 /* Read gateway endpoint from memory (written by Renode) */
 static int read_gateway_endpoint(void)
@@ -114,6 +244,10 @@ int wasmbed_protocol_init(void)
         if (network_connect_tls(host, port) == 0) {
             gateway_connected = true;
             LOG_INF("Connected to gateway via TLS");
+            /* Perform enrollment */
+            if (do_enrollment() != 0) {
+                LOG_WRN("Enrollment failed - will continue with heartbeats only");
+            }
         } else {
             LOG_ERR("Failed to connect to gateway with TLS - will retry later");
             /* Don't fail initialization - connection can be retried */

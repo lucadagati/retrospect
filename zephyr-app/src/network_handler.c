@@ -164,24 +164,21 @@ int network_connect_tls(const char *host, uint16_t port)
         socket_fd = -1;
     }
 
-    /* Create TCP socket (TLS will be configured via socket options) */
-    socket_fd = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    /* Create TLS socket */
+    socket_fd = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TLS_1_2);
     if (socket_fd < 0) {
-        LOG_ERR("Failed to create socket: %d", errno);
+        LOG_ERR("Failed to create TLS socket: %d", errno);
         return -1;
     }
 
-    /* Configure TLS before connecting */
-    /* Set TLS hostname for SNI (Server Name Indication) */
-    int ret = zsock_setsockopt(socket_fd, SOL_TLS, TLS_HOSTNAME, host, strlen(host) + 1);
-    if (ret < 0) {
-        LOG_WRN("Failed to set TLS hostname: %d", errno);
-        /* Continue - TLS might still work without SNI */
+    /* Skip server certificate verification (no CA cert loaded) */
+    int verify = TLS_PEER_VERIFY_NONE;
+    if (zsock_setsockopt(socket_fd, SOL_TLS, TLS_PEER_VERIFY, &verify, sizeof(verify)) < 0) {
+        LOG_WRN("Failed to set TLS_PEER_VERIFY_NONE: %d", errno);
     }
 
-    /* Note: For development, we skip certificate verification
-     * In production, proper certificate validation should be enabled
-     * by setting TLS_SEC_TAG_LIST with appropriate security tags */
+    /* Note: For development, we skip certificate verification.
+     * In production, load a CA cert and use TLS_PEER_VERIFY_REQUIRED. */
 
     /* Setup address structure */
     struct sockaddr_in addr;
