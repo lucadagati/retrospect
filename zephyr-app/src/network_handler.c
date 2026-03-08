@@ -294,6 +294,19 @@ int network_receive(uint8_t *buffer, uint32_t buffer_len, uint32_t *received_len
     return 0;
 }
 
+/* Poll socket for incoming data; returns >0 if readable, 0 on timeout, <0 on error */
+int network_poll_readable(int timeout_ms)
+{
+    if (socket_fd < 0) {
+        return -1;
+    }
+    struct zsock_pollfd pfd;
+    pfd.fd     = socket_fd;
+    pfd.events = ZSOCK_POLLIN;
+    pfd.revents = 0;
+    return zsock_poll(&pfd, 1, timeout_ms);
+}
+
 /* Receive a framed message: 4-byte BE length header + payload.
  * Uses individual recv calls for header and payload. */
 int network_receive_framed(uint8_t *buffer, uint32_t buffer_len, uint32_t *received_len)

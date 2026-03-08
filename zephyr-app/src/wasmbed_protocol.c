@@ -328,6 +328,12 @@ int wasmbed_protocol_init(void)
 static uint8_t wasm_copy_buf[MAX_WASM_SIZE];
 static char deploy_app_id_buf[MAX_APP_ID_LEN];
 
+/* Running application state */
+static uint32_t current_instance_id = 0;
+static bool app_deployed = false;
+#define APP_STATUS_INTERVAL_MS 30000U
+static uint32_t last_app_status_ms = 0U;
+
 /* Read CBOR text at *pp into buf (max buf_size), null-term; advance *pp. Return 0 or -1. */
 static int cbor_read_text(const uint8_t **pp, const uint8_t *end, char *buf, size_t buf_size)
 {
@@ -460,7 +466,13 @@ static int handle_deploy_application(const uint8_t *cbor, uint32_t cbor_len,
         return -1;
     }
     LOG_INF("WASM deployed: app_id=%s module_id=%u instance_id=%u", deploy_app_id_buf, (unsigned)module_id, (unsigned)instance_id);
-    (void)instance_id;
+    /* Execute the WASM "run" entry point */
+    if (wamr_call_function(instance_id, "run", NULL, 0, NULL, 0) != 0) {
+        LOG_WRN("WASM run() returned error");
+    }
+    current_instance_id = instance_id;
+    app_deployed = true;
+    last_app_status_ms = k_uptime_get_32();
     return 0;
 }
 
@@ -489,6 +501,35 @@ static void send_deploy_ack(const char *app_id, bool success, const char *error_
     buf[2] = (uint8_t)(cbor_len >> 8);
     buf[3] = (uint8_t)cbor_len;
     (void)error_msg;
+    wasmbed_protocol_send_message(buf, off);
+}
+
+/* Encode and send ApplicationStatus: array(5), u32(4), str(app_id), u32(status), null, null.
+ * status values: 0=Deploying, 1=Running, 2=Stopped, 3=Failed, 4=Unknown */
+static void send_application_status(const char *app_id, uint8_t status)
+{
+    uint8_t buf[4 + 2 + 1 + MAX_APP_ID_LEN + 1 + 1 + 1];
+    uint32_t app_id_len = (uint32_t)strlen(app_id);
+    if (app_id_len >= MAX_APP_ID_LEN) app_id_len = MAX_APP_ID_LEN - 1;
+    uint32_t off = 4; /* leave space for length prefix */
+    buf[off++] = 0x85; /* array(5) */
+    buf[off++] = 0x04; /* u32(4) = CLIENT_APPLICATION_STATUS */
+    if (app_id_len <= 23) {
+        buf[off++] = (uint8_t)(0x60 + app_id_len);
+    } else {
+        buf[off++] = 0x78;
+        buf[off++] = (uint8_t)app_id_len;
+    }
+    memcpy(buf + off, app_id, app_id_len);
+    off += app_id_len;
+    buf[off++] = status; /* CBOR uint: 0x01 = Running */
+    buf[off++] = 0xf6;   /* null error */
+    buf[off++] = 0xf6;   /* null metrics */
+    uint32_t cbor_len = off - 4;
+    buf[0] = (uint8_t)(cbor_len >> 24);
+    buf[1] = (uint8_t)(cbor_len >> 16);
+    buf[2] = (uint8_t)(cbor_len >> 8);
+    buf[3] = (uint8_t)cbor_len;
     wasmbed_protocol_send_message(buf, off);
 }
 
@@ -543,6 +584,38 @@ int wasmbed_protocol_handle_message(const uint8_t *data, uint32_t data_len)
 
     LOG_DBG("Handling message from gateway (size: %u bytes)", data_len);
     return 0;
+}
+
+/* Receive one complete framed message and dispatch via wasmbed_protocol_handle_message.
+ * Uses zsock_poll to check availability first (honors timeout_ms),
+ * then recv_frame() for correct accumulation when data arrives. */
+int wasmbed_protocol_recv_and_handle(int timeout_ms)
+{
+    if (!protocol_initialized || !gateway_connected) {
+        return -1;
+    }
+
+    /* Short poll to avoid blocking heartbeats when no message is coming */
+    int ready = network_poll_readable(timeout_ms);
+    if (ready < 0) {
+        LOG_WRN("network_poll_readable error - connection may be lost");
+        gateway_connected = false;
+        return -1;
+    }
+    if (ready == 0) {
+        return 1; /* timeout: no data available */
+    }
+
+    /* Data is available: receive the complete frame (data is there so recv_frame won't block long) */
+    static uint8_t frame_buf[MAX_WASM_SIZE + 128];
+    uint32_t total_len = 0;
+    int ret = recv_frame(frame_buf, sizeof(frame_buf), &total_len, 5000);
+    if (ret < 0 || total_len == 0) {
+        LOG_WRN("recv_frame error - connection may be lost");
+        gateway_connected = false;
+        return -1;
+    }
+    return wasmbed_protocol_handle_message(frame_buf, total_len);
 }
 
 /* Send message to gateway */
@@ -629,6 +702,13 @@ void wasmbed_protocol_tick(void)
             gateway_connected = false;
             last_reconnect_attempt_ms = now - RECONNECT_INTERVAL_MS; /* retry immediately */
         }
+    }
+
+    /* Periodic ApplicationStatus reporting */
+    if (app_deployed && (now - last_app_status_ms >= APP_STATUS_INTERVAL_MS)) {
+        send_application_status(deploy_app_id_buf, 0x01); /* 0x01 = Running */
+        last_app_status_ms = now;
+        LOG_INF("ApplicationStatus sent for %s", deploy_app_id_buf);
     }
 }
 

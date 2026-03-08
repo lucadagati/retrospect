@@ -29,6 +29,9 @@ int network_send(const uint8_t *data, uint32_t data_len);
 /* Receive data from network */
 int network_receive(uint8_t *buffer, uint32_t buffer_len, uint32_t *received_len);
 
+/* Poll the socket for readability; returns >0 if data available within timeout_ms, 0 on timeout, <0 on error. */
+int network_poll_readable(int timeout_ms);
+
 /* Receive a length-prefixed framed message (4-byte BE header + CBOR payload).
  * buffer receives the full frame (header + payload), buffer_len is the max size.
  * received_len is set to total bytes read (header + payload). */

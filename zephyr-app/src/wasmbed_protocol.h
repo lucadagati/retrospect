@@ -26,5 +26,10 @@ int wasmbed_protocol_send_heartbeat(void);
 /* Call periodically from main loop; sends heartbeat every HEARTBEAT_INTERVAL_SEC */
 void wasmbed_protocol_tick(void);
 
+/* Receive one complete framed message from gateway and dispatch it.
+ * Blocks at most timeout_ms. Returns 0 if a message was processed,
+ * 1 if no data arrived (timeout/EAGAIN), -1 on error/disconnect. */
+int wasmbed_protocol_recv_and_handle(int timeout_ms);
+
 #endif /* WASMBED_PROTOCOL_H */
 

@@ -294,21 +294,26 @@ pub struct ApplicationMetrics {
 }
 
 /// Application statistics
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
 pub struct ApplicationStatistics {
     /// Total number of target devices
+    #[serde(default)]
     pub total_devices: u32,
     
     /// Number of devices where application is deployed
+    #[serde(default)]
     pub deployed_devices: u32,
     
     /// Number of devices where application is running
+    #[serde(default)]
     pub running_devices: u32,
     
     /// Number of devices where application failed
+    #[serde(default)]
     pub failed_devices: u32,
     
     /// Number of devices where application is stopped
+    #[serde(default)]
     pub stopped_devices: u32,
 }
 

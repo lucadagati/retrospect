@@ -58,12 +58,9 @@ void main(void)
         /* Process network events */
         network_process();
 
-        /* Check for incoming messages from gateway */
-        uint8_t recv_buffer[4096];
-        uint32_t received_len = 0;
-        if (network_receive(recv_buffer, sizeof(recv_buffer), &received_len) == 0 && received_len > 0) {
-            wasmbed_protocol_handle_message(recv_buffer, received_len);
-        }
+        /* Check for incoming messages from gateway using framed receive.
+         * timeout_ms=100 matches k_sleep below; avoids partial-frame drops. */
+        wasmbed_protocol_recv_and_handle(100);
 
         /* Send periodic heartbeat to keep TLS connection alive (Gateway expects it for last_heartbeat) */
         wasmbed_protocol_tick();
