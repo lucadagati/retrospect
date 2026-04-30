@@ -2,423 +2,472 @@
 
 ## 1) Scopo del documento
 
-Questo documento formalizza in modo completo:
+Questo documento descrive in dettaglio:
 
-1. Cosa e stato gia realizzato nel progetto Retrospect (con evidenze tecniche emerse dalle attivita svolte).
-2. Cosa resta da integrare/rafforzare per ottenere una vera novelty scientifica e ingegneristica.
-3. Come realizzare l'integrazione SPIN + OCRE in modo incrementale, verificabile e pubblicabile.
+1. cosa e gia stato realizzato nel progetto Retrospect;
+2. perche integrare SPIN e OCRE e strategico;
+3. cosa vogliamo realizzare in modo tecnico e verificabile;
+4. come validare la novelty con criteri oggettivi.
 
-L'obiettivo finale e costruire una piattaforma unificata in cui lo stesso control-plane Kubernetes (Retrospect) orchestri in modo coerente:
+L'obiettivo e una piattaforma unica in cui lo stesso control-plane Kubernetes (Retrospect) orchestra in modo coerente:
 
 - workload WASM cloud/fog su runtime SPIN;
 - workload WASM edge su runtime OCRE/WAMR (Zephyr);
-- stato operativo end-to-end coerente tra runtime reale e CRD Kubernetes.
+- stato end-to-end allineato tra runtime reale e CRD Kubernetes.
 
 ---
 
 ## 2) Executive summary
 
-### 2.1 Stato attuale (alto livello)
+La base tecnologica e gia concreta:
 
-La base tecnologica non e da zero: il progetto ha gia validato i blocchi critici piu rischiosi.
+- lato edge sono stati consolidati TLS, enrollment CBOR, deploy, ack e status;
+- lato cloud e disponibile la pipeline WASM orientata a SPIN/Kubernetes;
+- lato control-plane esistono gia API, Gateway e CRD per sincronizzare desired/reported state.
 
-- Lato Edge (OCRE/WAMR + Zephyr): handshake TLS, enrollment CBOR, deploy path, ack e status periodico risultano implementati e testati.
-- Lato Cloud/Fog (SPIN): pipeline di packaging/deploy WASM su Kubernetes e gia disponibile in forma prototipale.
-- Lato Control-plane (Retrospect): esiste la struttura Gateway/API/CRD utile ad allineare desired state e reported state.
-
-### 2.2 Messaggio chiave
-
-Il lavoro gia fatto serve in modo diretto alla tesi: non e una serie di test scollegati, ma una baseline concreta per la novelty "single control-plane, dual runtime-plane".
+Quindi la novelty non parte da zero: consiste nell'unificazione rigorosa di due runtime diversi sotto lo stesso orchestratore.
 
 ---
 
-## 3) Stato dell'arte implementato (dettaglio)
+## 3) Stato dell'arte gia realizzato
 
-## 3.1 Componenti gia operativi in Retrospect
+## 3.1 Sicurezza e onboarding device
 
-### 3.1.1 Sicurezza e onboarding device
+- handshake TLS firmware-gateway portato in stato funzionante;
+- fix memoria/cipher suite per contesto embedded;
+- supporto connessioni anonime pre-enrollment;
+- sequenza completa: EnrollmentRequest -> PublicKey -> DeviceUuid -> EnrollmentCompleted.
 
-- Handshake TLS firmware-gateway portato in stato funzionante.
-- Fix sulla gestione certificati/cipher suite per vincoli memoria embedded.
-- Gestione connessioni anonime pre-enrollment (assenza certificato client TLS prima identificazione CBOR).
-- Sequenza enrollment completata:
-  - EnrollmentRequest
-  - PublicKey
-  - DeviceUuid
-  - EnrollmentCompleted
+## 3.2 Protocollo e affidabilita trasporto
 
-### 3.1.2 Protocollo device-gateway
+- framing robusto (header + payload) con gestione ricezioni parziali;
+- loop di ricezione/poll/timeout per evitare perdita messaggi di deploy;
+- heartbeat periodico con aggiornamento stato device in Kubernetes.
 
-- Framing robusto dei messaggi (accumulo header + payload, no read "parziale" non gestita).
-- Introduzione di meccanismi di ricezione robusta (loop/poll/timeout) per evitare perdita messaggi grandi (es. deploy).
-- Heartbeat periodico e aggiornamento stato device in Kubernetes.
+## 3.3 Lifecycle WASM edge (OCRE/WAMR)
 
-### 3.1.3 Deploy e lifecycle WASM lato edge
+- ricezione modulo WASM via TLS/CBOR;
+- load + instantiate in WAMR;
+- chiamata entry-point effettiva (`run`);
+- emissione `DeployAck` e `ApplicationStatus` periodico.
 
-- Ricezione modulo WASM via canale TLS/CBOR.
-- Caricamento e istanziazione runtime WAMR lato firmware.
-- Chiamata esplicita entry-point (es. `run`) nel flusso di deploy reale.
-- Emissione `DeployAck` e `ApplicationStatus` periodico lato firmware.
+## 3.4 Coerenza stato su Kubernetes
 
-### 3.1.4 Coerenza stato Kubernetes
+- update di `Device CRD` e `Application CRD` con stato reported;
+- mappatura eventi runtime -> stati operativi (Running/Unreachable/Failed);
+- aggiornamento heartbeat continuo.
 
-- Aggiornamento `Application CRD` e `Device CRD` con stato reported.
-- Mappatura eventi runtime -> status Kubernetes (es. Running/Unreachable).
-- Aggiornamenti heartbeat con cadenza periodica.
+## 3.5 Emulazione e gestione device
 
-### 3.1.5 Emulazione Renode
-
-- Caso single-device consolidato.
-- Evoluzione verso manager centralizzato (un container Renode con N macchine virtuali) documentata e avviata.
+- scenario single-device consolidato;
+- evoluzione verso gestione N macchine emulata da manager centralizzato.
 
 ---
 
-## 3.2 Asset gia disponibili dal filone SPIN/OCRE parallelo
+## 4) Perche integrare SPIN e OCRE in Retrospect
 
-Dalle attivita della repo di tesi e delle analisi svolte:
+## 4.1 Problema reale da risolvere
 
-- Packaging e deploy di applicazioni WASM cloud-oriented (SPIN, OCI image, deploy in Kubernetes).
-- Build edge-oriented WASM (target WASI), conversione payload per integrazione firmware.
-- Documentazione architetturale, guide operative e demo flow edge-to-cloud.
+Senza integrazione, cloud runtime ed edge runtime restano silos separati:
 
-Questi asset possono essere riutilizzati in Retrospect come blueprint tecnico e materiale sperimentale.
+1. doppio piano di controllo;
+2. stato operativo frammentato;
+3. deployment duplicato e non uniforme;
+4. difficile confronto sperimentale.
+
+## 4.2 Perche SPIN
+
+SPIN e ideale per il piano cloud/fog perche offre:
+
+- packaging standard OCI;
+- integrazione nativa con orchestrazione Kubernetes;
+- lifecycle cloud-oriented semplice da automatizzare.
+
+## 4.3 Perche OCRE
+
+OCRE (con WAMR/Zephyr) e ideale lato edge perche offre:
+
+- execution WASM su dispositivi constrained;
+- integrazione stretta con firmware e RTOS;
+- controllo preciso di rete, memoria e sicurezza locale.
+
+## 4.4 Perche integrarli insieme
+
+Integrarli consente di ottenere:
+
+1. continuita cloud-fog-edge con una sola semantica di orchestrazione;
+2. placement intelligente (`spin`, `ocre`, `auto`);
+3. stato unificato e verificabile in Kubernetes;
+4. novelty forte per tesi/pubblicazione: **single control-plane, dual runtime-plane**.
 
 ---
 
-## 3.3 Gap dichiarati e/o ancora da chiudere
+## 5) Visione target e novelty
 
-1. Integrazione firmware standard (riduzione fork/custom branch).
-2. Verifica end-to-end forte: `DeployAck` + esecuzione reale modulo + stato CRD sempre consistente nel tempo.
-3. Osservabilita applicativa: metriche workload e logging runtime edge pubblicati in modo strutturato.
-4. Multi-device e test di scalabilita (non solo caso singolo emulato).
-5. Unificazione completa SPIN + OCRE nel control-plane Retrospect (policy, scheduling, artifact model unico).
+## 5.1 Problema scientifico/ingegneristico
 
----
-
-## 4) Visione target: novelty da raggiungere
-
-## 4.1 Problema scientifico/ingegneristico
-
-Come orchestrare workload WebAssembly su infrastruttura eterogenea cloud-fog-edge con runtime diversi (SPIN e OCRE/WAMR) mantenendo:
+Come orchestrare workload WebAssembly su runtime eterogenei mantenendo:
 
 - un solo piano di controllo;
-- semantica di deploy uniforme;
-- stato operativo affidabile e osservabile.
+- deploy uniforme;
+- osservabilita affidabile;
+- coerenza tra desired state e runtime reale.
 
-## 4.2 Novelty proposta
+## 5.2 Novelty proposta
 
-### "Single control-plane, dual runtime-plane for WebAssembly continuum"
+### Single control-plane, dual runtime-plane for WebAssembly continuum
 
-Retrospect diventa capace di:
+Retrospect deve essere capace di:
 
-1. Ricevere intent unico di deploy (CRD).
-2. Decidere target runtime (`spin`, `ocre`, `auto`).
-3. Tradurre automaticamente il deploy nel formato/flow adatto al runtime.
-4. Riallineare lo stato reale di esecuzione in un modello CRD unificato.
-
-Questa novelty e rilevante per pubblicazione/tesi perche combina orchestration Kubernetes, edge constrained runtime e coerenza di stato cross-runtime.
+1. ricevere un intent unico di deploy (CRD);
+2. selezionare il target runtime (`spin`, `ocre`, `auto`);
+3. eseguire il deploy con adapter runtime-specifici;
+4. normalizzare lo stato in un modello CRD unificato.
 
 ---
 
-## 5) Architettura target (dettagliata)
+## 6) Architettura integrata
 
-## 5.1 Nuovo modello logico
+## 6.1 Diagramma architetturale
 
-### 5.1.1 Control-plane unico (Retrospect)
+```mermaid
+graph TD
+    subgraph K8S["Kubernetes Control Plane (Retrospect)"]
+        API["API Server"]
+        GW["Gateway + Runtime Orchestrator"]
+        APPCRD["Application CRD"]
+        DEVCRD["Device CRD"]
+        CTRL["Controllers"]
+    end
 
-- API Server
-- Gateway
-- Controller CRD
-- Persistence/status model
+    subgraph SPINPLANE["SPIN Runtime Plane (Cloud/Fog)"]
+        SPINOP["Spin Runtime/Operator"]
+        SPINAPP["WASM App (Spin)"]
+    end
 
-### 5.1.2 Execution-plane duale
+    subgraph OCREPLANE["OCRE Runtime Plane (Edge)"]
+        RENODE["Renode/QEMU Manager"]
+        ZEPHYR["Zephyr Firmware"]
+        WAMR["WAMR Runtime"]
+        OCREAPP["WASM Module (OCRE)"]
+    end
 
-- SPIN plane (cloud/fog): componenti WASM eseguiti su runtime SPIN.
-- OCRE plane (edge): moduli WASM eseguiti in WAMR su Zephyr/MCU.
+    USER["User / CI"] --> API
+    API --> APPCRD
+    API --> DEVCRD
+    CTRL --> APPCRD
+    CTRL --> DEVCRD
+    GW --> APPCRD
+    GW --> DEVCRD
 
-## 5.2 Runtime Adapter Layer nel Gateway
+    GW -->|"runtimeTarget=spin"| SPINOP
+    SPINOP --> SPINAPP
+    SPINAPP -->|"status"| GW
 
-Il Gateway introduce adapter espliciti:
+    RENODE --> ZEPHYR
+    GW -->|"DeployApplication TLS+CBOR"| ZEPHYR
+    ZEPHYR --> WAMR
+    WAMR --> OCREAPP
+    OCREAPP -->|"DeployAck + ApplicationStatus"| GW
+```
 
-- `SpinRuntimeAdapter`
-  - prepara deploy verso pipeline SPIN
-  - raccoglie ack/stato da lato cloud runtime
-- `OcreRuntimeAdapter`
-  - invia DeployApplication via TLS/CBOR
-  - gestisce ack/status heartbeat edge
-  - normalizza errori runtime/transport
+## 6.2 Diagramma flusso deploy unificato
 
-## 5.3 CRD unificato (proposta minima)
+```mermaid
+sequenceDiagram
+    participant U as User/API Client
+    participant API as Retrospect API Server
+    participant CRD as Application CRD
+    participant GW as Gateway Orchestrator
+    participant SPIN as Spin Runtime
+    participant DEV as Device (Zephyr+WAMR)
 
-### 5.3.1 Campi nuovi in Application spec
+    U->>API: Create/Update Application
+    API->>CRD: Write desired state
+    GW->>CRD: Read desired state
+
+    alt runtimeTarget = spin
+        GW->>SPIN: Deploy artifact (OCI/Spin)
+        SPIN-->>GW: Running/Failed
+    else runtimeTarget = ocre
+        GW->>DEV: DeployApplication (TLS+CBOR)
+        DEV-->>GW: DeployAck
+        DEV-->>GW: ApplicationStatus periodico
+    else runtimeTarget = auto
+        GW->>GW: Evaluate placement policy
+        GW->>SPIN: or GW->>DEV
+    end
+
+    GW->>CRD: Patch reported status (normalized)
+    API-->>U: Unified state
+```
+
+## 6.3 Diagramma flusso enrollment e trust bootstrap
+
+```mermaid
+sequenceDiagram
+    participant D as Device Firmware
+    participant G as Gateway
+    participant K as Device CRD
+
+    D->>G: TLS handshake
+    Note over D,G: Connessione anonima ammessa pre-enrollment
+    D->>G: EnrollmentRequest
+    G-->>D: EnrollmentAccepted
+    D->>G: PublicKey
+    G-->>D: DeviceUuid
+    D->>G: EnrollmentAcknowledgment
+    G-->>D: EnrollmentCompleted
+    G->>K: Create/Update Device status
+    D->>G: Heartbeat
+    G->>K: Patch online/unreachable
+```
+
+---
+
+## 7) Modello dati unificato (CRD)
+
+## 7.1 Campi proposti in `Application.spec`
 
 - `runtimeTarget`: `spin | ocre | auto`
-- `artifact`:
-  - `spinImage` (opzionale)
-  - `wasmBytes` o riferimento artifact edge
+- `artifact.spinImage`: riferimento OCI per target spin
+- `artifact.edgeWasm`: bytes o reference per target ocre
 - `placementPolicy`:
   - `latencySensitive`
   - `resourceProfile`
   - `fallbackMode`
 
-### 5.3.2 Campi status unificati
+## 7.2 Campi proposti in `Application.status`
 
 - `phase` globale (Pending/Deploying/Running/Degraded/Failed)
-- `runtimeStatus` per target runtime
-- `deviceStatuses` (edge per-device)
-- `cloudStatuses` (pod/runtime instances)
-- `lastHeartbeat`, `lastError`, `lastTransitionTime`
+- `runtimeStatus.spin`
+- `runtimeStatus.ocre`
+- `deviceStatuses`
+- `cloudStatuses`
+- `lastHeartbeat`
+- `lastError`
+- `lastTransitionTime`
 
 ---
 
-## 6) Piano implementativo molto dettagliato
+## 8) Piano implementativo dettagliato
 
-## 6.1 Workstream A - Model & API
+## 8.1 Workstream A - Model & API
 
 ### Obiettivo
 
-Evolvere CRD/API senza rompere compatibilita.
+Evolvere CRD/API mantenendo compatibilita.
 
 ### Attivita
 
-1. Estendere schema Application CRD con campi runtime/placement.
-2. Aggiornare validazione e defaulting.
-3. Versionare API se necessario (`v1alpha1` -> `v1beta1` o compat layer).
-4. Aggiornare DTO nel gateway e controller.
+1. estendere schema CRD;
+2. introdurre defaulting/validation;
+3. aggiornare DTO gateway/controller;
+4. test compatibilita backward.
 
 ### Done criteria
 
-- CRD applicabile in cluster pulito.
-- Oggetti legacy ancora accettati.
-- Test di serializzazione/deserializzazione superati.
+- CRD applicabile in cluster pulito;
+- oggetti legacy ancora validi;
+- test serializzazione superati.
 
----
-
-## 6.2 Workstream B - Gateway Runtime Adapter Layer
+## 8.2 Workstream B - Runtime Adapter Layer (Gateway)
 
 ### Obiettivo
 
-Isolare logica runtime-specifica e centralizzare orchestrazione.
+Separare logica runtime-specifica dalla logica di orchestrazione.
 
 ### Attivita
 
-1. Introdurre trait/interfaccia comune:
+1. definire interfaccia comune:
    - `deploy()`
    - `stop()`
    - `query_status()`
    - `collect_metrics()`
-2. Implementare adapter OCRE usando flussi gia stabilizzati.
-3. Implementare adapter SPIN con integrazione cluster runtime.
-4. Aggiungere orchestratore che seleziona adapter in base a `runtimeTarget`.
-5. Gestione error taxonomy comune (transport/protocol/runtime/config).
+2. implementare `SpinRuntimeAdapter`;
+3. implementare `OcreRuntimeAdapter`;
+4. introdurre orchestratore di selezione runtime;
+5. normalizzare error taxonomy.
 
 ### Done criteria
 
-- Deploy test `runtimeTarget=ocre` e `runtimeTarget=spin` entrambi funzionanti.
-- Stato CRD aggiornato con stessa semantica.
+- deploy funzionante su target `spin` e `ocre`;
+- stato CRD coerente e uniforme.
 
----
-
-## 6.3 Workstream C - Artifact pipeline duale
+## 8.3 Workstream C - Artifact pipeline duale
 
 ### Obiettivo
 
-Rendere ripetibile la creazione artifact per entrambi i runtime.
+Generare artifact coerenti da una singola applicazione logica.
 
 ### Attivita
 
-1. Definire naming/versioning unificato artifact.
-2. Pipeline build SPIN (OCI).
-3. Pipeline build OCRE (WASI/WAMR compatible payload).
-4. Introduzione manifest "logical app -> physical artifacts".
-5. Script CI/CD per pubblicazione artifact.
+1. naming/versioning unificato;
+2. pipeline build SPIN (OCI);
+3. pipeline build OCRE (WASI/WAMR compatibile);
+4. manifest "logical app -> physical artifacts";
+5. publishing automation.
 
 ### Done criteria
 
-- Da una sorgente app si generano artifact validi per entrambi i target.
-- Deploy automatico senza passaggi manuali non documentati.
+- artifact validi per entrambi i runtime;
+- deploy ripetibile senza passaggi manuali impliciti.
 
----
-
-## 6.4 Workstream D - Observability e stato coerente
+## 8.4 Workstream D - Observability e status fidelity
 
 ### Obiettivo
 
-Dimostrare che lo stato Kubernetes rappresenta stato runtime reale.
+Garantire che Kubernetes rifletta il runtime reale.
 
 ### Attivita
 
-1. Telemetria minima standard:
-   - `app_started`
-   - `app_running`
-   - `app_failed`
-   - `heartbeat`
-2. Correlazione eventi deploy-id / app-id / device-id.
-3. Aggiornamento CRD idempotente e robusto.
-4. Dashboard/endpoint per verifica rapida coerenza.
+1. telemetria minima standard (`app_started`, `app_running`, `app_failed`, `heartbeat`);
+2. correlazione deploy-id/app-id/device-id;
+3. patch CRD idempotente;
+4. endpoint/dashboard di verifica.
 
 ### Done criteria
 
-- Coerenza verificata in test nominali e failure scenarios.
-- Nessun falso "Running" quando runtime edge non esegue davvero.
+- mismatch runtime-vs-CRD minimizzato;
+- assenza di falsi "Running".
 
----
-
-## 6.5 Workstream E - Multi-device e resilienza
+## 8.5 Workstream E - Multi-device e resilienza
 
 ### Obiettivo
 
-Scalare oltre il caso single-device.
+Passare da demo single-device a scenario robusto.
 
 ### Attivita
 
-1. Test N device su Renode manager.
-2. Code/backpressure gateway.
-3. Retry policy e timeouts adattivi.
-4. Recovery su reconnect device.
+1. test con N device emulati;
+2. backpressure gateway;
+3. retry e timeout policy;
+4. reconnect e recovery stateful.
 
 ### Done criteria
 
-- Scenari con N device stabili.
-- Nessuna perdita silenziosa di deploy/status.
+- stabilita sotto carico;
+- assenza perdita silenziosa di deploy/status.
 
 ---
 
-## 7) Piano sperimentale per validazione tesi
+## 9) Validazione sperimentale
 
-## 7.1 Domande sperimentali
+## 9.1 Domande sperimentali
 
-1. Il control-plane unico gestisce correttamente dual runtime eterogenei?
-2. Lo stato CRD resta coerente con stato runtime reale in condizioni nominali e degradate?
-3. Il placement policy-aware migliora obiettivi (latenza/risorse/affidabilita)?
+1. Il control-plane unico governa correttamente runtime eterogenei?
+2. Lo stato CRD resta coerente con lo stato runtime reale?
+3. Il placement policy-aware migliora comportamento operativo?
 
-## 7.2 Esperimenti minimi obbligatori
+## 9.2 Esperimenti minimi
 
-### Esperimento E1 - Functional parity
+### E1 - Functional parity
 
 - stessa applicazione logica su SPIN e OCRE;
-- verifica risultato funzionale equivalente.
+- risultato funzionale equivalente.
 
-### Esperimento E2 - Status fidelity
+### E2 - Status fidelity
 
-- confronto stato osservato runtime vs stato CRD;
+- confronto runtime observed vs CRD reported;
 - misura mismatch rate.
 
-### Esperimento E3 - Failure & recovery
+### E3 - Failure & recovery
 
 - disconnessione device, restart gateway, timeout rete;
-- misura tempo di convergenza e correttezza stato finale.
+- misura convergenza stato.
 
-### Esperimento E4 - Multi-device
+### E4 - Multi-device
 
-- incremento progressivo numero device emulati;
-- misura throughput deploy/status e stabilita.
+- aumento progressivo device emulati;
+- misura throughput deploy/status.
 
-## 7.3 KPI consigliati
+## 9.3 KPI
 
-- Deployment success rate (%)
-- Mean deploy latency (s)
-- Ack-to-running latency (s)
-- Status mismatch rate (%)
-- Heartbeat loss rate (%)
-- Recovery time after disconnect (s)
-- CPU/RAM gateway sotto carico
-
----
-
-## 8) Rischi principali e mitigazioni
-
-## 8.1 Rischi tecnici
-
-1. Divergenza semantica SPIN vs OCRE
-   - Mitigazione: adapter layer + contract test comuni.
-2. Stato inconsistente tra runtime e CRD
-   - Mitigazione: eventi idempotenti + reconciliation loop.
-3. Overhead gateway con multi-device
-   - Mitigazione: backpressure, batching, profiling.
-4. Firmware fork troppo custom
-   - Mitigazione: piano di upstream/rebase su firmware standard.
-
-## 8.2 Rischi progettuali
-
-1. Scope creep (troppe feature accessorie)
-   - Mitigazione: MVP chiaro e milestone a gate.
-2. Debito documentale
-   - Mitigazione: aggiornamento documentazione per ogni milestone chiusa.
+- deployment success rate;
+- deploy latency;
+- ack-to-running latency;
+- status mismatch rate;
+- heartbeat loss rate;
+- recovery convergence;
+- CPU/RAM gateway sotto carico.
 
 ---
 
-## 9) Roadmap proposta (6-8 settimane)
+## 10) Rischi e mitigazioni
 
-## Settimana 1-2
+## 10.1 Rischi tecnici
 
-- CRD esteso + compatibilita.
-- Scheletro adapter layer.
-- test e2e ocre consolidati.
+1. divergenza semantica SPIN/OCRE  
+   Mitigazione: adapter layer + contract test comuni.
+2. incoerenza stato runtime/CRD  
+   Mitigazione: eventi idempotenti + reconciliation loop.
+3. overhead gateway sotto carico  
+   Mitigazione: backpressure, batching, profiling.
+4. dipendenza da fork firmware  
+   Mitigazione: piano di reintegro su baseline standard.
 
-## Settimana 3-4
+## 10.2 Rischi progettuali
 
-- Adapter SPIN integrato.
-- artifact duale automatizzato.
-- primi test parity SPIN/OCRE.
-
-## Settimana 5-6
-
-- observability completa e status fidelity.
-- failure scenarios e recovery tests.
-- multi-device base.
-
-## Settimana 7-8 (buffer e rifinitura)
-
-- hardening, profiling, ottimizzazione.
-- raccolta risultati sperimentali.
-- stesura capitolo novelty + discussione limiti/futuro.
+1. scope creep  
+   Mitigazione: MVP rigoroso e priorita chiare.
+2. debito documentale  
+   Mitigazione: documentazione aggiornata per workstream.
 
 ---
 
-## 10) Deliverable finali attesi
+## 11) Priorita implementative (senza tempistiche)
 
-1. Estensione CRD e API documentata.
-2. Gateway con Runtime Adapter Layer SPIN + OCRE.
-3. Pipeline artifact duale ripetibile.
-4. Test suite e2e (nominale + failure + multi-device).
-5. Dashboard/stato osservabile coerente.
-6. Report sperimentale con KPI e confronto.
+### P1 - Fondazioni architetturali
+
+- CRD esteso;
+- adapter layer operativo;
+- primo deploy dual target.
+
+### P2 - Coerenza operativa
+
+- status unificato;
+- osservabilita minima;
+- verifica fidelity.
+
+### P3 - Robustezza e scalabilita
+
+- failure handling;
+- multi-device;
+- hardening e tuning.
 
 ---
 
-## 11) Criteri di accettazione ("definition of done" tesi/prototipo)
+## 12) Deliverable finali attesi
+
+1. CRD/API estesi e documentati;
+2. gateway con Runtime Adapter Layer SPIN + OCRE;
+3. pipeline artifact duale ripetibile;
+4. test e2e nominali e degradati;
+5. stato osservabile coerente;
+6. report sperimentale con KPI.
+
+---
+
+## 13) Definition of done
 
 Il prototipo si considera completo quando:
 
-1. Deploy `runtimeTarget=spin` e `runtimeTarget=ocre` funzionano da stesso control-plane.
-2. Il runtime edge esegue realmente il modulo e invia stato periodico verificabile.
-3. Lo stato Kubernetes riflette il runtime reale con mismatch trascurabile.
-4. Almeno un test multi-device e un test failure-recovery sono superati.
-5. Tutto e documentato in modo riproducibile (setup, runbook, risultati).
+1. deploy `runtimeTarget=spin` e `runtimeTarget=ocre` funzionano dal medesimo control-plane;
+2. il runtime edge esegue realmente il modulo e riporta stato periodico;
+3. lo stato Kubernetes riflette il runtime reale con mismatch trascurabile;
+4. test multi-device e failure-recovery superati;
+5. setup e risultati sono riproducibili e documentati.
 
 ---
 
-## 12) Cosa e gia "capitalizzabile" subito
+## 14) Valore immediatamente capitalizzabile
 
-Per accelerare il percorso, si possono riusare immediatamente:
+Gia oggi sono riusabili:
 
-- fix TLS/enrollment e framing robusto gia implementati;
-- deploy path con ack e status periodico lato firmware;
-- base cloud SPIN gia testata in ambiente Kubernetes;
-- documentazione tecnica prodotta nelle ultime iterazioni.
+- fix TLS/enrollment e framing robusto;
+- deploy path con ack e status firmware;
+- base cloud SPIN in ambiente Kubernetes;
+- documentazione tecnica consolidata.
 
-In pratica, la parte piu difficile (far parlare davvero i blocchi critici) e gia stata affrontata; il prossimo salto e l'unificazione architetturale rigorosa e la validazione sperimentale strutturata.
-
----
-
-## 13) Prossimi passi operativi immediati (azione entro 48h)
-
-1. Congelare baseline attuale in branch dedicato integrazione.
-2. Aprire issue/milestone per i 5 workstream (A-E) con owner e scadenze.
-3. Definire schema CRD esteso e adapter interface in bozza.
-4. Eseguire un primo e2e "dual target" con app minimale.
-5. Aggiornare dashboard/logging per misurare i KPI base.
-
-Con questi passi si passa dalla fase "fix e consolidamento" alla fase "novelty dimostrabile".
+Questo conferma che la parte piu rischiosa e stata gia affrontata: il passo successivo e l'unificazione architetturale con validazione sperimentale rigorosa.
 
