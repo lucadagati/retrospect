@@ -37,6 +37,11 @@ pub struct ApplicationSpec {
     /// Application metadata
     #[serde(default)]
     pub metadata: Option<ApplicationMetadata>,
+
+    /// Target runtime for WASM execution on the device.
+    /// Defaults to WamrRaw (current behaviour) when absent.
+    #[serde(default, rename = "targetRuntime")]
+    pub target_runtime: Option<TargetRuntime>,
 }
 
 /// Target devices specification
@@ -151,6 +156,23 @@ pub struct ApplicationStatus {
     /// Error message if any
     #[serde(default)]
     pub error: Option<String>,
+}
+
+/// Runtime used to execute WASM on the target device
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
+pub enum TargetRuntime {
+    /// WAMR interpreter/AOT — default, current behaviour
+    WamrRaw,
+    /// OCRE container runtime on Zephyr (MCU constrained)
+    OcreZephyr,
+    /// OCRE container runtime on Linux (MPU rich)
+    OcreLinux,
+}
+
+impl Default for TargetRuntime {
+    fn default() -> Self {
+        TargetRuntime::WamrRaw
+    }
 }
 
 /// Application phase

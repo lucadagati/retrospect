@@ -7,6 +7,31 @@
 
 ---
 
+## DECISIONE ARCHITETTURALE — 2026-05-07
+
+> **Opzione A adottata: "Edge eterogeneo, Gateway invariato".**
+
+Il Gateway resta un hub stateless TLS+CBOR. L'edge si biforca in MCU
+constrained (Zephyr+WAMR) e MPU ricchi (Linux+WAMR+OCRE), entrambi con lo
+stesso protocollo di base. Le opzioni B e C rimangono come riferimento storico
+in questo documento ma **non saranno implementate** nella baseline della tesi.
+
+**Documenti prodotti da questa sessione:**
+- [`GATEWAY_TRANSLATION_GAPS.md`](GATEWAY_TRANSLATION_GAPS.md) — catalogo
+  completo dei gap di traduzione K8s ↔ CBOR (incluso bug `ApplicationConfig`
+  non propagata, canali assenti, stub non collegati).
+- [`DEVICE_CLASS_DIFFERENTIATION.md`](DEVICE_CLASS_DIFFERENTIATION.md) —
+  proposta di differenziazione MCU/MPU: tassonomia, due modelli di transport
+  (CBOR uniforme vs bridge passthrough), modifiche CRD/protocollo necessarie
+  (non ancora implementate).
+
+**Prossimi passi immediati** (in ordine di priorità):
+1. Fix bug `ApplicationConfig` mai propagata al device (`http_api.rs:423`).
+2. Fase 1 roadmap: Zephyr+OCRE su MCU (vedi `OCRE_INTEGRATION_ANALYSIS.md`).
+3. Fase 2: aggiungere `spec.targetRuntime` alla Application CRD.
+
+---
+
 ## 1. Punto di partenza e problema
 
 ### Stato attuale di RETROSPECT
@@ -89,6 +114,10 @@ payload CBOR corretto (`DeployApplication`) in base al target registrato.
   extra restano non esposte al control-plane.
 - OCRE-on-Linux è meno maturo di OCRE-on-Zephyr; le host functions GPIO via
   `/dev/gpiochip` sono in upstream ma con meno testing.
+
+**Approfondimenti:**
+- Catalogo completo dei gap di traduzione: [`GATEWAY_TRANSLATION_GAPS.md`](GATEWAY_TRANSLATION_GAPS.md)
+- Differenziazione MCU/MPU e transport passthrough per Linux: [`DEVICE_CLASS_DIFFERENTIATION.md`](DEVICE_CLASS_DIFFERENTIATION.md)
 
 ---
 

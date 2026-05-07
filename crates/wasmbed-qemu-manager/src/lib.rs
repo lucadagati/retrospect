@@ -301,27 +301,49 @@ pub enum McuType {
     /// Legacy: ARM MPS2-AN385 (ARM Cortex-M3) - Maps to RenodeArduinoNano33Ble
     #[serde(alias = "Mps2An385")]
     Mps2An385,
+
+    // ===== Linux Devices (native, not Renode-emulated) =====
+    /// Linux ARM64: Raspberry Pi 4/5, ARM64 SBC, industrial ARM gateway
+    #[serde(alias = "LinuxArm64", alias = "linux_arm64")]
+    LinuxArm64,
+
+    /// Linux x86_64: edge VM, industrial x86 gateway, mini-PC
+    #[serde(alias = "LinuxX86_64", alias = "linux_x86_64")]
+    LinuxX86_64,
+
+    /// Linux RISC-V: RISC-V Linux devices (SiFive, etc.)
+    #[serde(alias = "LinuxRiscV", alias = "linux_riscv")]
+    LinuxRiscV,
 }
 
 impl McuType {
+    /// Returns true if this device type is emulated in Renode.
+    /// Linux native devices register autonomously via board/register API.
+    pub fn is_emulated(&self) -> bool {
+        !matches!(self, McuType::LinuxArm64 | McuType::LinuxX86_64 | McuType::LinuxRiscV)
+    }
+
     /// Get Renode platform name for this MCU
     pub fn renode_platform(&self) -> &'static str {
         match self {
             // Official Zephyr boards with Ethernet
             McuType::Stm32F746gDisco => "stm32f7_discovery-bb",
             McuType::FrdmK64f => "frdm_k64f",
-            
+
             // Official Zephyr boards with WiFi
             McuType::Esp32DevkitC => "esp32",
-            
+
             // Official Zephyr boards (no network)
             McuType::Stm32F4Disco => "stm32f4_discovery",
             McuType::Nrf52840DK => "nrf52840dk_nrf52840",
-            
+
             // Legacy boards
             McuType::RenodeArduinoNano33Ble => "arduino_nano_33_ble",
             McuType::RenodeStm32F4Discovery => "stm32f4_discovery",
             McuType::Mps2An385 => "arduino_nano_33_ble",
+
+            // Linux native devices — not managed by Renode
+            McuType::LinuxArm64 | McuType::LinuxX86_64 | McuType::LinuxRiscV => "",
         }
     }
 
@@ -330,19 +352,24 @@ impl McuType {
         match self {
             // Cortex-M7 (high performance)
             McuType::Stm32F746gDisco => "cortex-m7",
-            
+
             // Cortex-M4 (standard)
             McuType::FrdmK64f => "cortex-m4",
             McuType::Stm32F4Disco => "cortex-m4",
             McuType::Nrf52840DK => "cortex-m4",
             McuType::RenodeArduinoNano33Ble => "cortex-m4",
             McuType::RenodeStm32F4Discovery => "cortex-m4",
-            
+
             // Xtensa (ESP32)
             McuType::Esp32DevkitC => "xtensa-lx6",
-            
+
             // Cortex-M3 (legacy)
             McuType::Mps2An385 => "cortex-m3",
+
+            // Linux native
+            McuType::LinuxArm64 => "aarch64",
+            McuType::LinuxX86_64 => "x86_64",
+            McuType::LinuxRiscV => "riscv64",
         }
     }
 
@@ -353,17 +380,20 @@ impl McuType {
             McuType::Stm32F746gDisco => "320K", // 320KB RAM
             McuType::FrdmK64f => "256K", // 256KB RAM
             McuType::Esp32DevkitC => "520K", // 520KB SRAM
-            
+
             // Mid-range MCUs
             McuType::Nrf52840DK => "256K",
             McuType::RenodeArduinoNano33Ble => "256K",
-            
+
             // Standard MCUs
             McuType::Stm32F4Disco => "192K",
             McuType::RenodeStm32F4Discovery => "192K",
-            
+
             // Legacy
             McuType::Mps2An385 => "512K",
+
+            // Linux native — actual memory reported at runtime via DeviceInfo CBOR
+            McuType::LinuxArm64 | McuType::LinuxX86_64 | McuType::LinuxRiscV => "unknown",
         }
     }
 
@@ -373,18 +403,23 @@ impl McuType {
             // Ethernet boards (recommended)
             McuType::Stm32F746gDisco => "STM32F746G Discovery (Ethernet)",
             McuType::FrdmK64f => "FRDM-K64F (Ethernet)",
-            
+
             // WiFi boards
             McuType::Esp32DevkitC => "ESP32 DevKitC (WiFi)",
-            
+
             // No network boards
             McuType::Stm32F4Disco => "STM32F4 Discovery",
             McuType::Nrf52840DK => "nRF52840 DK (BLE)",
-            
+
             // Legacy
             McuType::RenodeArduinoNano33Ble => "Arduino Nano 33 BLE (Renode)",
             McuType::RenodeStm32F4Discovery => "STM32F4 Discovery (Renode)",
             McuType::Mps2An385 => "ARM MPS2-AN385 (Legacy)",
+
+            // Linux native
+            McuType::LinuxArm64 => "Linux ARM64 (native)",
+            McuType::LinuxX86_64 => "Linux x86_64 (native)",
+            McuType::LinuxRiscV => "Linux RISC-V (native)",
         }
     }
 
@@ -395,40 +430,47 @@ impl McuType {
             McuType::Stm32F746gDisco => Some("stm32f7xx-hal"),
             McuType::Stm32F4Disco => Some("stm32f4xx-hal"),
             McuType::RenodeStm32F4Discovery => Some("stm32f4xx-hal"),
-            
+
             // NXP/Freescale boards
             McuType::FrdmK64f => Some("kinetis-hal"),
-            
+
             // Nordic boards
             McuType::Nrf52840DK => Some("nrf52840-hal"),
             McuType::RenodeArduinoNano33Ble => Some("nrf52840-hal"),
-            
+
             // ESP32
             McuType::Esp32DevkitC => Some("esp32-hal"),
-            
-            // Legacy
-            McuType::Mps2An385 => None,
+
+            // Legacy / Linux native — no bare-metal HAL
+            McuType::Mps2An385
+            | McuType::LinuxArm64
+            | McuType::LinuxX86_64
+            | McuType::LinuxRiscV => None,
         }
     }
 
-    /// Get firmware path for this MCU type (relative to zephyr-workspace)
+    /// Get firmware path for this MCU type (relative to zephyr-workspace).
+    /// Returns empty string for Linux native devices (no Zephyr firmware).
     pub fn get_firmware_path(&self) -> &'static str {
         match self {
             // Ethernet boards (recommended)
             McuType::Stm32F746gDisco => "build/stm32f746g_disco/zephyr/zephyr.elf",
             McuType::FrdmK64f => "build/frdm_k64f/zephyr/zephyr.elf",
-            
+
             // WiFi boards
             McuType::Esp32DevkitC => "build/esp32_devkitc_wroom/zephyr/zephyr.elf",
-            
+
             // No network boards
             McuType::Stm32F4Disco => "build/stm32f4/zephyr/zephyr.elf",
             McuType::Nrf52840DK => "build/nrf52840dk/nrf52840/zephyr/zephyr.elf",
-            
+
             // Legacy
             McuType::RenodeArduinoNano33Ble => "build/arduino_nano_33_ble/zephyr/zephyr.elf",
             McuType::RenodeStm32F4Discovery => "build/stm32f4_discovery/zephyr/zephyr.elf",
             McuType::Mps2An385 => "build/mps2_an385/zephyr/zephyr.elf",
+
+            // Linux native — no Zephyr firmware; device runs wasmbed-edge-client
+            McuType::LinuxArm64 | McuType::LinuxX86_64 | McuType::LinuxRiscV => "",
         }
     }
 
@@ -439,19 +481,22 @@ impl McuType {
             McuType::Stm32F746gDisco => "usart1",
             McuType::Stm32F4Disco => "usart2",
             McuType::RenodeStm32F4Discovery => "usart2",
-            
+
             // NXP/Freescale boards
             McuType::FrdmK64f => "uart0",
-            
+
             // Nordic boards
             McuType::Nrf52840DK => "uart0",
             McuType::RenodeArduinoNano33Ble => "uart0",
-            
+
             // ESP32
             McuType::Esp32DevkitC => "uart0",
-            
+
             // Legacy
             McuType::Mps2An385 => "uart0",
+
+            // Linux native — no UART peripheral applicable
+            McuType::LinuxArm64 | McuType::LinuxX86_64 | McuType::LinuxRiscV => "",
         }
     }
 
@@ -461,25 +506,37 @@ impl McuType {
             // Ethernet boards (recommended for network testing)
             McuType::Stm32F746gDisco,
             McuType::FrdmK64f,
-            
+
             // WiFi boards
             McuType::Esp32DevkitC,
-            
+
             // No network boards
             McuType::Stm32F4Disco,
             McuType::Nrf52840DK,
-            
+
             // Legacy boards
             McuType::RenodeArduinoNano33Ble,
             McuType::RenodeStm32F4Discovery,
+
+            // Linux native devices
+            McuType::LinuxArm64,
+            McuType::LinuxX86_64,
+            McuType::LinuxRiscV,
         ]
     }
-    
+
     /// Check if this MCU type has Ethernet support
     pub fn has_ethernet(&self) -> bool {
-        matches!(self, McuType::Stm32F746gDisco | McuType::FrdmK64f)
+        matches!(
+            self,
+            McuType::Stm32F746gDisco
+                | McuType::FrdmK64f
+                | McuType::LinuxArm64
+                | McuType::LinuxX86_64
+                | McuType::LinuxRiscV
+        )
     }
-    
+
     /// Check if this MCU type has WiFi support
     pub fn has_wifi(&self) -> bool {
         matches!(self, McuType::Esp32DevkitC)
@@ -625,6 +682,9 @@ impl RenodeManager {
                             "RenodeArduinoNano33Ble" => McuType::RenodeArduinoNano33Ble,
                             "RenodeStm32F4Discovery" => McuType::RenodeStm32F4Discovery,
                             "Mps2An385" => McuType::Mps2An385,
+                            "LinuxArm64" | "linux_arm64" => McuType::LinuxArm64,
+                            "LinuxX86_64" | "linux_x86_64" => McuType::LinuxX86_64,
+                            "LinuxRiscV" | "linux_riscv" => McuType::LinuxRiscV,
                             _ => {
                                 eprintln!("Unknown MCU type '{}' for device {}, using Stm32F746gDisco as default", mcu_type_str, device_id);
                                 McuType::Stm32F746gDisco
@@ -1293,10 +1353,18 @@ impl RenodeManager {
                 } else {
                     Err(std::io::Error::new(
                         std::io::ErrorKind::NotFound,
-                        format!("Zephyr firmware not found for MPS2-AN385. Expected: {}", 
+                        format!("Zephyr firmware not found for MPS2-AN385. Expected: {}",
                             zephyr_firmware_nrf52840.display())
                     ))
                 }
+            },
+            // Linux native devices do not use Renode emulation or Zephyr firmware.
+            // They run wasmbed-edge-client directly and register via board/register API.
+            McuType::LinuxArm64 | McuType::LinuxX86_64 | McuType::LinuxRiscV => {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "Linux native devices do not have a Zephyr firmware path",
+                ))
             },
             McuType::Nrf52840DK => {
                 // Official Zephyr nRF52840 DK firmware
@@ -1508,6 +1576,9 @@ impl RenodeManager {
                         eprintln!("✅ OVERRIDING to Stm32F4Disco");
                         McuType::Stm32F4Disco
                     },
+                    "LinuxArm64" | "linux_arm64" => McuType::LinuxArm64,
+                    "LinuxX86_64" | "linux_x86_64" => McuType::LinuxX86_64,
+                    "LinuxRiscV" | "linux_riscv" => McuType::LinuxRiscV,
                     _ => {
                         println!("⚠️ Unknown mcuType '{}', using device.mcu_type: {:?}", mcu_type_str, device.mcu_type);
                         eprintln!("⚠️ Unknown mcuType '{}', using device.mcu_type: {:?}", mcu_type_str, device.mcu_type);

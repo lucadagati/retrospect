@@ -511,7 +511,9 @@ async fn create_device_crd(
     let device_spec = wasmbed_k8s_resource::DeviceSpec {
         public_key: public_key_b64,
         mcu_type: Some("Stm32F746gDisco".to_string()),
-        preferred_gateway: None, // No preferred gateway during auto-enrollment
+        preferred_gateway: None,
+        device_class: None,
+        runtime_target: None,
     };
     
     // Create Device status

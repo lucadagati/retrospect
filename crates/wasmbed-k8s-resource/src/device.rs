@@ -35,6 +35,21 @@ pub struct DeviceSpec {
     /// Preferred gateway name (optional - if not set, round-robin is used)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preferred_gateway: Option<String>,
+    /// Hardware class — determines applicable transport and runtime strategy
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_class: Option<DeviceClass>,
+    /// Runtime target the device supports (mirrors Application.targetRuntime)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_target: Option<String>,
+}
+
+/// Hardware class of a registered device
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, JsonSchema, PartialEq, Eq)]
+pub enum DeviceClass {
+    /// MCU constrained: Zephyr+WAMR on microcontrollers (TLS+CBOR)
+    McuConstrained,
+    /// MPU rich: Linux on SBC, industrial gateway, edge VM (TLS+CBOR, Modello A1)
+    MpuRich,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]

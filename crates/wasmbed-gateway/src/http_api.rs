@@ -27,6 +27,20 @@ use wasmbed_k8s_resource::{
 };
 use wasmbed_protocol::{ServerMessage, DeviceUuid};
 
+/// Map CRD ApplicationConfig to protocol ApplicationConfig.
+///
+/// auto_restart and max_restarts are gateway-side restart policy: the device
+/// executes on command and is restarted by a new DeployApplication message.
+/// They have no device-side semantics and are intentionally dropped here.
+fn map_k8s_config_to_protocol(crd: &ApplicationConfig) -> wasmbed_protocol::ApplicationConfig {
+    wasmbed_protocol::ApplicationConfig {
+        memory_limit: crd.memory_limit,
+        cpu_time_limit: crd.cpu_time_limit,
+        env_vars: crd.env_vars.clone().unwrap_or_default(),
+        args: crd.args.clone().unwrap_or_default(),
+    }
+}
+
 /// Build per-device status for Application CRD patch.
 fn device_app_status(phase: DeviceApplicationPhase, error: Option<String>) -> DeviceApplicationStatus {
     DeviceApplicationStatus {
@@ -410,16 +424,22 @@ impl HttpApiServer {
     }
 
     /// Deploy application to a specific device
-    pub async fn deploy_application_to_device(&self, device_id: &str, app_id: &str, wasm_bytes: &[u8]) -> Result<()> {
+    pub async fn deploy_application_to_device(
+        &self,
+        device_id: &str,
+        app_id: &str,
+        wasm_bytes: &[u8],
+        config: Option<wasmbed_protocol::ApplicationConfig>,
+    ) -> Result<()> {
         let connections = self.device_connections.read().await;
-        
+
         if let Some(_connection) = connections.get(device_id) {
             // Create deployment message
             let deployment_message = ServerMessage::DeployApplication {
                 app_id: app_id.to_string(),
-                name: app_id.to_string(), // Use app_id as name for now
+                name: app_id.to_string(),
                 wasm_bytes: wasm_bytes.to_vec(),
-                config: None,
+                config,
             };
             
             // Send deployment command via TLS
@@ -637,7 +657,7 @@ async fn deploy_application(
         device_id.clone(),
         app_name,
         wasm_bytes.clone(),
-        app_config,
+        app_config.clone(),
     ).await;
 
     // Wait for TLS connection to be established before sending deployment
@@ -685,10 +705,11 @@ async fn deploy_application(
     let app_id_clone = app_id.clone();
     let device_id_clone = device_id.clone();
     let wasm_bytes_clone = wasm_bytes.clone();
-    
+    let config_proto = app_config.as_ref().map(map_k8s_config_to_protocol);
+
     tokio::spawn(async move {
         match server_clone
-            .deploy_application_to_device(&device_id_clone, &app_id_clone, &wasm_bytes_clone)
+            .deploy_application_to_device(&device_id_clone, &app_id_clone, &wasm_bytes_clone, config_proto)
             .await
         {
             Ok(_) => {
@@ -1222,6 +1243,7 @@ async fn create_application(
             },
             config: None,
             metadata: None,
+            target_runtime: None,
         },
         status: None,
     };
@@ -1612,6 +1634,8 @@ async fn create_device(
                 info!("No preferred_gateway for device {} (gateway is empty)", name);
                 None
             },
+            device_class: None,
+            runtime_target: None,
         },
         status: Some(wasmbed_k8s_resource::DeviceStatus {
             phase: wasmbed_k8s_resource::DevicePhase::Pending,
