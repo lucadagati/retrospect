@@ -16,10 +16,11 @@ LOG_MODULE_REGISTER(wamr_integration, LOG_LEVEL_INF);
 static bool wamr_initialized = false;
 
 /* WAMR heap buffer: pool passato a wasm_runtime_full_init (Alloc_With_Pool).
- * 48 KB sono sufficienti per caricare moduli piccoli + metadati istanza.
- * Il pool globale interno di WAMR (WAMR_BUILD_GLOBAL_HEAP_POOL) è disabilitato
- * in CMakeLists per evitare duplicati. */
-#define WAMR_HEAP_SIZE (48 * 1024)
+ * Con WAMR_BUILD_LIBC_WASI=1, WASI aggiunge ~10-15 KB di overhead interno
+ * (fd table, environ, args) rispetto al baseline senza WASI.
+ * 64 KB garantisce headroom sufficiente per moduli WASI piccoli su STM32F746G
+ * (340 KB SRAM totale, ~200 KB usati da Zephyr + stack + altri). */
+#define WAMR_HEAP_SIZE (64 * 1024)
 static uint8_t wamr_heap_buffer[WAMR_HEAP_SIZE] __aligned(8);
 
 /* Module registry */
@@ -174,17 +175,31 @@ int wamr_instantiate(uint32_t module_id, uint32_t *instance_id)
         return -1;
     }
 
-    /* Default stack size: 64KB */
-    uint32_t stack_size = 16 * 1024;  /* stack esecuzione WASM per istanza */
-    uint32_t heap_size = 0; /* Use default */
+    uint32_t stack_size = 16 * 1024;
+    uint32_t heap_size = 0;
 
     /* Error buffer for WAMR */
     static char error_buf[128];
     error_buf[0] = '\0';
 
+#if WASM_ENABLE_LIBC_WASI != 0
+    /* Set minimal WASI args: no dirs, no env, argv = {"app"}.
+     * Required so WAMR can resolve proc_exit / fd_write / environ_sizes_get.
+     * Without this call the module may trap on first WASI import call. */
+    static const char *wasi_dir_list[]  = {"/"};
+    static const char *wasi_env_list[]  = {NULL};
+    static const char *wasi_argv_list[] = {"app"};
+    wasm_runtime_set_wasi_args(module,
+                               wasi_dir_list, 1,
+                               NULL, 0,
+                               wasi_env_list, 0,
+                               (char **)wasi_argv_list, 1);
+    LOG_DBG("WASI args set on module %u", module_id);
+#endif
+
     /* Instantiate WASM module */
-    wasm_module_inst_t instance = wasm_runtime_instantiate(module, stack_size, 
-                                                           heap_size, error_buf, 
+    wasm_module_inst_t instance = wasm_runtime_instantiate(module, stack_size,
+                                                           heap_size, error_buf,
                                                            sizeof(error_buf));
     
     if (instance == NULL) {
@@ -266,6 +281,69 @@ int wamr_call_function(uint32_t instance_id, const char *function_name,
     LOG_INF("WASM function executed: %s", function_name);
 
     return 0;
+}
+
+/*
+ * Call the WASI _start entry point of a module instance.
+ * WASI command modules export "_start" (not "main" or "run").
+ * Falls back to looking for "run" for non-WASI modules.
+ * Returns 0 on success (including proc_exit(0)), -1 on error.
+ */
+int wamr_call_wasi_start(uint32_t instance_id)
+{
+    if (!wamr_initialized) {
+        LOG_ERR("WAMR not initialized");
+        return -1;
+    }
+
+    wasm_module_inst_t instance = NULL;
+    wasm_exec_env_t exec_env = NULL;
+    for (int i = 0; i < MAX_INSTANCES; i++) {
+        if (instances[i].in_use && instances[i].id == instance_id) {
+            instance = instances[i].instance;
+            exec_env = instances[i].exec_env;
+            break;
+        }
+    }
+
+    if (instance == NULL || exec_env == NULL) {
+        LOG_ERR("Instance not found: %u", instance_id);
+        return -1;
+    }
+
+#if WASM_ENABLE_LIBC_WASI != 0
+    /* Prefer WASI-aware start: handles proc_exit correctly */
+    wasm_function_inst_t start = wasm_runtime_lookup_wasi_start_function(instance);
+    if (start != NULL) {
+        LOG_INF("Calling WASI _start (instance %u)", instance_id);
+        if (!wasm_runtime_call_wasm(exec_env, start, 0, NULL)) {
+            /* proc_exit(0) surfaces as an exception in WAMR — treat as success */
+            const char *ex = wasm_runtime_get_exception(instance);
+            if (ex != NULL && strstr(ex, "proc_exit(0)") != NULL) {
+                wasm_runtime_clear_exception(instance);
+                LOG_INF("WASI module exited cleanly (proc_exit 0)");
+                return 0;
+            }
+            LOG_ERR("WASI _start failed: %s", ex ? ex : "(unknown)");
+            return -1;
+        }
+        return 0;
+    }
+#endif
+
+    /* Fallback: non-WASI module exporting "run" */
+    wasm_function_inst_t run_fn = wasm_runtime_lookup_function(instance, "run");
+    if (run_fn != NULL) {
+        LOG_INF("Calling 'run' (instance %u)", instance_id);
+        if (!wasm_runtime_call_wasm(exec_env, run_fn, 0, NULL)) {
+            LOG_ERR("'run' failed: %s", wasm_runtime_get_exception(instance));
+            return -1;
+        }
+        return 0;
+    }
+
+    LOG_ERR("No entry point found (_start / run) in instance %u", instance_id);
+    return -1;
 }
 
 /* Process WAMR runtime (call periodically) */

@@ -79,61 +79,8 @@ spec:
         - name: RUST_LOG
           value: "info"
 ---
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: wasmbed-gateway
-  namespace: wasmbed
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: wasmbed-gateway
-  template:
-    metadata:
-      labels:
-        app: wasmbed-gateway
-    spec:
-      serviceAccountName: wasmbed-gateway
-      containers:
-      - name: gateway
-        image: localhost:5000/wasmbed/gateway:latest
-        imagePullPolicy: Always
-        command:
-        - /usr/local/bin/wasmbed-gateway
-        - --bind-addr
-        - "0.0.0.0:8081"
-        - --http-addr
-        - "0.0.0.0:8080"
-        - --private-key
-        - /certs/server-key.pem
-        - --certificate
-        - /certs/server-cert.pem
-        - --client-ca
-        - /certs/ca-cert.pem
-        - --namespace
-        - wasmbed
-        - --pod-namespace
-        - wasmbed
-        - --pod-name
-        - wasmbed-gateway
-        ports:
-        - containerPort: 8080
-          name: http
-        - containerPort: 8081
-          name: tls
-        env:
-        - name: RUST_LOG
-          value: "info"
-        volumeMounts:
-        - name: certificates
-          mountPath: /certs
-          readOnly: true
-      volumes:
-      - name: certificates
-        secret:
-          secretName: gateway-certificates
----
+# The gateway instances are managed by wasmbed-gateway-controller via Gateway CRDs.
+# This service aggregates all controller-managed gateways (label app: wasmbed-gateway).
 apiVersion: v1
 kind: Service
 metadata:
@@ -148,7 +95,7 @@ spec:
     targetPort: 8080
   - name: tls
     port: 8081
-    targetPort: 8081
+    targetPort: 8443
 ---
 # Infrastructure deployment removed - wasmbed-infrastructure is not currently used
 # If needed in the future, create Dockerfile.infrastructure and rebuild

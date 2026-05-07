@@ -21,9 +21,12 @@ int wamr_load_module(const uint8_t *wasm_bytes, uint32_t wasm_size, uint32_t *mo
 /* Instantiate WASM module */
 int wamr_instantiate(uint32_t module_id, uint32_t *instance_id);
 
-/* Execute WASM function */
-int wamr_call_function(uint32_t instance_id, const char *function_name, 
+/* Execute WASM function by name */
+int wamr_call_function(uint32_t instance_id, const char *function_name,
                        uint32_t *args, uint32_t args_count, uint32_t *results, uint32_t results_count);
+
+/* Call WASI _start entry point (falls back to "run" for non-WASI modules) */
+int wamr_call_wasi_start(uint32_t instance_id);
 
 /* Process WAMR runtime (call periodically) */
 void wamr_process(void);

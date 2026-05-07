@@ -924,10 +924,11 @@ impl GatewayServer {
         println!("[DEBUG] Calling ServerConfig::builder()");
         println!("[DEBUG] Certificate: {:?}", self.config.identity.certificate());
         println!("[DEBUG] Private key: {:?}", self.config.identity.private_key());
-        // Use ECDHE-ECDSA-AES128-GCM-SHA256 (P-256) for TLS 1.2 — ECDSA certs are much smaller
-        // than RSA, critical for constrained IoT devices with limited MbedTLS heap.
+        // Use ECDHE-RSA-AES128-GCM-SHA256 for TLS 1.2 — matches the RSA certificates generated
+        // by wasmbed-cert-tool. ECDSA variant is kept as fallback for future ECDSA cert migration.
         let mut provider = rustls::crypto::ring::default_provider();
         provider.cipher_suites = vec![
+            rustls::crypto::ring::cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
             rustls::crypto::ring::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
         ];
         let server_config = ServerConfig::builder_with_provider(provider.into())
