@@ -501,8 +501,9 @@ async fn create_device_crd(
     api: &Api<Device>,
     gateway_reference: &GatewayReference,
 ) -> Result<String, anyhow::Error> {
-    // Convert public key to base64 for storage
-    let public_key_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, public_key);
+    // Convert public key to base64 for storage — must use URL_SAFE_NO_PAD to match
+    // PublicKey::to_base64() used in Device::find() comparisons.
+    let public_key_b64 = base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, public_key);
     
     // Create device name from UUID
     let device_name = format!("device-{}", device_uuid.to_string().replace("-", ""));

@@ -321,8 +321,8 @@ int wasmbed_protocol_init(void)
 }
 
 /* Max WASM module size we accept (copy to static buffer per WAMR).
- * 48 KB sufficienti per moduli embedded; riduciamo da 128 KB per liberare RAM. */
-#define MAX_WASM_SIZE (48 * 1024)
+ * 16 KB: saves 2×32KB BSS vs 48KB; offset by WAMR_HEAP_SIZE increase to 128KB. */
+#define MAX_WASM_SIZE (16 * 1024)
 #define MAX_APP_ID_LEN 64
 
 static uint8_t wasm_copy_buf[MAX_WASM_SIZE];

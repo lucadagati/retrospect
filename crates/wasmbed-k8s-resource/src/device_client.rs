@@ -18,7 +18,7 @@ impl Device {
         // Field selectors don't work with custom spec fields in Kubernetes
         let devices = api.list(&ListParams::default()).await?;
         for device in devices {
-            if device.spec.public_key == public_key.to_string() {
+            if device.spec.public_key == public_key.to_base64() {
                 return Ok(Some(device));
             }
         }
