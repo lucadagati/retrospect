@@ -1,6 +1,6 @@
 # Development Status - RETROSPECT Wasmbed Platform
 
-**Last Updated**: 2026-02-10
+**Last Updated**: 2026-05-10
 
 ## Executive Summary
 
@@ -20,8 +20,9 @@ The RETROSPECT Wasmbed platform is **operational** with core functionality worki
 | **Device → Connected** | ✅ Testato | STM32F746G: Connect → DHCP → TLS → Identify → Connected (feb 2026) |
 | **Board registration** | ✅ Operativo | Renode Manager registra board al Gateway; detach su stop |
 | **Application deploy (API→Gateway)** | ✅ Operativo | Deploy/stop patchano Application CRD status; Gateway invia CBOR su TLS |
-| **WASM su device (E2E)** | ⏳ Parziale | Firmware riceve DeployApplication e invia DeployAck; esecuzione WAMR da verificare |
+| **WASM su device (E2E)** | ✅ Verificato | Fase C: WAMR+WASI E2E su STM32F746G — `hello-wasi` 97B → DeployAck(success=true) (mag 2026) |
 | **Board virtuali (Riscv32Virtual, CortexR8Virtual)** | ⏳ Implementato, build non verificato | McuType e Renode script pronti; build firmware Docker avviato, .elf da confermare; E2E non testato |
+| **OCRE integration** | 🔴 Rinviata — incompatibilità upstream | OCRE main usa Zephyr v4.4.0 (noi 3.5); STM32F746G non supportato; overhead RAM 32 KB > headroom 8 KB. Documentato in `OCRE_INTEGRATION_ANALYSIS.md`. |
 
 ---
 
@@ -519,6 +520,11 @@ Verifica di ogni step implementato:
 Test E2E (cluster + device reali/simulati) da eseguire manualmente.
 
 ## Changelog
+
+### 2026-05-10 (branch OCRE-Integration-Test)
+- **Fase C E2E verificata**: WAMR+WASI su STM32F746G in Renode — deploy `hello-wasi` (97 B) → `DeployAck(success=true)`. Tabella footprint: text 395 KB / RAM 248 KB / headroom ~8 KB. Vedere `PHASE_C_E2E_RESULTS.md`.
+- **OCRE integration analisi upstream**: esaminato `project-ocre/ocre-runtime` (main, 2026-05-08). Incompatibilità bloccanti: Zephyr 4.4.0 vs 3.5, STM32F746G non supportata, overhead RAM 32 KB > headroom 8 KB, conflitto istanza WAMR. Integrazione rinviata; percorso di migrazione documentato in `OCRE_INTEGRATION_ANALYSIS.md §Analisi Compatibilità Upstream`.
+- **Stato operativo aggiornato**: voce WASM E2E → ✅, nuova voce OCRE → 🔴 rinviata.
 
 ### 2026-02-10 (continued)
 - **Gateway patches Application CRD status**: Gateway uses `ApplicationStatusUpdate` to patch Application status (phase, deviceStatuses per device, error) on deploy/stop and on ApplicationStatus/DeployAck/StopAck from devices. Owner of status documented in ARCHITECTURE.md.

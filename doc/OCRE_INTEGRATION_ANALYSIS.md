@@ -130,6 +130,70 @@ abilitando WASI su WAMR puro.
 
 ---
 
+## Analisi Compatibilità Upstream — 2026-05-10
+
+> **Risultato: integrazione OCRE upstream rinviata.**
+> Branch `OCRE-Integration-Test` creato per l'analisi; nessuna modifica al
+> firmware. I dettagli tecnici qui documentati costituiscono la sezione
+> "Incompatibilità e Future Work" del capitolo "Risultati" della tesi.
+
+### Versione OCRE esaminata
+
+Repository: `github.com/project-ocre/ocre-runtime` (branch `main`,
+aggiornato 2026-05-08).
+
+### Incompatibilità rilevate
+
+| Dimensione | OCRE upstream | RETROSPECT attuale | Problema |
+|---|---|---|---|
+| **Zephyr versione** | **v4.4.0** (da `west.yml` del repo) | **Zephyr 3.5** (workspace build attivo) | Gap di una major release; Kconfig, DTS, driver API cambiate tra 3.5 e 4.x. Richiederebbe aggiornamento completo del workspace west e verifica di tutte le patch WAMR applicate in Fase C. |
+| **Board supportate** | `native_sim`, `b_u585i_iot02a`, `pico_plus2/rp2350b/m33` | **STM32F746G Disco** (unica board E2E verificata) | STM32F746G non è nella lista ufficiale OCRE. Il porting richiederebbe aggiungere binding DTS/Kconfig board-specific o contribuire upstream. |
+| **RAM overhead** | `HEAP_MEM_POOL_ADD_SIZE_OCRE = 32 KB` (da `zephyr/Kconfig`) | Headroom attuale **~8 KB** (91.7% RAM a 248/256 KB) | La sola attivazione di `CONFIG_OCRE=y` supererebbe il budget RAM disponibile su STM32F746G senza riduzioni altrove. |
+| **WAMR istanza** | WAMR embeds come submodule proprio (`wasm-micro-runtime/`) | WAMR in `retrospect/wamr/` (submodule separato, patchato per Zephyr 3.5) | Due istanze WAMR in conflitto; OCRE usa la propria revision e non accetta un'istanza esterna. Le 4 patch Fase C (compat Zephyr 3.5) andrebbero riapplicate sulla versione OCRE. |
+| **Storage richiesto** | LittleFS `/lfs/ocre` (partition flash) | Nessuna partizione flash configurata in `prj.conf` | `CONFIG_OCRE_STORAGE_PARTITION=y` richiede una flash partition hardware; STM32F746G ha flash esterna ma non mappata in Zephyr 3.5 out-of-the-box. |
+| **Manifest west** | OCRE è progettato come top-level manifest (`west init -m ocre-runtime`) | Il nostro workspace usa Zephyr come manifest root | Usare OCRE come west module (non come manifest) è possibile ma non documentato upstream; richiede configurazione manuale. |
+
+### Dipendenze Kconfig rilevate in `zephyr/Kconfig`
+
+```
+CONFIG_OCRE depends on:
+  PTHREAD_IPC            (threading POSIX)
+  POSIX_API              (già presente in Fase C)
+  FLASH + FLASH_MAP      (non configurati per STM32F746G in Zephyr 3.5)
+  NET_SOCKETS            (presente)
+  HEAP_MEM_POOL_ADD_SIZE_OCRE = 32768   # +32 KB → supera headroom
+```
+
+### Percorso per abilitare OCRE in futuro
+
+Per integrare OCRE in una revisione successiva della tesi o in produzione:
+
+1. **Aggiornare Zephyr 3.5 → 4.4** nel workspace west. Rieseguire
+   la procedura di build Fase C (`WAMR_BUILD_LIBC_WASI=1`) e le patch
+   compat su `wamr/core/shared/platform/zephyr/`. Verificare E2E su
+   STM32F746G con Zephyr 4.4.
+2. **Aggiungere STM32F746G** come board supportata in OCRE (upstream PR
+   o patch locale): DTS overlay + Kconfig fragment per `stm32f746g_disco`.
+3. **Risolvere RAM**: ridurre `WAMR_HEAP_SIZE` (da 64 KB, oggi minimo
+   funzionale per WASI) oppure scegliere una board con più SRAM
+   (es. `b_u585i_iot02a` ha 786 KB SRAM — ampio margine).
+4. **Configurare flash partition**: aggiungere `stm32f746g_disco.overlay`
+   con LittleFS su QSPI o internal flash per soddisfare
+   `CONFIG_OCRE_STORAGE_PARTITION`.
+5. Procedere con i passi 2–6 del piano originale (wrapper OCRE API,
+   manifest plumbing, GPIO host function smoke test).
+
+### Impatto sulla tesi
+
+L'analisi di compatibilità dimostra che OCRE è una dipendenza credibile
+e tecnica per la roadmap di RETROSPECT, ma non integrabile senza un
+aggiornamento di Zephyr. La Fase C (WAMR+WASI E2E verificata) costituisce
+il contributo tecnico principale per il capitolo "Risultati"; OCRE viene
+presentato come l'evoluzione naturale documentata con evidenza di
+incompatibilità e percorso di migrazione.
+
+---
+
 ## File di riferimento
 
 | File | Rilevanza |
