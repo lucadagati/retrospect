@@ -343,11 +343,10 @@ impl DeviceController {
             }
         }
         
-        // Start Renode automatically for the device
-        // Renode is managed as a standalone process by RenodeManager, not as a Docker container
-        // The RenodeManager will spawn Renode as a process (not a pod)
-        self.start_renode_device(device).await?;
-        
+        if let Err(e) = self.start_renode_device(device).await {
+            warn!("Could not start Renode for device {} (expected for native_sim): {}", device.name_any(), e);
+        }
+
         Ok(())
     }
     
@@ -512,39 +511,45 @@ impl DeviceController {
         let device_id = device.name_any();
         info!("Device {} disconnected, attempting automatic reconnection", device_id);
         
-        // Get gateway endpoint from device status or use default
-        let gateway_endpoint = if let Some(gateway_ref) = device.status.as_ref().and_then(|s| s.gateway.as_ref()) {
-            gateway_ref.endpoint.clone()
+        // Get gateway endpoint from device status (skip if empty), falling back to gateway discovery
+        let stored_endpoint = device.status.as_ref()
+            .and_then(|s| s.gateway.as_ref())
+            .map(|g| g.endpoint.clone())
+            .filter(|ep| !ep.is_empty());
+
+        let gateway_endpoint = if let Some(ep) = stored_endpoint {
+            ep
         } else {
-            // Try to find a running gateway
             let gateways_api = Api::<Gateway>::namespaced(self.client.clone(), "wasmbed");
             match gateways_api.list(&kube::api::ListParams::default()).await {
-                Ok(gateways) => {
-                    // Find first running gateway
-                    gateways.items.iter()
-                        .find_map(|g| {
-                            if let Some(status) = &g.status {
-                                if matches!(status.phase, GatewayPhase::Running) {
-                                    let endpoint = if g.spec.endpoint.is_empty() {
-                                        "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string()
-                                    } else {
-                                        g.spec.endpoint.clone()
-                                    };
-                                    return Some(endpoint);
-                                }
+                Ok(gateways) => gateways.items.iter()
+                    .find_map(|g| {
+                        if let Some(status) = &g.status {
+                            if matches!(status.phase, GatewayPhase::Running) {
+                                let ep = if g.spec.endpoint.is_empty() {
+                                    "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string()
+                                } else {
+                                    g.spec.endpoint.clone()
+                                };
+                                return Some(ep);
                             }
-                            None
-                        })
-                        .unwrap_or_else(|| "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string())
-                }
+                        }
+                        None
+                    })
+                    .unwrap_or_else(|| "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string()),
                 Err(_) => "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string(),
             }
         };
-        
-        // Register device with gateway to enable reconnection
-        info!("Registering device {} with gateway at {} for reconnection", device_id, gateway_endpoint);
-        let gateway_url = format!("{}/api/v1/devices/{}/connect", gateway_endpoint, device_id);
-        
+
+        let gateway_base = if gateway_endpoint.starts_with("http://") || gateway_endpoint.starts_with("https://") {
+            gateway_endpoint.clone()
+        } else {
+            format!("http://{}", gateway_endpoint)
+        };
+
+        info!("Registering device {} with gateway at {} for reconnection", device_id, gateway_base);
+        let gateway_url = format!("{}/api/v1/devices/{}/connect", gateway_base, device_id);
+
         let client = reqwest::Client::new();
         match client
             .post(&gateway_url)
@@ -554,7 +559,6 @@ impl DeviceController {
         {
             Ok(resp) if resp.status().is_success() => {
                 info!("Device {} successfully re-registered with gateway", device_id);
-                // The device will transition to Connected when TLS connection is established
             }
             Ok(resp) => {
                 warn!("Gateway reconnection returned status {} for device {}", resp.status(), device_id);
@@ -563,7 +567,7 @@ impl DeviceController {
                 warn!("Failed to reconnect device {} to gateway: {}. Will retry on next reconciliation.", device_id, e);
             }
         }
-        
+
         Ok(())
     }
 
@@ -571,9 +575,13 @@ impl DeviceController {
         let device_id = device.name_any();
         info!("Device {} is unreachable (heartbeat timeout), attempting automatic recovery", device_id);
 
-        // Same reconnection as handle_disconnected: re-register with Gateway so when device reconnects TLS and sends heartbeat, Gateway can mark Connected
-        let gateway_endpoint = if let Some(gateway_ref) = device.status.as_ref().and_then(|s| s.gateway.as_ref()) {
-            gateway_ref.endpoint.clone()
+        let stored_endpoint = device.status.as_ref()
+            .and_then(|s| s.gateway.as_ref())
+            .map(|g| g.endpoint.clone())
+            .filter(|ep| !ep.is_empty());
+
+        let gateway_endpoint = if let Some(ep) = stored_endpoint {
+            ep
         } else {
             let gateways_api = Api::<Gateway>::namespaced(self.client.clone(), "wasmbed");
             match gateways_api.list(&kube::api::ListParams::default()).await {
@@ -595,7 +603,13 @@ impl DeviceController {
             }
         };
 
-        let gateway_url = format!("{}/api/v1/devices/{}/connect", gateway_endpoint, device_id);
+        let gateway_base = if gateway_endpoint.starts_with("http://") || gateway_endpoint.starts_with("https://") {
+            gateway_endpoint.clone()
+        } else {
+            format!("http://{}", gateway_endpoint)
+        };
+
+        let gateway_url = format!("{}/api/v1/devices/{}/connect", gateway_base, device_id);
         let client = reqwest::Client::new();
         match client.post(&gateway_url).timeout(std::time::Duration::from_secs(10)).send().await {
             Ok(resp) if resp.status().is_success() => {

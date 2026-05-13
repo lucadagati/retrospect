@@ -310,18 +310,24 @@ impl ApplicationController {
                 if let Some(gateway_ref) = device.status.as_ref().and_then(|s| s.gateway.as_ref()) {
                     let endpoint = &gateway_ref.endpoint;
                     let gateway_name = &gateway_ref.name;
-                    
-                    // Check if endpoint is a Renode endpoint (127.0.0.1:port) or localhost
-                    if endpoint.starts_with("127.0.0.1:") || endpoint.starts_with("localhost:") {
-                        // Endpoint is a Renode endpoint, construct gateway service DNS endpoint
-                        // Format: {gateway-name}-service.wasmbed.svc.cluster.local:8080
-                        format!("{}-service.wasmbed.svc.cluster.local:8080", gateway_name)
+
+                    if endpoint.is_empty() {
+                        // Empty endpoint: fall back to configured gateway endpoint
+                        self.gateway_endpoint.clone()
+                    } else if endpoint.starts_with("127.0.0.1:") || endpoint.starts_with("localhost:") {
+                        format!("http://{}-service.wasmbed.svc.cluster.local:8080", gateway_name)
                     } else if endpoint.contains("svc.cluster.local") {
-                        // Valid Kubernetes service DNS endpoint, use as-is
-                        endpoint.clone()
+                        if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
+                            endpoint.clone()
+                        } else {
+                            format!("http://{}", endpoint)
+                        }
                     } else {
-                        // Use endpoint as-is
-                        endpoint.clone()
+                        if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
+                            endpoint.clone()
+                        } else {
+                            format!("http://{}", endpoint)
+                        }
                     }
                 } else {
                     // No gateway reference, use default
@@ -573,7 +579,11 @@ impl ApplicationController {
         };
         
         // Call gateway endpoint
-        let url = format!("http://{}/api/v1/devices/{}/deploy", http_endpoint, device_id);
+        let url = if http_endpoint.starts_with("http://") || http_endpoint.starts_with("https://") {
+            format!("{}/api/v1/devices/{}/deploy", http_endpoint, device_id)
+        } else {
+            format!("http://{}/api/v1/devices/{}/deploy", http_endpoint, device_id)
+        };
         let client = reqwest::Client::new();
         
         match client
