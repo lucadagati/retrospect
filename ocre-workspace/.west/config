@@ -1,0 +1,7 @@
+[manifest]
+path = ocre-runtime
+file = west.yml
+
+[zephyr]
+base = zephyr
+

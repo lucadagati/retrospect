@@ -37,21 +37,21 @@ spec:
         - name: RENODE_USE_DOCKER
           value: "true"
         - name: ZEPHYR_WORKSPACE
-          value: "/home/ubuntu/retrospect/zephyr-workspace"
+          value: "/home/ubuntu/retrospect/ocre-workspace"
         # In k3d, we need to mount the Docker socket from the host via k3d server container
         volumeMounts:
         - name: docker-sock
           mountPath: /var/run/docker.sock
           readOnly: false
-        - name: zephyr-workspace
-          mountPath: /home/ubuntu/retrospect/zephyr-workspace
+        - name: ocre-workspace
+          mountPath: /home/ubuntu/retrospect/ocre-workspace
           readOnly: true
         - name: renode-scripts
-          mountPath: /home/ubuntu/retrospect/zephyr-workspace/renode-scripts
+          mountPath: /home/ubuntu/retrospect/ocre-workspace/renode-scripts
           readOnly: false
         # Firmware is in container image, no need for host mount
         # - name: zephyr-firmware
-        #   mountPath: /app/zephyr-workspace
+        #   mountPath: /app/ocre-workspace
         resources:
           requests:
             memory: "128Mi"
@@ -64,13 +64,13 @@ spec:
         hostPath:
           path: /var/run/docker.sock
           type: Socket
-      - name: zephyr-workspace
+      - name: ocre-workspace
         hostPath:
-          path: /home/ubuntu/retrospect/zephyr-workspace
+          path: /home/ubuntu/retrospect/ocre-workspace
           type: Directory
       - name: renode-scripts
         hostPath:
-          path: /home/ubuntu/retrospect/zephyr-workspace/renode-scripts
+          path: /home/ubuntu/retrospect/ocre-workspace/renode-scripts
           type: DirectoryOrCreate
 ---
 apiVersion: v1

@@ -1,0 +1,13 @@
+using sysbus
+mach create "native-sim-1"
+machine LoadPlatformDescription @platforms/boards/.repl
+showAnalyzer sysbus.
+sysbus LoadELF @/firmware/native-sim-1/zephyr.exe
+sysbus WriteDoubleWord 0x20001000 0x00000011
+sysbus WriteDoubleWord 0x20001004 0x342e3031
+sysbus WriteDoubleWord 0x20001008 0x37312e33
+sysbus WriteDoubleWord 0x2000100c 0x35312e38
+sysbus WriteDoubleWord 0x20001010 0x3434383a
+sysbus WriteDoubleWord 0x20001014 0x00000033
+logLevel -1
+start

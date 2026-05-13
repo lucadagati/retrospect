@@ -278,6 +278,10 @@ pub enum McuType {
     FrdmK64f,
     
     // ===== Official Zephyr Boards with WiFi =====
+    /// B-U585I-IOT02A (ARM Cortex-M33, WiFi, 786KB SRAM) - OCRE primary supported board
+    #[serde(alias = "BU585iIot02a", alias = "b_u585i_iot02a")]
+    BU585iIot02a,
+
     /// ESP32 DevKitC (Xtensa LX6, WiFi/BLE) - WiFi support
     #[serde(alias = "Esp32DevkitC", alias = "esp32_devkitc_wroom")]
     Esp32DevkitC,
@@ -314,13 +318,25 @@ pub enum McuType {
     /// Linux RISC-V: RISC-V Linux devices (SiFive, etc.)
     #[serde(alias = "LinuxRiscV", alias = "linux_riscv")]
     LinuxRiscV,
+
+    // ===== Zephyr native_sim (OCRE, WAMR, no Renode) =====
+    /// native_sim/native/64: Zephyr OCRE firmware as a native Linux x86-64 process.
+    /// Uses NSOS (host sockets) — no Renode, no TAP, full TLS via MbedTLS.
+    #[serde(alias = "NativeSim64", alias = "native_sim_64", alias = "native_sim/native/64")]
+    NativeSim64,
 }
 
 impl McuType {
     /// Returns true if this device type is emulated in Renode.
     /// Linux native devices register autonomously via board/register API.
     pub fn is_emulated(&self) -> bool {
-        !matches!(self, McuType::LinuxArm64 | McuType::LinuxX86_64 | McuType::LinuxRiscV)
+        !matches!(
+            self,
+            McuType::LinuxArm64
+                | McuType::LinuxX86_64
+                | McuType::LinuxRiscV
+                | McuType::NativeSim64
+        )
     }
 
     /// Get Renode platform name for this MCU
@@ -331,6 +347,7 @@ impl McuType {
             McuType::FrdmK64f => "frdm_k64f",
 
             // Official Zephyr boards with WiFi
+            McuType::BU585iIot02a => "b_u585i_iot02a",
             McuType::Esp32DevkitC => "esp32",
 
             // Official Zephyr boards (no network)
@@ -342,8 +359,11 @@ impl McuType {
             McuType::RenodeStm32F4Discovery => "stm32f4_discovery",
             McuType::Mps2An385 => "arduino_nano_33_ble",
 
-            // Linux native devices — not managed by Renode
-            McuType::LinuxArm64 | McuType::LinuxX86_64 | McuType::LinuxRiscV => "",
+            // Linux native / native_sim — not managed by Renode
+            McuType::LinuxArm64
+            | McuType::LinuxX86_64
+            | McuType::LinuxRiscV
+            | McuType::NativeSim64 => "",
         }
     }
 
@@ -360,15 +380,18 @@ impl McuType {
             McuType::RenodeArduinoNano33Ble => "cortex-m4",
             McuType::RenodeStm32F4Discovery => "cortex-m4",
 
+            // Cortex-M33
+            McuType::BU585iIot02a => "cortex-m33",
+
             // Xtensa (ESP32)
             McuType::Esp32DevkitC => "xtensa-lx6",
 
             // Cortex-M3 (legacy)
             McuType::Mps2An385 => "cortex-m3",
 
-            // Linux native
+            // Linux native / native_sim (x86-64 host process)
             McuType::LinuxArm64 => "aarch64",
-            McuType::LinuxX86_64 => "x86_64",
+            McuType::LinuxX86_64 | McuType::NativeSim64 => "x86_64",
             McuType::LinuxRiscV => "riscv64",
         }
     }
@@ -379,6 +402,7 @@ impl McuType {
             // High-end MCUs
             McuType::Stm32F746gDisco => "320K", // 320KB RAM
             McuType::FrdmK64f => "256K", // 256KB RAM
+            McuType::BU585iIot02a => "786K", // 786KB SRAM total (SRAM1+2+3)
             McuType::Esp32DevkitC => "520K", // 520KB SRAM
 
             // Mid-range MCUs
@@ -392,8 +416,11 @@ impl McuType {
             // Legacy
             McuType::Mps2An385 => "512K",
 
-            // Linux native — actual memory reported at runtime via DeviceInfo CBOR
-            McuType::LinuxArm64 | McuType::LinuxX86_64 | McuType::LinuxRiscV => "unknown",
+            // Linux native / native_sim
+            McuType::LinuxArm64
+            | McuType::LinuxX86_64
+            | McuType::LinuxRiscV
+            | McuType::NativeSim64 => "10M",
         }
     }
 
@@ -405,6 +432,7 @@ impl McuType {
             McuType::FrdmK64f => "FRDM-K64F (Ethernet)",
 
             // WiFi boards
+            McuType::BU585iIot02a => "B-U585I-IOT02A (Ethernet/SMSC91X, OCRE)",
             McuType::Esp32DevkitC => "ESP32 DevKitC (WiFi)",
 
             // No network boards
@@ -420,6 +448,9 @@ impl McuType {
             McuType::LinuxArm64 => "Linux ARM64 (native)",
             McuType::LinuxX86_64 => "Linux x86_64 (native)",
             McuType::LinuxRiscV => "Linux RISC-V (native)",
+
+            // native_sim
+            McuType::NativeSim64 => "Zephyr native_sim/native/64 (OCRE, NSOS)",
         }
     }
 
@@ -441,11 +472,13 @@ impl McuType {
             // ESP32
             McuType::Esp32DevkitC => Some("esp32-hal"),
 
-            // Legacy / Linux native — no bare-metal HAL
-            McuType::Mps2An385
+            // Legacy / Linux native / native_sim / new boards without HAL support
+            McuType::BU585iIot02a
+            | McuType::Mps2An385
             | McuType::LinuxArm64
             | McuType::LinuxX86_64
-            | McuType::LinuxRiscV => None,
+            | McuType::LinuxRiscV
+            | McuType::NativeSim64 => None,
         }
     }
 
@@ -457,7 +490,8 @@ impl McuType {
             McuType::Stm32F746gDisco => "build/stm32f746g_disco/zephyr/zephyr.elf",
             McuType::FrdmK64f => "build/frdm_k64f/zephyr/zephyr.elf",
 
-            // WiFi boards
+            // WiFi boards (OCRE-primary)
+            McuType::BU585iIot02a => "build/b_u585i_iot02a/zephyr/zephyr.elf",
             McuType::Esp32DevkitC => "build/esp32_devkitc_wroom/zephyr/zephyr.elf",
 
             // No network boards
@@ -468,6 +502,9 @@ impl McuType {
             McuType::RenodeArduinoNano33Ble => "build/arduino_nano_33_ble/zephyr/zephyr.elf",
             McuType::RenodeStm32F4Discovery => "build/stm32f4_discovery/zephyr/zephyr.elf",
             McuType::Mps2An385 => "build/mps2_an385/zephyr/zephyr.elf",
+
+            // native_sim — runs zephyr.exe (native Linux binary)
+            McuType::NativeSim64 => "build/native_sim_64/zephyr/zephyr.exe",
 
             // Linux native — no Zephyr firmware; device runs wasmbed-edge-client
             McuType::LinuxArm64 | McuType::LinuxX86_64 | McuType::LinuxRiscV => "",
@@ -492,11 +529,17 @@ impl McuType {
             // ESP32
             McuType::Esp32DevkitC => "uart0",
 
+            // STM32U5 (B-U585I-IOT02A) — uses USART1 as console
+            McuType::BU585iIot02a => "usart1",
+
             // Legacy
             McuType::Mps2An385 => "uart0",
 
-            // Linux native — no UART peripheral applicable
-            McuType::LinuxArm64 | McuType::LinuxX86_64 | McuType::LinuxRiscV => "",
+            // Linux native / native_sim — no hardware UART
+            McuType::LinuxArm64
+            | McuType::LinuxX86_64
+            | McuType::LinuxRiscV
+            | McuType::NativeSim64 => "",
         }
     }
 
@@ -507,7 +550,8 @@ impl McuType {
             McuType::Stm32F746gDisco,
             McuType::FrdmK64f,
 
-            // WiFi boards
+            // WiFi boards (OCRE-primary)
+            McuType::BU585iIot02a,
             McuType::Esp32DevkitC,
 
             // No network boards
@@ -531,6 +575,7 @@ impl McuType {
             self,
             McuType::Stm32F746gDisco
                 | McuType::FrdmK64f
+                | McuType::BU585iIot02a
                 | McuType::LinuxArm64
                 | McuType::LinuxX86_64
                 | McuType::LinuxRiscV
@@ -676,6 +721,7 @@ impl RenodeManager {
                         let mcu_type = match mcu_type_str {
                             "Stm32F746gDisco" => McuType::Stm32F746gDisco,
                             "FrdmK64f" => McuType::FrdmK64f,
+                            "BU585iIot02a" | "b_u585i_iot02a" => McuType::BU585iIot02a,
                             "Esp32DevkitC" => McuType::Esp32DevkitC,
                             "Nrf52840DK" => McuType::Nrf52840DK,
                             "Stm32F4Disco" => McuType::Stm32F4Disco,
@@ -685,6 +731,7 @@ impl RenodeManager {
                             "LinuxArm64" | "linux_arm64" => McuType::LinuxArm64,
                             "LinuxX86_64" | "linux_x86_64" => McuType::LinuxX86_64,
                             "LinuxRiscV" | "linux_riscv" => McuType::LinuxRiscV,
+                            "NativeSim64" | "native_sim_64" | "native_sim/native/64" => McuType::NativeSim64,
                             _ => {
                                 eprintln!("Unknown MCU type '{}' for device {}, using Stm32F746gDisco as default", mcu_type_str, device_id);
                                 McuType::Stm32F746gDisco
@@ -962,11 +1009,6 @@ impl RenodeManager {
                 .to_string_lossy()
                 .to_string();
             let gateway_endpoint_str = device.gateway_endpoint.as_deref().unwrap_or("127.0.0.1:8443").to_string();
-            // In Docker mode the emulated device runs on the HOST network (--net=host), but
-            // ClusterIP addresses are only reachable inside the k8s overlay. Translate the
-            // ClusterIP endpoint to the host-visible NodePort endpoint so Zephyr firmware
-            // can actually reach the gateway.
-            let firmware_gateway_endpoint = translate_to_nodeport_endpoint(&gateway_endpoint_str);
             let gateway_http = device.gateway_endpoint.as_ref().map(|s| gateway_http_from_tls_endpoint(s.as_str()));
             let endpoint = device.endpoint.clone();
             let mcu_type_fmt = format!("{:?}", device.mcu_type);
@@ -974,6 +1016,17 @@ impl RenodeManager {
             let has_wifi = device.mcu_type.has_wifi();
             let _mcu_type_clone = device.mcu_type.clone();
             drop(devices);
+            // In Docker mode the emulated device runs on the HOST network (--net=host), but
+            // ClusterIP addresses are only reachable inside the k8s overlay. Translate the
+            // ClusterIP endpoint to the host-visible NodePort endpoint so Zephyr firmware
+            // can actually reach the gateway.
+            // NativeSim64 runs with --net=host and can reach ClusterIP directly (k3s kube-proxy
+            // intercepts ClusterIP via iptables on the host), so skip the NodePort translation.
+            let firmware_gateway_endpoint = if _mcu_type_clone == McuType::NativeSim64 {
+                gateway_endpoint_str.clone()
+            } else {
+                translate_to_nodeport_endpoint(&gateway_endpoint_str)
+            };
 
             // Create shared volume if needed
             let _ = Command::new("docker")
@@ -1015,6 +1068,53 @@ impl RenodeManager {
                 .args(&["rm", "-f", &container_name])
                 .output();
 
+            if _mcu_type_clone == McuType::NativeSim64 {
+                // ── native_sim path ───────────────────────────────────────────
+                // Run zephyr.exe directly in a minimal Ubuntu container.
+                // No Renode, no TAP: NSOS redirects sockets to the host network.
+                // flash.bin is the pre-initialised LittleFS image built alongside zephyr.exe.
+                let flash_src = firmware_path.parent()
+                    .and_then(|p| p.parent())  // build/native_sim_64/
+                    .map(|p| p.join("flash.bin"))
+                    .filter(|p| p.exists());
+
+                // Copy flash.bin into the firmware volume alongside zephyr.exe
+                if let Some(flash_path) = flash_src {
+                    let flash_dest = firmware_path.parent()
+                        .map(|p| p.parent().unwrap_or(p))
+                        .unwrap_or(&firmware_path)
+                        .join(format!("flash_{}_.bin", device_id));
+                    // Re-derive the per-device firmware dir from the copied exe path
+                    let dest_dir = firmware_path.parent().map(|p| p.to_path_buf())
+                        .unwrap_or_default();
+                    let flash_dest_in_vol = dest_dir.join("flash.bin");
+                    let _ = std::fs::copy(&flash_path, &flash_dest_in_vol);
+                    let _ = flash_dest; // silence unused warning
+                }
+
+                let exe_container_path = format!("/firmware/{}/{}", device_id, firmware_filename);
+                let flash_container_path = format!("/firmware/{}/flash.bin", device_id);
+                let gateway_arg = format!("--gateway={}", firmware_gateway_endpoint);
+
+                let status = Command::new("docker")
+                    .args(&[
+                        "run", "-d",
+                        "--net=host",
+                        "--name", &container_name,
+                        "-v", &format!("{}:/firmware", WASMBED_FIRMWARE_VOLUME),
+                        "ubuntu:22.04",
+                        &exe_container_path,
+                        &gateway_arg,
+                        &format!("--flash={}", flash_container_path),
+                    ])
+                    .status()?;
+
+                if !status.success() {
+                    return Err(anyhow::anyhow!("Failed to start native_sim container for device {}", device_id));
+                }
+                std::thread::sleep(Duration::from_secs(2));
+            } else {
+            // ── Renode path ───────────────────────────────────────────────────
             // Start per-device Renode container.
             // Mount the host-side zephyr-workspace (for the .resc script) and the firmware volume (for the ELF).
             // -t allocates a pseudo-TTY so Renode's stdin never gets EOF → simulation keeps running.
@@ -1041,6 +1141,7 @@ impl RenodeManager {
 
             // Give Renode a moment to start the simulation
             std::thread::sleep(Duration::from_secs(4));
+            } // end Renode path
 
             if let Some(ref gw) = gateway_http {
                 register_board_with_gateway(gw, device_id, &endpoint, &mcu_type_fmt, has_eth, has_wifi).await;
@@ -1265,13 +1366,26 @@ impl RenodeManager {
             std::path::PathBuf::from(ws)
         } else {
             let current_dir = std::env::current_dir().unwrap_or_default();
-            current_dir.join("zephyr-workspace")
+            current_dir.join("ocre-workspace")
         };
         let zephyr_firmware_nrf52840 = zephyr_workspace.join("build/nrf52840dk/nrf52840/zephyr/zephyr.elf");
         let zephyr_firmware_stm32f4 = zephyr_workspace.join("build/stm32f4/zephyr/zephyr.elf");
         let zephyr_firmware_arduino_nano = zephyr_workspace.join("build/nrf52840dk/nrf52840/zephyr/zephyr.elf");
-        
+
         match mcu_type {
+            // OCRE primary board (WiFi, Cortex-M33, 786KB SRAM)
+            McuType::BU585iIot02a => {
+                let firmware_path = zephyr_workspace.join(mcu_type.get_firmware_path());
+                if firmware_path.exists() {
+                    Ok(firmware_path)
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("OCRE firmware not found for B-U585I-IOT02A. Expected: {}", firmware_path.display())
+                    ))
+                }
+            },
+
             // Ethernet boards
             McuType::Stm32F746gDisco => {
                 let firmware_path = zephyr_workspace.join(mcu_type.get_firmware_path());
@@ -1358,8 +1472,20 @@ impl RenodeManager {
                     ))
                 }
             },
+            // native_sim: firmware is a Linux x86-64 executable (zephyr.exe)
+            McuType::NativeSim64 => {
+                let firmware_path = zephyr_workspace.join(mcu_type.get_firmware_path());
+                if firmware_path.exists() {
+                    Ok(firmware_path)
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("native_sim firmware not found. Expected: {}", firmware_path.display()),
+                    ))
+                }
+            },
+
             // Linux native devices do not use Renode emulation or Zephyr firmware.
-            // They run wasmbed-edge-client directly and register via board/register API.
             McuType::LinuxArm64 | McuType::LinuxX86_64 | McuType::LinuxRiscV => {
                 Err(std::io::Error::new(
                     std::io::ErrorKind::Unsupported,
@@ -1408,10 +1534,14 @@ impl RenodeManager {
             match mcu {
                 McuType::Stm32F746gDisco => "\nemulation CreateSwitch \"ethernet_switch\"\nemulation CreateTap \"tap0\" \"ethernet_tap\"\nsysbus.ethernet MAC \"00:11:22:33:44:55\"\nconnector Connect sysbus.ethernet ethernet_switch\nconnector Connect host.ethernet_tap ethernet_switch\nhost.ethernet_tap Start",
                 McuType::FrdmK64f => "\nemulation CreateSwitch \"ethernet_switch\"\nemulation CreateTap \"tap0\" \"ethernet_tap\"\nsysbus.ethernet MAC \"00:11:22:33:44:66\"\nconnector Connect sysbus.ethernet ethernet_switch\nconnector Connect host.ethernet_tap ethernet_switch\nhost.ethernet_tap Start",
+                McuType::BU585iIot02a => "\nemulation CreateSwitch \"ethernet_switch\"\nemulation CreateTap \"tap0\" \"ethernet_tap\"\nsysbus.smsc91x MAC \"02:00:00:00:00:01\"\nconnector Connect sysbus.smsc91x ethernet_switch\nconnector Connect host.ethernet_tap ethernet_switch\nhost.ethernet_tap Start",
                 _ => "",
             }
         } else if mcu.has_wifi() {
-            "\n# WiFi configuration for ESP32 (if supported)"
+            match mcu {
+                McuType::BU585iIot02a => "\nemulation CreateSwitch \"wifi_switch\"\nemulation CreateTap \"tap0\" \"wifi_tap\"\nsysbus.wifi MAC \"02:00:00:00:00:01\"\nconnector Connect sysbus.wifi wifi_switch\nconnector Connect host.wifi_tap wifi_switch\nhost.wifi_tap Start",
+                _ => "",
+            }
         } else {
             ""
         };
@@ -1479,6 +1609,14 @@ impl RenodeManager {
                      connector Connect host.ethernet_tap ethernet_switch\n\
                      host.ethernet_tap Start"
                 }
+                McuType::BU585iIot02a => {
+                    "emulation CreateSwitch \"ethernet_switch\"\n\
+                     emulation CreateTap \"tap0\" \"ethernet_tap\"\n\
+                     sysbus.smsc91x MAC \"02:00:00:00:00:01\"\n\
+                     connector Connect sysbus.smsc91x ethernet_switch\n\
+                     connector Connect host.ethernet_tap ethernet_switch\n\
+                     host.ethernet_tap Start"
+                }
                 _ => "",
             }
         } else {
@@ -1502,14 +1640,21 @@ impl RenodeManager {
             endpoint_write.push_str(&format!("\nsysbus WriteDoubleWord 0x{:08x} 0x{:08x}", 0x20001004 + (i as u32 * 4), word));
         }
 
+        // BU585iIot02a ships its own .repl (not in Renode upstream platforms)
+        let platform_desc = if *mcu == McuType::BU585iIot02a {
+            format!("@/scripts/{}.repl", platform)
+        } else {
+            format!("@platforms/boards/{}.repl", platform)
+        };
+
         let mut script = format!(
             "using sysbus\n\
              mach create \"{id}\"\n\
-             machine LoadPlatformDescription @platforms/boards/{platform}.repl\n\
+             machine LoadPlatformDescription {platform_desc}\n\
              showAnalyzer sysbus.{uart}\n\
              sysbus LoadELF @{elf}\n",
             id = device_id,
-            platform = platform,
+            platform_desc = platform_desc,
             uart = uart,
             elf = firmware_path_in_container,
         );
@@ -1551,6 +1696,11 @@ impl RenodeManager {
                 eprintln!("✅ CRITICAL: Read mcuType from CRD: '{}'", mcu_type_str);
                 
                 match mcu_type_str.as_str() {
+                    "BU585iIot02a" | "b_u585i_iot02a" => {
+                        println!("✅ OVERRIDING to BU585iIot02a");
+                        eprintln!("✅ OVERRIDING to BU585iIot02a");
+                        McuType::BU585iIot02a
+                    },
                     "Stm32F746gDisco" => {
                         println!("✅✅✅ OVERRIDING to Stm32F746gDisco ✅✅✅");
                         eprintln!("✅✅✅ OVERRIDING to Stm32F746gDisco ✅✅✅");

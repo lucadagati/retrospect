@@ -80,17 +80,11 @@ RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /
 # Copy binary
 COPY --from=builder /build/target/release/wasmbed-api-server /usr/local/bin/wasmbed-api-server
 
-# Create directory structure for firmware
-RUN mkdir -p /app/zephyr-workspace/build/nrf52840dk/nrf52840/zephyr && \
-    mkdir -p /app/zephyr-workspace/build/stm32f4/zephyr && \
-    mkdir -p /app/zephyr-workspace/build/stm32f746g_disco/zephyr
+# Create directory structure for firmware (ocre-workspace)
+RUN mkdir -p /app/ocre-workspace/build/b_u585i_iot02a/zephyr
 
-# Copy Zephyr firmware (if available)
-# Note: Firmware should be built before building this Docker image
-# Correct path: nrf52840dk/nrf52840 (with slash, not underscore)
-COPY zephyr-workspace/build/nrf52840dk/nrf52840/zephyr/zephyr.elf* /app/zephyr-workspace/build/nrf52840dk/nrf52840/zephyr/
-COPY zephyr-workspace/build/stm32f4/zephyr/zephyr.elf* /app/zephyr-workspace/build/stm32f4/zephyr/
-COPY zephyr-workspace/build/stm32f746g_disco/zephyr/zephyr.elf* /app/zephyr-workspace/build/stm32f746g_disco/zephyr/
+# Copy OCRE firmware (built from ocre-workspace before building this image)
+COPY ocre-workspace/build/b_u585i_iot02a/zephyr/zephyr.elf* /app/ocre-workspace/build/b_u585i_iot02a/zephyr/
 
 # Expose port
 EXPOSE 3001

@@ -439,28 +439,28 @@ impl DeviceController {
                         Ok(resp) if resp.status().is_success() => {
                             if let Ok(devices_response) = resp.json::<serde_json::Value>().await {
                                 if let Some(devices) = devices_response["devices"].as_array() {
+                                    // API returns "id" or "name" field (not "device_id")
                                     let device_found = devices.iter().find(|d| {
-                                        d["device_id"].as_str() == Some(&device_id)
+                                        d["id"].as_str() == Some(&device_id)
+                                            || d["name"].as_str() == Some(&device_id)
                                     });
-                                    
+
                                     if let Some(device_info) = device_found {
+                                        // "tls_connected" may not be present; trust gateway K8s status instead
                                         let tls_connected = device_info["tls_connected"]
                                             .as_bool()
-                                            .unwrap_or(false);
-                                        
+                                            .unwrap_or(true); // default to true when field absent
+
                                         if !tls_connected {
-                                            warn!("Device {} is marked as Connected but has no active TLS connection. Disconnecting to trigger reconnection.", device_id);
+                                            warn!("Device {} is marked as Connected but gateway reports no active TLS connection. Disconnecting.", device_id);
                                             let mut status = device.status.clone().unwrap();
                                             status.phase = DevicePhase::Disconnected;
                                             self.update_device_status(device, status).await?;
                                             return Ok(());
                                         }
                                     } else {
-                                        warn!("Device {} is marked as Connected but not found in gateway. Disconnecting to trigger reconnection.", device_id);
-                                        let mut status = device.status.clone().unwrap();
-                                        status.phase = DevicePhase::Disconnected;
-                                        self.update_device_status(device, status).await?;
-                                        return Ok(());
+                                        // Device not in gateway in-memory list: trust K8s status (gateway is authoritative)
+                                        warn!("Device {} not found in gateway device list; trusting K8s status", device_id);
                                     }
                                 }
                             }

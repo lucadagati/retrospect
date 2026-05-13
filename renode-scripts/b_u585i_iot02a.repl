@@ -1,0 +1,142 @@
+// B-U585I-IOT02A — Renode platform description for wasmbed
+// STM32U585 (Cortex-M33, 786 KB SRAM, 2 MB Flash)
+// PERIPH_BASE_NS = 0x40000000
+// AHB2PERIPH_BASE_NS = 0x42020000 (GPIO)
+// AHB3PERIPH_BASE_NS = 0x46020000 (PWR=+0x800, RCC=+0xC00)
+
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m33"
+    nvic: nvic
+
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu@0
+
+// Internal SRAM regions (STM32U585)
+sram1: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x30000
+
+sram2: Memory.MappedMemory @ sysbus 0x20030000
+    size: 0x10000
+
+sram3: Memory.MappedMemory @ sysbus 0x20040000
+    size: 0x80000
+
+// Internal Flash: 2 MB @ 0x08000000
+flash: Memory.MappedMemory @ sysbus 0x08000000
+    size: 0x200000
+
+// USART1 (console, TX=PA9 / RX=PA10) — STM32U585 USART1 IRQ is 61
+usart1: UART.STM32F7_USART @ sysbus 0x40013800
+    frequency: 160000000
+    IRQ -> nvic@61
+
+// SMSC LAN91C111 Ethernet — Renode Network.SMC91X at IRQ 72 (free on STM32U585)
+// Address 0x60000000 (external memory range, not used by STM32U585 silicon)
+smsc91x: Network.SMC91X @ sysbus <0x60000000, +0x10000>
+    -> nvic@72
+
+// PWR at AHB3PERIPH_BASE_NS+0x800 = 0x46020800
+// VOSR (offset 0x0C) VOSRDY bit must be set or firmware loops forever
+pwr: Python.PythonPeripheral @ sysbus <0x46020800, +0x400>
+    size: 0x400
+    initable: true
+    script: '''
+if request.IsInit:
+    pass
+else:
+    request.Value = 0xFFFFFFFF
+'''
+
+// RCC at AHB3PERIPH_BASE_NS+0xC00 = 0x46020C00
+// Return all ready bits (HSERDY, PLLRDY, etc.) set
+rcc: Python.PythonPeripheral @ sysbus <0x46020C00, +0x400>
+    size: 0x400
+    initable: true
+    script: '''
+if request.IsInit:
+    pass
+else:
+    request.Value = 0xFFFFFFFF
+'''
+
+// GPIO ports A-H at AHB2PERIPH_BASE_NS = 0x42020000, 0x400 each
+// IDR (offset 0x10) returns all bits HIGH to satisfy pin-state checks
+gpioA: Python.PythonPeripheral @ sysbus <0x42020000, +0x400>
+    size: 0x400
+    initable: true
+    script: '''
+if request.IsInit:
+    pass
+else:
+    request.Value = 0xFFFF if request.Offset == 0x10 else 0
+'''
+
+gpioB: Python.PythonPeripheral @ sysbus <0x42020400, +0x400>
+    size: 0x400
+    initable: true
+    script: '''
+if request.IsInit:
+    pass
+else:
+    request.Value = 0xFFFF if request.Offset == 0x10 else 0
+'''
+
+gpioC: Python.PythonPeripheral @ sysbus <0x42020800, +0x400>
+    size: 0x400
+    initable: true
+    script: '''
+if request.IsInit:
+    pass
+else:
+    request.Value = 0xFFFF if request.Offset == 0x10 else 0
+'''
+
+gpioD: Python.PythonPeripheral @ sysbus <0x42020C00, +0x400>
+    size: 0x400
+    initable: true
+    script: '''
+if request.IsInit:
+    pass
+else:
+    request.Value = 0xFFFF if request.Offset == 0x10 else 0
+'''
+
+gpioE: Python.PythonPeripheral @ sysbus <0x42021000, +0x400>
+    size: 0x400
+    initable: true
+    script: '''
+if request.IsInit:
+    pass
+else:
+    request.Value = 0xFFFF if request.Offset == 0x10 else 0
+'''
+
+gpioF: Python.PythonPeripheral @ sysbus <0x42021400, +0x400>
+    size: 0x400
+    initable: true
+    script: '''
+if request.IsInit:
+    pass
+else:
+    request.Value = 0xFFFF if request.Offset == 0x10 else 0
+'''
+
+gpioG: Python.PythonPeripheral @ sysbus <0x42021800, +0x400>
+    size: 0x400
+    initable: true
+    script: '''
+if request.IsInit:
+    pass
+else:
+    request.Value = 0xFFFF if request.Offset == 0x10 else 0
+'''
+
+gpioH: Python.PythonPeripheral @ sysbus <0x42021C00, +0x400>
+    size: 0x400
+    initable: true
+    script: '''
+if request.IsInit:
+    pass
+else:
+    request.Value = 0xFFFF if request.Offset == 0x10 else 0
+'''

@@ -1,0 +1,32 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * native_sim/native/64 overlay for Wasmbed OCRE firmware.
+ * Enlarges flash/storage partition and auto-mounts LittleFS at /lfs.
+ * OCRE creates /lfs/ocre subdirectory at runtime.
+ */
+
+&flash0 {
+	reg = <0x0 DT_SIZE_M(32)>;
+};
+
+&storage_partition {
+	reg = <0xfc000 DT_SIZE_M(16)>;
+};
+
+/ {
+	fstab {
+		compatible = "zephyr,fstab";
+		lfs1: lfs1 {
+			compatible = "zephyr,fstab,littlefs";
+			read-size = <256>;
+			prog-size = <256>;
+			cache-size = <256>;
+			lookahead-size = <256>;
+			block-cycles = <512>;
+			partition = <&storage_partition>;
+			mount-point = "/lfs";
+			automount;
+		};
+	};
+};

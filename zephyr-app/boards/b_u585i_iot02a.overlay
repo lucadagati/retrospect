@@ -1,0 +1,95 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * DTS overlay for B-U585I-IOT02A — Renode emulation variant.
+ * Replaces ISM43362 WiFi with SMSC LAN91C111 Ethernet (emulated by Renode
+ * Network.SMC91X at 0x60000000) and adds OCRE LittleFS storage partition.
+ *
+ * Fixed-link PHY avoids MDIO bit-bang negotiation (not needed in simulation).
+ * The smsc,lan91c111-mdio node must exist (driver always instantiates it),
+ * but no PHY child is needed since we use ethernet-phy-fixed-link.
+ */
+
+/* Disable ISM43362 WiFi SPI node (not emulated in Renode) */
+&spi1 {
+	status = "disabled";
+};
+
+/*
+ * SMSC LAN91C111 Ethernet — Renode Network.SMC91X @ 0x60000000.
+ * Container provides MMIO base (both children use DT_PARENT for reg addr).
+ * 0x60000000 is in the STM32U585 external memory range (FMC/OCTOSPI), unused.
+ */
+/ {
+	ethernet_container: ethernet@60000000 {
+		reg = <0x60000000 0x10000>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0x0 0x60000000 0x10000>;
+
+		lan91c111: ethernet {
+			compatible = "smsc,lan91c111";
+			interrupts = <72 0>;
+			interrupt-parent = <&nvic>;
+			status = "okay";
+			phy-handle = <&phy0>;
+		};
+
+		/* MDIO node required by driver compilation even with fixed-link PHY */
+		lan91_mdio: mdio {
+			compatible = "smsc,lan91c111-mdio";
+			status = "okay";
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+	};
+
+	/* Fixed-link PHY: always-up at 100BASE Full-Duplex, no MDIO needed */
+	phy0: ethernet-phy-fixed-link {
+		compatible = "ethernet-phy-fixed-link";
+		status = "okay";
+		default-speeds = "100BASE Full-Duplex";
+	};
+};
+
+/* Flash partition table */
+&flash0 {
+    partitions {
+        compatible = "fixed-partitions";
+        #address-cells = <1>;
+        #size-cells = <1>;
+
+        boot_partition: partition@0 {
+            label = "mcuboot";
+            reg = <0x00000000 DT_SIZE_K(64)>;
+            read-only;
+        };
+
+        slot0_partition: partition@10000 {
+            label = "image-0";
+            reg = <0x00010000 DT_SIZE_K(1728)>;
+        };
+
+        ocre_storage_partition: partition@1C0000 {
+            label = "ocre-storage";
+            reg = <0x001C0000 DT_SIZE_K(256)>;
+        };
+    };
+};
+
+/* Mount OCRE storage partition as LittleFS at /lfs/ocre */
+/ {
+    fstab {
+        compatible = "zephyr,fstab";
+        lfs0: lfs0 {
+            compatible = "zephyr,fstab,littlefs";
+            mount-point = "/lfs/ocre";
+            partition = <&ocre_storage_partition>;
+            read-size = <16>;
+            prog-size = <16>;
+            cache-size = <64>;
+            lookahead-size = <32>;
+            block-cycles = <512>;
+        };
+    };
+};

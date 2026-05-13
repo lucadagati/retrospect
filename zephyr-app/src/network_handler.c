@@ -74,14 +74,14 @@ int network_init(void)
         int dhcp_wait = 120;
         bool got_ip = false;
         while (dhcp_wait > 0) {
-            struct net_if_addr *unicast;
+            struct net_if_addr_ipv4 *unicast;
             struct net_if_ipv4 *ipv4 = net_iface->config.ip.ipv4;
             if (ipv4 != NULL) {
                 for (int i = 0; i < NET_IF_MAX_IPV4_ADDR; i++) {
                     unicast = &ipv4->unicast[i];
-                    if (unicast->is_used &&
-                        unicast->addr_state == NET_ADDR_PREFERRED &&
-                        unicast->addr_type == NET_ADDR_DHCP) {
+                    if (unicast->ipv4.is_used &&
+                        unicast->ipv4.addr_state == NET_ADDR_PREFERRED &&
+                        unicast->ipv4.addr_type == NET_ADDR_DHCP) {
                         got_ip = true;
                         break;
                     }

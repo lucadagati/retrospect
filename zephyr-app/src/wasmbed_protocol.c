@@ -6,12 +6,17 @@
  */
 
 #include "wasmbed_protocol.h"
-#include "wamr_integration.h"
+#include "ocre_integration.h"
 #include "network_handler.h"
 #include <zephyr/logging/log.h>
 #include <string.h>
 #include <zephyr/kernel.h>
 #include <stdlib.h>
+
+#if defined(CONFIG_ARCH_POSIX)
+#include "cmdline.h"
+#include "soc.h"
+#endif
 
 LOG_MODULE_REGISTER(wasmbed_protocol, LOG_LEVEL_INF);
 
@@ -144,12 +149,18 @@ static int do_enrollment(void)
     }
     LOG_INF("Enrollment accepted by gateway");
 
-    /* Step 3: Read 32-byte device public key from 0x20002000 (set by Renode).
-     * Format: 4-byte LE length, then key bytes.
-     * Fall back to a static test key if not set. */
+    /* Step 3: Read 32-byte device public key.
+     * On Renode boards: read from 0x20002000 (set by RenodeManager at boot).
+     * On native_sim: the address is unmapped; always use the static test key. */
     uint8_t pub_key[32];
     uint32_t key_len;
     {
+#if defined(CONFIG_ARCH_POSIX)
+        /* native_sim: 0x20002000 is not guaranteed to be mapped; use static key */
+        LOG_WRN("native_sim: using static test key (0xAB * 32)");
+        memset(pub_key, 0xAB, sizeof(pub_key));
+        key_len = sizeof(pub_key);
+#else
         volatile uint32_t *klen_ptr = (volatile uint32_t *)DEVICE_KEY_ADDR;
         key_len = *klen_ptr;
         if (key_len == 0 || key_len > sizeof(pub_key)) {
@@ -162,6 +173,7 @@ static int do_enrollment(void)
                 pub_key[i] = kdata_ptr[i];
             }
         }
+#endif
     }
 
     /* Step 4: Build and send PublicKey message.
@@ -220,25 +232,56 @@ static int do_enrollment(void)
     return 0;
 }
 
-/* Read gateway endpoint from memory (written by Renode) */
+#if defined(CONFIG_ARCH_POSIX)
+/* Pointer filled by --gateway=HOST:PORT command-line option */
+static char *native_gateway_arg = NULL;
+
+static struct args_struct_t wasmbed_cmdline_opts[] = {
+    { .manual = false, .is_mandatory = false, .is_switch = false,
+      .option = "gateway", .name = "HOST:PORT", .type = 's',
+      .dest = (void *)&native_gateway_arg,
+      .call_when_found = NULL,
+      .descript = "Wasmbed gateway endpoint (host:port)" },
+    ARG_TABLE_ENDMARKER
+};
+
+static void register_wasmbed_cmdline(void)
+{
+    native_add_command_line_opts(wasmbed_cmdline_opts);
+}
+
+NATIVE_TASK(register_wasmbed_cmdline, PRE_BOOT_1, 0);
+#endif /* CONFIG_ARCH_POSIX */
+
+/* Read gateway endpoint from CLI arg (native_sim) or memory (Renode/ARM) */
 static int read_gateway_endpoint(void)
 {
-    /* Read length from first 4 bytes */
+#if defined(CONFIG_ARCH_POSIX)
+    if (native_gateway_arg == NULL || native_gateway_arg[0] == '\0') {
+        LOG_ERR("--gateway=HOST:PORT argument not provided");
+        return -1;
+    }
+    strncpy(gateway_endpoint, native_gateway_arg, sizeof(gateway_endpoint) - 1);
+    gateway_endpoint[sizeof(gateway_endpoint) - 1] = '\0';
+    LOG_INF("Gateway endpoint from --gateway arg: %s", gateway_endpoint);
+    return 0;
+#else
+    /* ARM/Renode path: Renode writes length+string at GATEWAY_ENDPOINT_ADDR */
     uint32_t *length_ptr = (uint32_t *)GATEWAY_ENDPOINT_ADDR;
     uint32_t length = *length_ptr;
-    
+
     if (length == 0 || length >= sizeof(gateway_endpoint)) {
         LOG_ERR("Invalid endpoint length: %u", length);
         return -1;
     }
-    
-    /* Read endpoint string from memory */
+
     char *endpoint_ptr = (char *)(GATEWAY_ENDPOINT_ADDR + 4);
     memcpy(gateway_endpoint, endpoint_ptr, length);
     gateway_endpoint[length] = '\0';
-    
-    LOG_INF("Read gateway endpoint from memory: %s (length: %u)", gateway_endpoint, length);
+
+    LOG_INF("Gateway endpoint from memory: %s (length: %u)", gateway_endpoint, length);
     return 0;
+#endif
 }
 
 /* Parse endpoint string (format: "host:port") */
@@ -329,7 +372,7 @@ static uint8_t wasm_copy_buf[MAX_WASM_SIZE];
 static char deploy_app_id_buf[MAX_APP_ID_LEN];
 
 /* Running application state */
-static uint32_t current_instance_id = 0;
+static ocre_handle_t current_container = OCRE_INVALID_HANDLE;
 static bool app_deployed = false;
 #define APP_STATUS_INTERVAL_MS 30000U
 static uint32_t last_app_status_ms = 0U;
@@ -446,31 +489,26 @@ static const uint8_t *cbor_skip_one(const uint8_t *p, const uint8_t *end)
 static int handle_deploy_application(const uint8_t *cbor, uint32_t cbor_len,
                                      const uint8_t *wasm_ptr, uint32_t wasm_len)
 {
-    uint32_t module_id = 0, instance_id = 0;
-    int ret;
-
     if (wasm_len == 0 || wasm_len > MAX_WASM_SIZE) {
         LOG_ERR("WASM size invalid: %u", (unsigned)wasm_len);
         return -1;
     }
     memcpy(wasm_copy_buf, wasm_ptr, wasm_len);
 
-    ret = wamr_load_module(wasm_copy_buf, wasm_len, &module_id);
-    if (ret != 0) {
-        LOG_ERR("wamr_load_module failed");
+    /* Stop previous container if one is running */
+    if (current_container != OCRE_INVALID_HANDLE) {
+        ocre_integration_stop(current_container);
+        current_container = OCRE_INVALID_HANDLE;
+    }
+
+    ocre_handle_t handle = ocre_integration_deploy(wasm_copy_buf, wasm_len);
+    if (handle == OCRE_INVALID_HANDLE) {
+        LOG_ERR("ocre_integration_deploy failed for app_id=%s", deploy_app_id_buf);
         return -1;
     }
-    ret = wamr_instantiate(module_id, &instance_id);
-    if (ret != 0) {
-        LOG_ERR("wamr_instantiate failed");
-        return -1;
-    }
-    LOG_INF("WASM deployed: app_id=%s module_id=%u instance_id=%u", deploy_app_id_buf, (unsigned)module_id, (unsigned)instance_id);
-    /* Execute the WASM "run" entry point */
-    if (wamr_call_wasi_start(instance_id) != 0) {
-        LOG_WRN("WASM run() returned error");
-    }
-    current_instance_id = instance_id;
+
+    LOG_INF("OCRE container running: app_id=%s handle=%u", deploy_app_id_buf, (unsigned)handle);
+    current_container = handle;
     app_deployed = true;
     last_app_status_ms = k_uptime_get_32();
     return 0;
