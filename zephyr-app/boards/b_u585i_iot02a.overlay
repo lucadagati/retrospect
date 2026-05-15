@@ -8,12 +8,54 @@
  * Fixed-link PHY avoids MDIO bit-bang negotiation (not needed in simulation).
  * The smsc,lan91c111-mdio node must exist (driver always instantiates it),
  * but no PHY child is needed since we use ethernet-phy-fixed-link.
+ *
+ * Clock: use MSIS directly (no PLL) to avoid complex PLL emulation in Renode.
+ * MSIS range=4 = 4 MHz; all prescalers = 1. PLL1 disabled.
  */
 
-/* Disable ISM43362 WiFi SPI node (not emulated in Renode) */
-&spi1 {
+/* MSIS at 4 MHz as system clock — no PLL needed in simulation */
+&clk_msis {
+	status = "okay";
+	msi-range = <4>;
+};
+
+&pll1 {
 	status = "disabled";
 };
+
+&rcc {
+	clocks = <&clk_msis>;
+	clock-frequency = <DT_FREQ_M(4)>;
+	ahb-prescaler = <1>;
+	apb1-prescaler = <1>;
+	apb2-prescaler = <1>;
+	apb3-prescaler = <1>;
+};
+
+/*
+ * Disable all peripherals not used in Renode simulation.
+ * Only USART1 (console) and Ethernet (SMSC91X) are needed.
+ * Disabling prevents driver init spin-loops on unmodeled registers.
+ */
+&spi1    { status = "disabled"; };  /* ISM43362 WiFi */
+&usart3  { status = "disabled"; };  /* Arduino serial */
+&uart4   { status = "disabled"; };  /* secondary UART */
+&i2c1    { status = "disabled"; };  /* sensors I2C bus */
+&i2c2    { status = "disabled"; };  /* sensors I2C bus */
+&adc1    { status = "disabled"; };
+&adc4    { status = "disabled"; };
+&dac1    { status = "disabled"; };
+&aes     { status = "disabled"; };
+&die_temp { status = "disabled"; };
+&rtc     { status = "disabled"; };
+&iwdg    { status = "disabled"; };  /* watchdog: must be disabled to prevent reset */
+&vref1   { status = "disabled"; };
+&vbat4   { status = "disabled"; };
+&timers3 { status = "disabled"; };
+&timers4 { status = "disabled"; };
+/* octospi1/2 and mx25lm51245 must remain enabled — octospi2 has IRQ 120 which sets
+   CONFIG_NUM_IRQS; disabling it causes gen_isr_tables failure (IRQ 120 > max 94) */
+/* &gpdma1 must remain enabled — same reason */
 
 /*
  * SMSC LAN91C111 Ethernet — Renode Network.SMC91X @ 0x60000000.

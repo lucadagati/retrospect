@@ -278,10 +278,6 @@ pub enum McuType {
     FrdmK64f,
     
     // ===== Official Zephyr Boards with WiFi =====
-    /// B-U585I-IOT02A (ARM Cortex-M33, WiFi, 786KB SRAM) - OCRE primary supported board
-    #[serde(alias = "BU585iIot02a", alias = "b_u585i_iot02a")]
-    BU585iIot02a,
-
     /// ESP32 DevKitC (Xtensa LX6, WiFi/BLE) - WiFi support
     #[serde(alias = "Esp32DevkitC", alias = "esp32_devkitc_wroom")]
     Esp32DevkitC,
@@ -347,7 +343,6 @@ impl McuType {
             McuType::FrdmK64f => "frdm_k64f",
 
             // Official Zephyr boards with WiFi
-            McuType::BU585iIot02a => "b_u585i_iot02a",
             McuType::Esp32DevkitC => "esp32",
 
             // Official Zephyr boards (no network)
@@ -380,9 +375,6 @@ impl McuType {
             McuType::RenodeArduinoNano33Ble => "cortex-m4",
             McuType::RenodeStm32F4Discovery => "cortex-m4",
 
-            // Cortex-M33
-            McuType::BU585iIot02a => "cortex-m33",
-
             // Xtensa (ESP32)
             McuType::Esp32DevkitC => "xtensa-lx6",
 
@@ -402,7 +394,6 @@ impl McuType {
             // High-end MCUs
             McuType::Stm32F746gDisco => "320K", // 320KB RAM
             McuType::FrdmK64f => "256K", // 256KB RAM
-            McuType::BU585iIot02a => "786K", // 786KB SRAM total (SRAM1+2+3)
             McuType::Esp32DevkitC => "520K", // 520KB SRAM
 
             // Mid-range MCUs
@@ -432,7 +423,6 @@ impl McuType {
             McuType::FrdmK64f => "FRDM-K64F (Ethernet)",
 
             // WiFi boards
-            McuType::BU585iIot02a => "B-U585I-IOT02A (Ethernet/SMSC91X, OCRE)",
             McuType::Esp32DevkitC => "ESP32 DevKitC (WiFi)",
 
             // No network boards
@@ -473,8 +463,7 @@ impl McuType {
             McuType::Esp32DevkitC => Some("esp32-hal"),
 
             // Legacy / Linux native / native_sim / new boards without HAL support
-            McuType::BU585iIot02a
-            | McuType::Mps2An385
+            McuType::Mps2An385
             | McuType::LinuxArm64
             | McuType::LinuxX86_64
             | McuType::LinuxRiscV
@@ -490,8 +479,7 @@ impl McuType {
             McuType::Stm32F746gDisco => "build/stm32f746g_disco/zephyr/zephyr.elf",
             McuType::FrdmK64f => "build/frdm_k64f/zephyr/zephyr.elf",
 
-            // WiFi boards (OCRE-primary)
-            McuType::BU585iIot02a => "build/b_u585i_iot02a/zephyr/zephyr.elf",
+            // WiFi boards
             McuType::Esp32DevkitC => "build/esp32_devkitc_wroom/zephyr/zephyr.elf",
 
             // No network boards
@@ -529,9 +517,6 @@ impl McuType {
             // ESP32
             McuType::Esp32DevkitC => "uart0",
 
-            // STM32U5 (B-U585I-IOT02A) — uses USART1 as console
-            McuType::BU585iIot02a => "usart1",
-
             // Legacy
             McuType::Mps2An385 => "uart0",
 
@@ -550,8 +535,7 @@ impl McuType {
             McuType::Stm32F746gDisco,
             McuType::FrdmK64f,
 
-            // WiFi boards (OCRE-primary)
-            McuType::BU585iIot02a,
+            // WiFi boards
             McuType::Esp32DevkitC,
 
             // No network boards
@@ -575,7 +559,6 @@ impl McuType {
             self,
             McuType::Stm32F746gDisco
                 | McuType::FrdmK64f
-                | McuType::BU585iIot02a
                 | McuType::LinuxArm64
                 | McuType::LinuxX86_64
                 | McuType::LinuxRiscV
@@ -721,7 +704,6 @@ impl RenodeManager {
                         let mcu_type = match mcu_type_str {
                             "Stm32F746gDisco" => McuType::Stm32F746gDisco,
                             "FrdmK64f" => McuType::FrdmK64f,
-                            "BU585iIot02a" | "b_u585i_iot02a" => McuType::BU585iIot02a,
                             "Esp32DevkitC" => McuType::Esp32DevkitC,
                             "Nrf52840DK" => McuType::Nrf52840DK,
                             "Stm32F4Disco" => McuType::Stm32F4Disco,
@@ -1373,19 +1355,6 @@ impl RenodeManager {
         let zephyr_firmware_arduino_nano = zephyr_workspace.join("build/nrf52840dk/nrf52840/zephyr/zephyr.elf");
 
         match mcu_type {
-            // OCRE primary board (WiFi, Cortex-M33, 786KB SRAM)
-            McuType::BU585iIot02a => {
-                let firmware_path = zephyr_workspace.join(mcu_type.get_firmware_path());
-                if firmware_path.exists() {
-                    Ok(firmware_path)
-                } else {
-                    Err(std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        format!("OCRE firmware not found for B-U585I-IOT02A. Expected: {}", firmware_path.display())
-                    ))
-                }
-            },
-
             // Ethernet boards
             McuType::Stm32F746gDisco => {
                 let firmware_path = zephyr_workspace.join(mcu_type.get_firmware_path());
@@ -1534,12 +1503,6 @@ impl RenodeManager {
             match mcu {
                 McuType::Stm32F746gDisco => "\nemulation CreateSwitch \"ethernet_switch\"\nemulation CreateTap \"tap0\" \"ethernet_tap\"\nsysbus.ethernet MAC \"00:11:22:33:44:55\"\nconnector Connect sysbus.ethernet ethernet_switch\nconnector Connect host.ethernet_tap ethernet_switch\nhost.ethernet_tap Start",
                 McuType::FrdmK64f => "\nemulation CreateSwitch \"ethernet_switch\"\nemulation CreateTap \"tap0\" \"ethernet_tap\"\nsysbus.ethernet MAC \"00:11:22:33:44:66\"\nconnector Connect sysbus.ethernet ethernet_switch\nconnector Connect host.ethernet_tap ethernet_switch\nhost.ethernet_tap Start",
-                McuType::BU585iIot02a => "\nemulation CreateSwitch \"ethernet_switch\"\nemulation CreateTap \"tap0\" \"ethernet_tap\"\nsysbus.smsc91x MAC \"02:00:00:00:00:01\"\nconnector Connect sysbus.smsc91x ethernet_switch\nconnector Connect host.ethernet_tap ethernet_switch\nhost.ethernet_tap Start",
-                _ => "",
-            }
-        } else if mcu.has_wifi() {
-            match mcu {
-                McuType::BU585iIot02a => "\nemulation CreateSwitch \"wifi_switch\"\nemulation CreateTap \"tap0\" \"wifi_tap\"\nsysbus.wifi MAC \"02:00:00:00:00:01\"\nconnector Connect sysbus.wifi wifi_switch\nconnector Connect host.wifi_tap wifi_switch\nhost.wifi_tap Start",
                 _ => "",
             }
         } else {
@@ -1609,14 +1572,6 @@ impl RenodeManager {
                      connector Connect host.ethernet_tap ethernet_switch\n\
                      host.ethernet_tap Start"
                 }
-                McuType::BU585iIot02a => {
-                    "emulation CreateSwitch \"ethernet_switch\"\n\
-                     emulation CreateTap \"tap0\" \"ethernet_tap\"\n\
-                     sysbus.smsc91x MAC \"02:00:00:00:00:01\"\n\
-                     connector Connect sysbus.smsc91x ethernet_switch\n\
-                     connector Connect host.ethernet_tap ethernet_switch\n\
-                     host.ethernet_tap Start"
-                }
                 _ => "",
             }
         } else {
@@ -1640,12 +1595,7 @@ impl RenodeManager {
             endpoint_write.push_str(&format!("\nsysbus WriteDoubleWord 0x{:08x} 0x{:08x}", 0x20001004 + (i as u32 * 4), word));
         }
 
-        // BU585iIot02a ships its own .repl (not in Renode upstream platforms)
-        let platform_desc = if *mcu == McuType::BU585iIot02a {
-            format!("@/scripts/{}.repl", platform)
-        } else {
-            format!("@platforms/boards/{}.repl", platform)
-        };
+        let platform_desc = format!("@platforms/boards/{}.repl", platform);
 
         let mut script = format!(
             "using sysbus\n\
@@ -1667,7 +1617,7 @@ impl RenodeManager {
         script.push_str(&endpoint_write);
         script.push('\n');
         script.push_str(pc_sp);
-        script.push_str("logLevel -1\n");
+        script.push_str("logLevel 3\n");
         script.push_str("start\n");
 
         Ok(script)
@@ -1696,11 +1646,6 @@ impl RenodeManager {
                 eprintln!("✅ CRITICAL: Read mcuType from CRD: '{}'", mcu_type_str);
                 
                 match mcu_type_str.as_str() {
-                    "BU585iIot02a" | "b_u585i_iot02a" => {
-                        println!("✅ OVERRIDING to BU585iIot02a");
-                        eprintln!("✅ OVERRIDING to BU585iIot02a");
-                        McuType::BU585iIot02a
-                    },
                     "Stm32F746gDisco" => {
                         println!("✅✅✅ OVERRIDING to Stm32F746gDisco ✅✅✅");
                         eprintln!("✅✅✅ OVERRIDING to Stm32F746gDisco ✅✅✅");

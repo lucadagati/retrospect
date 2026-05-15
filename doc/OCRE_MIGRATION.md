@@ -340,20 +340,46 @@ I test E2E descritti in questo documento sono stati eseguiti **esclusivamente su
 | Stack TLS + OCRE in SRAM | nessun vincolo | da verificare nel budget ~786 KB |
 | Test E2E RETROSPECT | **completato** | **non ancora eseguito** |
 
-### Prossimo step: board `b_u585i_iot02a`
+### Board `b_u585i_iot02a` — stato e limitazioni emulazione
 
-La board target pianificata per la validazione su MCU è la **STMicroelectronics B-U585I-IOT02A** (STM32U5, ARM Cortex-M33, 786 KB SRAM, 2 MB Flash). È una delle board supportate ufficialmente da OCRE upstream ed è stata scelta perché:
+La **STMicroelectronics B-U585I-IOT02A** (STM32U5, ARM Cortex-M33, 786 KB SRAM, 2 MB Flash)
+è una delle board supportate ufficialmente da OCRE upstream ed è stata il target iniziale di
+validazione su MCU per questa tesi. È stata scelta per:
 
-- supportata nativamente da `ocre-runtime` (nessun porting board necessario);
+- supportata nativamente da `ocre-runtime` (`docs/boards/zephyr/b_u585i_iot02a.md`, nessun porting necessario);
 - 786 KB SRAM sufficienti per TLS 1.3 + OCRE + WAMR interpreter + stack Zephyr;
 - presente nel database board di Zephyr 4.4.0 (`zephyr/boards/st/b_u585i_iot02a/`).
 
-Per completare questo step servirà:
-1. `west build -b b_u585i_iot02a /home/ubuntu/Thesis/retrospect/zephyr-app`
-2. File overlay `boards/b_u585i_iot02a.overlay` con partizione LittleFS su flash interna (richiesta da OCRE per storage container)
-3. Script Renode `.resc` per la board (o hardware fisico)
-4. Verifica budget SRAM (OCRE + WAMR interpreter + TLS mbedTLS + stack Zephyr)
-5. Aggiornamento `wasmbed-qemu-manager` con `McuType::BU585iIot02a` e path firmware
+Il build firmware per questa board è stato completato con successo (Fase 5). La board config
+Zephyr (`zephyr-app/boards/b_u585i_iot02a.{conf,overlay}`) è disponibile per test su hardware
+reale.
+
+#### Limitazioni emulazione Renode: perché i test E2E su questa board sono stati sospesi
+
+**Renode v1.16.1** (versione bundled nel container `wasmbed-renode`) non include una platform
+description ufficiale per b_u585i_iot02a né un CPU file per la famiglia STM32U5. Le famiglie
+disponibili upstream sono: STM32F0, F1, F4, F7, G0, H7, L0, L1, L5, W108, WBA52 — nessun
+supporto per STM32U5/Cortex-M33 di questa serie.
+
+Durante questa tesi è stato scritto un file `b_u585i_iot02a.repl` custom con
+`Python.PythonPeripheral` per simulare: RCC, PWR, GPIO A-I, USART3/UART4, I2C1/2,
+OCTOSPI1/2 con DLYB, RNG, GTZC, FLASH_regs. L'approccio è funzionalmente fragile perché:
+
+1. I peripheral ritornano valori hardcoded (flag "ready" sempre settati) senza riflettere
+   transizioni di stato reali del SoC.
+2. Il driver Ethernet autentico del b_u585i è eSwifi (WiFi SPI), non SMC91X — il surrogato
+   SMC91X era usato per avere un peripheral di rete funzionante in Renode, ma non corrisponde
+   all'hardware reale.
+3. Qualsiasi nuovo peripheral non stubbato (es. aggiunto da un aggiornamento Zephyr o OCRE)
+   causa un bus fault silenzioso che può bloccare il boot prima di `main()`.
+
+**Decisione operativa**: i test E2E su MCU emulato sono limitati a `native_sim`
+(OCRE-ufficiale, già validato con enrollment TLS completo). La board config Zephyr per
+b_u585i_iot02a è mantenuta nel repo per test su hardware fisico reale (via `west flash`).
+
+Per una discussione di alternative (incluso Propeller come sostituto del control-plane), vedere
+[`RTOS_AND_RUNTIME_ALTERNATIVES.md`](./RTOS_AND_RUNTIME_ALTERNATIVES.md) e
+[`PROPELLER_INTEGRATION.md`](./PROPELLER_INTEGRATION.md).
 
 ---
 

@@ -38,6 +38,11 @@ spec:
           value: "true"
         - name: ZEPHYR_WORKSPACE
           value: "/home/ubuntu/retrospect/ocre-workspace"
+        # Gateway ClusterIP+port for Renode MCU containers (--net=host, kube-proxy routes ClusterIP)
+        - name: RENODE_GATEWAY_HOST
+          value: "10.43.142.48"
+        - name: RENODE_GATEWAY_PORT
+          value: "8081"
         # In k3d, we need to mount the Docker socket from the host via k3d server container
         volumeMounts:
         - name: docker-sock

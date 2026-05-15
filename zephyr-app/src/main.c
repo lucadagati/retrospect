@@ -19,6 +19,7 @@ LOG_MODULE_REGISTER(wasmbed_main, LOG_LEVEL_INF);
 
 int main(void)
 {
+    printk("*** WASMBED MAIN START ***\n");
     LOG_INF("=== Wasmbed Zephyr Application Starting (OCRE) ===");
 
     if (network_init() != 0) {
