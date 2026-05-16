@@ -79,7 +79,23 @@ End-to-end & 1060.5 ms & 1019.2 ms & 1370.1 ms & 1424.2 ms & 0.125 & [1022.8, 10
 \label{fig:latency-boxplot}
 \end{figure}
 
+\begin{figure}[h]
+\centering
+\includegraphics[width=\columnwidth]{figures/latency_cdf.png}
+\caption{Empirical CDF of enrollment, deployment, and end-to-end latencies ($n=50$). Dashed and dotted horizontal lines mark the 95th and 99th percentile thresholds respectively.}
+\label{fig:latency-cdf}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\columnwidth]{figures/latency_trial_scatter.png}
+\caption{Per-trial latency scatter across the 50-trial campaign. Dashed lines show stage means. The absence of systematic drift confirms stationarity, a prerequisite for the validity of the reported confidence intervals.}
+\label{fig:latency-trial-scatter}
+\end{figure}
+
 The boxplot reveals that heartbeat observability is two orders of magnitude faster than enrollment or deployment, as expected, and that the end-to-end latency remains tightly concentrated around 1.06~s despite visible tail growth in the deployment component. The deployment tail dominates the transactional tail, which suggests that future optimization effort should focus on WASM-module activation orchestration rather than on enrollment or liveness supervision. The coefficient of variation for enrollment (CV\,=\,0.135) is the lowest among non-trivial stages, confirming that the TLS and CBOR handshake path is stable. Deployment shows the highest CV\,=\,0.230, reflecting the asymmetric tail introduced by WASM instantiation on the embedded target.
+
+The empirical CDF (Figure~\ref{fig:latency-cdf}) makes the tail behavior explicit: enrollment and deployment reach the 95th percentile at 686.9~ms and 840.6~ms respectively, while the end-to-end p95 is 1370.1~ms. The CDF confirms that more than 80\% of end-to-end transactions complete within 1.2~s, with the remaining tail driven almost entirely by deployment. The per-trial scatter (Figure~\ref{fig:latency-trial-scatter}) shows no systematic drift or trend across the 50 trials for any stage, confirming stationarity and validating the use of classical confidence intervals.
 
 \subsection{How to Read the Metrics}
 The reported means should be interpreted together with confidence intervals and variability indicators rather than in isolation. A low average is useful only if the interval remains narrow, the percentile tail remains controlled, and the success rate stays close to one. For that reason, the manuscript treats latency and correctness as jointly relevant outcomes and introduces the transactional success metric to summarize whether the full path from secure attachment to application activation completed correctly.

@@ -122,6 +122,84 @@ def save_latency_plot(payload: dict, out_path: Path) -> None:
     plt.close(fig)
 
 
+def save_latency_cdf_plot(payload: dict, out_path: Path) -> None:
+    """Empirical CDF for enrollment, deployment, and end-to-end latencies."""
+    import numpy as np
+
+    enrollment = sorted(r["duration_ms"] for r in records_by_experiment(payload, "enrollment"))
+    deployment = sorted(r["duration_ms"] for r in records_by_experiment(payload, "deployment"))
+    transactional = sorted(transaction_latencies(payload))
+
+    fig, ax = plt.subplots(figsize=(7.2, 4.0), constrained_layout=True)
+
+    for vals, label, color in [
+        (enrollment, "Enrollment", COLOR_BLUE),
+        (deployment, "Deployment", COLOR_RED),
+        (transactional, "End-to-end", COLOR_GREEN),
+    ]:
+        y = [(i + 1) / len(vals) for i in range(len(vals))]
+        ax.step(vals, y, where="post", color=color, linewidth=1.8, label=label)
+
+    ax.axhline(0.95, color="grey", linewidth=0.8, linestyle="--", label="p95")
+    ax.axhline(0.99, color="grey", linewidth=0.8, linestyle=":", label="p99")
+
+    ax.set_xlabel("Latency [ms]")
+    ax.set_ylabel("Empirical CDF")
+    ax.set_ylim(0, 1.05)
+    ax.legend(loc="lower right", frameon=True, fontsize=8)
+    ax.grid(color=COLOR_GRID, linewidth=0.8)
+    ax.set_axisbelow(True)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=220, bbox_inches="tight")
+    plt.close(fig)
+
+
+def save_trial_scatter_plot(payload: dict, out_path: Path) -> None:
+    """Per-trial latency scatter to show stationarity across the campaign."""
+    enrollment_map = {r["trial"]: r["duration_ms"] for r in records_by_experiment(payload, "enrollment")}
+    deployment_map = {r["trial"]: r["duration_ms"] for r in records_by_experiment(payload, "deployment")}
+    heartbeat_map = {r["trial"]: r["duration_ms"] for r in records_by_experiment(payload, "heartbeat")}
+
+    trials_enr = sorted(enrollment_map)
+    trials_dep = sorted(deployment_map)
+    trials_hb = sorted(heartbeat_map)
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7.2, 5.5), constrained_layout=True, sharex=False)
+
+    # Top: enrollment and deployment on same axis
+    ax1.scatter(trials_enr, [enrollment_map[t] for t in trials_enr],
+                s=22, color=COLOR_BLUE, alpha=0.85, label="Enrollment", zorder=3)
+    ax1.scatter(trials_dep, [deployment_map[t] for t in trials_dep],
+                s=22, marker="s", color=COLOR_RED, alpha=0.85, label="Deployment", zorder=3)
+
+    for trials, vals, color in [(trials_enr, enrollment_map, COLOR_BLUE), (trials_dep, deployment_map, COLOR_RED)]:
+        mean_v = sum(vals[t] for t in trials) / len(trials)
+        ax1.axhline(mean_v, color=color, linewidth=1.0, linestyle="--", alpha=0.6)
+
+    ax1.set_ylabel("Latency [ms]")
+    ax1.set_xlabel("Trial index")
+    ax1.legend(loc="upper right", frameon=True, fontsize=8)
+    ax1.grid(color=COLOR_GRID, linewidth=0.8)
+    ax1.set_axisbelow(True)
+
+    # Bottom: heartbeat (separate y-axis due to scale difference)
+    ax2.scatter(trials_hb, [heartbeat_map[t] for t in trials_hb],
+                s=22, marker="^", color=COLOR_GOLD, alpha=0.85, label="Heartbeat", zorder=3)
+    mean_hb = sum(heartbeat_map.values()) / len(heartbeat_map)
+    ax2.axhline(mean_hb, color=COLOR_GOLD, linewidth=1.0, linestyle="--", alpha=0.6)
+
+    ax2.set_ylabel("Latency [ms]")
+    ax2.set_xlabel("Trial index")
+    ax2.legend(loc="upper right", frameon=True, fontsize=8)
+    ax2.grid(color=COLOR_GRID, linewidth=0.8)
+    ax2.set_axisbelow(True)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=220, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate RETROSPECT paper figures")
     parser.add_argument(
@@ -143,8 +221,12 @@ def main() -> int:
     payload = load_payload(input_path)
     save_latency_ci_plot(payload, output_dir / "latency_ci_profile.png")
     save_latency_plot(payload, output_dir / "latency_boxplot.png")
+    save_latency_cdf_plot(payload, output_dir / "latency_cdf.png")
+    save_trial_scatter_plot(payload, output_dir / "latency_trial_scatter.png")
     print(f"Wrote {output_dir / 'latency_ci_profile.png'}")
     print(f"Wrote {output_dir / 'latency_boxplot.png'}")
+    print(f"Wrote {output_dir / 'latency_cdf.png'}")
+    print(f"Wrote {output_dir / 'latency_trial_scatter.png'}")
     return 0
 
 
