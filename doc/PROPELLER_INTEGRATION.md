@@ -3,6 +3,7 @@
 **Data**: maggio 2026
 **Riferimenti**: https://propeller.absmach.eu · https://github.com/absmach/propeller
 **Licenza**: Apache-2.0
+**Stato**: Step 1–2 completati e verificati (smoke test WASM passato, 16 maggio 2026)
 
 ---
 
@@ -102,48 +103,87 @@ Opzionali per sviluppo WASM locale: TinyGo 0.34.0+, Wasmtime, ORAS CLI.
 
 ### Step 1 — Bootstrap Propeller standalone
 
+**Prerequisiti**: Go >= 1.26 (`/usr/local/go/bin`), Rust toolchain, Docker, wabt (`sudo apt install wabt`).
+
 ```bash
-git clone https://github.com/absmach/propeller.git
-cd propeller
-make all -j $(nproc)    # binari Go + Proplet Rust + WASM esempi
-make install            # installa propeller-cli, propeller-manager, ecc. in GOBIN
+git clone https://github.com/absmach/propeller.git ~/propeller
+cd ~/propeller
 
-# Se 'make install' fallisce con permission denied:
-export GOBIN="$HOME/go/bin" && export PATH="$PATH:$GOBIN" && make install
+# Build binari Go (manager, cli, proxy)
+export PATH="$PATH:/usr/local/go/bin:$HOME/go/bin"
+make manager cli proxy -j$(nproc)
+export GOBIN="$HOME/go/bin" && make install
 
-# Avviare Magistrala (broker MQTT + servizi identità)
+# Build WASM di esempio (non richiede TinyGo)
+make addition-wat   # genera build/addition-wat.wasm e build/addition-wat.b64
+
+# Provisioning manuale (propeller-cli provision richiede TTY interattivo):
+# usa lo script start-propeller-stack.sh che gestisce tutto incluso il fix DNS nginx.
+# Oppure procedi manuale:
+
+# 1. Ferma mosquitto se occupa porta 1883
+sudo snap stop mosquitto
+
+# 2. Avvia Magistrala
 make start-magistrala
-docker ps | grep magistrala   # attendere 30-60s che i servizi siano up
+# Nota: nginx docker service non si aggancia alla rete magistrala-base-net automaticamente.
+# Fix necessario dopo che nginx è up:
+docker network disconnect magistrala-base-net magistrala-nginx 2>/dev/null || true
+docker network connect --alias nginx magistrala-base-net magistrala-nginx
+# Attendere che tutti i servizi siano stable (~60-90s)
 
-# Provisioning: genera domain/client/channel e scrive config.toml
-propeller-cli provision
-cp config.toml docker/config.toml
+# 3. Generare credenziali via REST API Magistrala (admin/12345678 = default .env)
+# Vedi script start-propeller-stack.sh per automazione completa.
+# Credenziali di esempio già nel config.toml:
+#   domain_id  = "69df50b5-2111-42ae-a9e1-fdd4d2b0b54e"
+#   manager client_id  = "da9791c8-5a9b-49ac-9c06-a1bd50bbd95a"
+#   proplet  client_id = "45f0f099-a6c7-4e74-ac1c-ea1accf92530"
+#   channel_id = "ae9fb9bf-3697-41f6-beb9-85d1d71954f5"
 
-# Avviare Manager + Proplet + Proxy
+# 4. Avvia Manager + Proplet + Proxy
 make start-propeller
 
 # Verifica
 curl http://localhost:7070/health
-curl http://localhost:7070/proplets
+curl http://localhost:7070/proplets   # deve mostrare total:1, alive:true
 ```
+
+**Script completo**: `~/propeller/start-propeller-stack.sh` automatizza tutti i passaggi sopra.
+
+**Stato verificato** (16 maggio 2026): Manager health `{"status":"pass","version":"v0.4.0"}`,
+1 Proplet registrato con `wasm_runtime: wasmtime`, alive=true.
 
 ### Step 2 — Deploy task WASM di esempio (smoke test)
 
+**Stato verificato**: completato con successo il 16 maggio 2026.
+
+Il Proplet usa il **nome del task** come nome della funzione WASM da invocare, e il campo
+`inputs` come argomenti. Il modulo `addition-wat.wasm` esporta la funzione `add(i32,i32)->i32`.
+
 ```bash
+# Crea task e carica WASM
 TASK_ID=$(curl -s -X POST http://localhost:7070/tasks \
   -H "Content-Type: application/json" \
-  -d '{"name":"add","inputs":[10,20]}' | jq -r '.id')
+  -d '{"name":"add","inputs":["10","20"]}' | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
-curl -X PUT  "http://localhost:7070/tasks/${TASK_ID}/upload" \
-  -F "file=@build/addition.wasm"
+curl -s -X PUT  "http://localhost:7070/tasks/${TASK_ID}/upload" \
+  -F "file=@build/addition-wat.wasm" > /dev/null
 
-curl -X POST "http://localhost:7070/tasks/${TASK_ID}/start"
+curl -s -X POST "http://localhost:7070/tasks/${TASK_ID}/start"
 
-# Monitorare: state 0→1→2→3
-curl "http://localhost:7070/tasks/${TASK_ID}" | jq '{state, result}'
+# Verifica risultato (state 3 = completed)
+curl -s "http://localhost:7070/tasks/${TASK_ID}" | \
+  python3 -c "import sys,json; d=json.load(sys.stdin); print('state:', d['state'], 'results:', d.get('results'))"
+# Output atteso: state: 3 results: 30
 ```
 
-Stato task: `0`=pending, `1`=assigned, `2`=running, `3`=completed.
+Stato task: `0`=pending, `1`=assigned, `2`=running, `3`=completed, `4`=failed.
+
+Note:
+- `addition-wat.wasm` (41 byte) è buildato da `make addition-wat` — non richiede TinyGo.
+- Gli esempi Go (`addition.wasm`, `compute.wasm`) richiedono TinyGo <= 0.34 con Go <= 1.23;
+  non compatibili con Go 1.26. Per i test usa `addition-wat.wasm`.
+- Il runtime WASM del Proplet containerizzato è `wasmtime` (non WAMR).
 
 ### Step 3 — Deploy da OCI registry locale
 
