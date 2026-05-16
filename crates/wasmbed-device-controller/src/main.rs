@@ -416,9 +416,25 @@ impl DeviceController {
                     
                     // Check if TLS connection is actually active by querying gateway API
                     let gateway_endpoint = if gateway_ref.endpoint.is_empty() {
-                        "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string()
+                        let endpoint = "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string();
+                        // Persist a usable endpoint to avoid later reconnect attempts with empty URL.
+                        if let Some(current) = &device.status {
+                            let mut updated = current.clone();
+                            if let Some(gw) = &mut updated.gateway {
+                                gw.endpoint = endpoint.clone();
+                                if let Err(e) = self.update_device_status(device, updated).await {
+                                    warn!("Failed to persist default gateway endpoint for device {}: {}", device.name_any(), e);
+                                }
+                            }
+                        }
+                        endpoint
                     } else {
-                        gateway_ref.endpoint.clone()
+                        let ep = gateway_ref.endpoint.clone();
+                        if ep.starts_with("http://") || ep.starts_with("https://") {
+                            ep
+                        } else {
+                            format!("http://{}", ep)
+                        }
                     };
                     
                     // Verify TLS connection is active
@@ -444,18 +460,13 @@ impl DeviceController {
                                             .unwrap_or(false);
                                         
                                         if !tls_connected {
-                                            warn!("Device {} is marked as Connected but has no active TLS connection. Disconnecting to trigger reconnection.", device_id);
-                                            let mut status = device.status.clone().unwrap();
-                                            status.phase = DevicePhase::Disconnected;
-                                            self.update_device_status(device, status).await?;
-                                            return Ok(());
+                                            // Do not force-disconnect here: gateway-side status/heartbeat is authoritative,
+                                            // and transient races can briefly report false negatives.
+                                            warn!("Device {} is marked as Connected but gateway currently reports tls_connected=false. Keeping state and waiting for next reconcile.", device_id);
                                         }
                                     } else {
-                                        warn!("Device {} is marked as Connected but not found in gateway. Disconnecting to trigger reconnection.", device_id);
-                                        let mut status = device.status.clone().unwrap();
-                                        status.phase = DevicePhase::Disconnected;
-                                        self.update_device_status(device, status).await?;
-                                        return Ok(());
+                                        // Keep state on temporary lookup misses; the gateway will update status if truly disconnected.
+                                        warn!("Device {} is marked as Connected but not found in gateway list. Keeping state and retrying on next reconcile.", device_id);
                                     }
                                 }
                             }
@@ -509,7 +520,11 @@ impl DeviceController {
         
         // Get gateway endpoint from device status or use default
         let gateway_endpoint = if let Some(gateway_ref) = device.status.as_ref().and_then(|s| s.gateway.as_ref()) {
-            gateway_ref.endpoint.clone()
+            if gateway_ref.endpoint.is_empty() {
+                "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string()
+            } else {
+                gateway_ref.endpoint.clone()
+            }
         } else {
             // Try to find a running gateway
             let gateways_api = Api::<Gateway>::namespaced(self.client.clone(), "wasmbed");
@@ -568,7 +583,11 @@ impl DeviceController {
 
         // Same reconnection as handle_disconnected: re-register with Gateway so when device reconnects TLS and sends heartbeat, Gateway can mark Connected
         let gateway_endpoint = if let Some(gateway_ref) = device.status.as_ref().and_then(|s| s.gateway.as_ref()) {
-            gateway_ref.endpoint.clone()
+            if gateway_ref.endpoint.is_empty() {
+                "http://gateway-1-service.wasmbed.svc.cluster.local:8080".to_string()
+            } else {
+                gateway_ref.endpoint.clone()
+            }
         } else {
             let gateways_api = Api::<Gateway>::namespaced(self.client.clone(), "wasmbed");
             match gateways_api.list(&kube::api::ListParams::default()).await {

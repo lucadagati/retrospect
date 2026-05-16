@@ -22,13 +22,21 @@ set(WAMR_BUILD_AOT 0)
 set(WAMR_BUILD_JIT 0)
 set(WAMR_BUILD_FAST_JIT 0)
 set(WAMR_BUILD_LIBC_BUILTIN 1)
-set(WAMR_BUILD_LIBC_WASI 0)
+set(WAMR_BUILD_LIBC_WASI 1)
 set(WAMR_BUILD_MULTI_MODULE 1)
 set(WAMR_BUILD_FAST_INTERP 1)
 
-# Global heap configuration
-set(WAMR_BUILD_GLOBAL_HEAP_POOL 1)
-set(WAMR_BUILD_GLOBAL_HEAP_SIZE 131072)  # 128 KB
+# Global heap configuration: disabilitato — usiamo Alloc_With_Pool in wamr_init()
+# Non definire WAMR_BUILD_GLOBAL_HEAP_POOL per evitare di allocare un BSS statico
+# duplicato da 128 KB dentro WAMR stesso.
+
+# Zephyr 3.5 does not define IP_TTL / IP_MULTICAST_TTL in <net/socket.h>.
+# WAMR's zephyr_socket.c references them unconditionally when LIBC_WASI is on.
+# Provide the standard Linux values so the code compiles; the setsockopt calls
+# will return ENOSYS at runtime on Zephyr (TTL is not a supported socket option).
+if(WAMR_BUILD_LIBC_WASI)
+    add_compile_definitions(IP_TTL=2 IP_MULTICAST_TTL=33)
+endif()
 
 # Include WAMR build script
 set(WAMR_ROOT_DIR ${WAMR_ROOT})

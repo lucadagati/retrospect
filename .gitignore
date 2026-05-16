@@ -82,3 +82,10 @@ qemu_devices.json
 
 # Zephyr SDK (large binary, should be downloaded separately)
 zephyr-sdk-*.tar.xz
+zephyr-sdk-*/
+
+# Zephyr workspace (populated by 'west update', ~5GB)
+zephyr-workspace/
+
+# WAMR (cloned separately)
+wamr/

@@ -103,6 +103,8 @@ pub fn main() -> Result<()> {
                         public_key: public_key.to_string(),
                         mcu_type: Some("Mps2An385".to_string()),
                         preferred_gateway: None,
+                        device_class: None,
+                        runtime_target: None,
                     },
                 );
 
@@ -138,6 +140,7 @@ pub fn main() -> Result<()> {
                         },
                         config: None,
                         metadata: None,
+                        target_runtime: None,
                     },
                 );
 

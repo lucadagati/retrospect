@@ -27,6 +27,20 @@ use wasmbed_k8s_resource::{
 };
 use wasmbed_protocol::{ServerMessage, DeviceUuid};
 
+/// Map CRD ApplicationConfig to protocol ApplicationConfig.
+///
+/// auto_restart and max_restarts are gateway-side restart policy: the device
+/// executes on command and is restarted by a new DeployApplication message.
+/// They have no device-side semantics and are intentionally dropped here.
+fn map_k8s_config_to_protocol(crd: &ApplicationConfig) -> wasmbed_protocol::ApplicationConfig {
+    wasmbed_protocol::ApplicationConfig {
+        memory_limit: crd.memory_limit,
+        cpu_time_limit: crd.cpu_time_limit,
+        env_vars: crd.env_vars.clone().unwrap_or_default(),
+        args: crd.args.clone().unwrap_or_default(),
+    }
+}
+
 /// Build per-device status for Application CRD patch.
 fn device_app_status(phase: DeviceApplicationPhase, error: Option<String>) -> DeviceApplicationStatus {
     DeviceApplicationStatus {
@@ -46,6 +60,10 @@ pub struct HttpApiServer {
     pub device_connections: Arc<RwLock<HashMap<String, DeviceConnection>>>,
     /// Map public_key (base64) -> device_id for looking up device when TLS connection is ready
     pub public_key_to_device: Arc<RwLock<HashMap<String, String>>>,
+    /// Map connection_id (socket addr string) -> sender, for devices that haven't identified yet
+    pub pending_senders: Arc<RwLock<HashMap<String, mpsc::Sender<ServerMessage>>>>,
+    /// Map connection_id -> device_id, set after CBOR enrollment completes
+    pub connection_to_device: Arc<RwLock<HashMap<String, String>>>,
     pub applications: Arc<RwLock<HashMap<String, DeployedApplication>>>,
     /// Board registry: device_id -> BoardRegistration (boards registered by Renode Manager)
     pub board_registry: Arc<RwLock<HashMap<String, BoardRegistration>>>,
@@ -176,11 +194,40 @@ pub struct DeviceInfo {
 }
 
 impl HttpApiServer {
+    fn public_key_variants_from_b64(public_key_b64: &str) -> Vec<String> {
+        use base64::{engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD}, Engine as _};
+
+        let mut variants = vec![public_key_b64.to_string()];
+
+        for decoded in [STANDARD.decode(public_key_b64), URL_SAFE_NO_PAD.decode(public_key_b64)] {
+            if let Ok(bytes) = decoded {
+                let standard = STANDARD.encode(&bytes);
+                if !variants.contains(&standard) {
+                    variants.push(standard);
+                }
+
+                let url_safe = URL_SAFE_NO_PAD.encode(&bytes);
+                if !variants.contains(&url_safe) {
+                    variants.push(url_safe);
+                }
+            }
+        }
+
+        variants
+    }
+
+    fn public_key_variants_from_bytes(public_key: &[u8]) -> Vec<String> {
+        use base64::{engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD}, Engine as _};
+        vec![STANDARD.encode(public_key), URL_SAFE_NO_PAD.encode(public_key)]
+    }
+
     /// Create a new HTTP API server with CBOR/TLS support
     pub fn new(device_api: Api<Device>, application_api: Api<Application>, gateway_api: Api<Gateway>) -> Result<Self> {
         Ok(Self {
             device_connections: Arc::new(RwLock::new(HashMap::new())),
             public_key_to_device: Arc::new(RwLock::new(HashMap::new())),
+            pending_senders: Arc::new(RwLock::new(HashMap::new())),
+            connection_to_device: Arc::new(RwLock::new(HashMap::new())),
             applications: Arc::new(RwLock::new(HashMap::new())),
             board_registry: Arc::new(RwLock::new(HashMap::new())),
             device_api,
@@ -241,6 +288,25 @@ impl HttpApiServer {
 
     /// Register a device connection
     pub async fn register_device(&self, device_id: String, public_key: String, capabilities: DeviceCapabilities) {
+        {
+            let mut map = self.public_key_to_device.write().await;
+            for key_variant in Self::public_key_variants_from_b64(&public_key) {
+                map.insert(key_variant, device_id.clone());
+            }
+        }
+
+        let mut connections = self.device_connections.write().await;
+        if let Some(existing) = connections.get_mut(&device_id) {
+            existing.public_key = PublicKey::from(public_key.as_bytes()).into_owned();
+            existing.capabilities = capabilities;
+            existing.last_heartbeat = SystemTime::now();
+            if existing.tls_sender.is_some() {
+                existing.tls_connected = true;
+            }
+            info!("Device {} metadata refreshed for HTTP API (tls_connected={})", existing.device_id, existing.tls_connected);
+            return;
+        }
+
         let connection = DeviceConnection {
             device_id: device_id.clone(),
             device_uuid: DeviceUuid::new([0u8; 16]),
@@ -253,23 +319,18 @@ impl HttpApiServer {
             is_enrolled: false,
             tls_connected: false, // Set true when TLS connection is ready (sender set)
         };
-
-        {
-            let mut map = self.public_key_to_device.write().await;
-            map.insert(public_key.clone(), device_id.clone());
-        }
-        let mut connections = self.device_connections.write().await;
         connections.insert(device_id, connection);
         info!("Device registered for HTTP API (waiting for TLS connection)");
     }
 
     /// Set the TLS sender for a device (called when TLS connection is ready in wasmbed-tls-utils)
     pub async fn set_device_tls_sender(&self, public_key: &[u8], sender: mpsc::Sender<ServerMessage>) {
-        use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-        let key_b64 = BASE64.encode(public_key);
+        let key_variants = Self::public_key_variants_from_bytes(public_key);
         let device_id = {
             let map = self.public_key_to_device.read().await;
-            map.get(&key_b64).cloned()
+            key_variants
+                .iter()
+                .find_map(|key| map.get(key).cloned())
         };
         if let Some(device_id) = device_id {
             let mut connections = self.device_connections.write().await;
@@ -301,6 +362,73 @@ impl HttpApiServer {
         if let Some(connection) = connections.get_mut(device_id) {
             connection.last_heartbeat = SystemTime::now();
             debug!("Updated heartbeat for device {}", device_id);
+        }
+    }
+
+    /// Store a pending TLS sender before the device has identified itself via CBOR enrollment.
+    pub async fn store_pending_sender(&self, connection_id: &str, sender: mpsc::Sender<ServerMessage>) {
+        self.pending_senders.write().await.insert(connection_id.to_string(), sender);
+        debug!("Stored pending sender for connection {}", connection_id);
+    }
+
+    /// Wire the pending sender to a device after CBOR enrollment reveals its identity.
+    pub async fn activate_device_sender(&self, connection_id: &str, device_id: &str, public_key_b64: &str) {
+        let sender = self.pending_senders.write().await.remove(connection_id);
+        {
+            let mut map = self.connection_to_device.write().await;
+            map.insert(connection_id.to_string(), device_id.to_string());
+        }
+        {
+            let mut map = self.public_key_to_device.write().await;
+            for key_variant in Self::public_key_variants_from_b64(public_key_b64) {
+                map.insert(key_variant, device_id.to_string());
+            }
+        }
+        if let Some(sender) = sender {
+            let mut connections = self.device_connections.write().await;
+            if let Some(conn) = connections.get_mut(device_id) {
+                conn.tls_sender = Some(Arc::new(sender));
+                conn.tls_connected = true;
+                info!("TLS sender activated for device {}", device_id);
+            }
+        } else {
+            warn!("No pending sender found for connection {} when activating device {}", connection_id, device_id);
+        }
+    }
+
+    /// Resolve device_id from connection_id (fast) or public_key (fallback).
+    pub async fn resolve_device_id(&self, connection_id: &str, public_key_b64: &str) -> Option<String> {
+        {
+            let map = self.connection_to_device.read().await;
+            if let Some(id) = map.get(connection_id) {
+                return Some(id.clone());
+            }
+        }
+        if !public_key_b64.is_empty() {
+            let key_variants = Self::public_key_variants_from_b64(public_key_b64);
+            let map = self.public_key_to_device.read().await;
+            for key in key_variants {
+                if let Some(id) = map.get(&key) {
+                    return Some(id.clone());
+                }
+            }
+        }
+        None
+    }
+
+    /// Clean up in-memory connection state on TLS disconnect.
+    pub async fn remove_connection(&self, connection_id: &str) {
+        self.pending_senders.write().await.remove(connection_id);
+        let device_id = self.connection_to_device.write().await.remove(connection_id);
+        if let Some(device_id) = device_id {
+            let mut connections = self.device_connections.write().await;
+            if let Some(conn) = connections.get_mut(&device_id) {
+                conn.tls_sender = None;
+                conn.tls_connected = false;
+                info!("TLS sender cleared for device {} (connection {})", device_id, connection_id);
+            }
+        } else {
+            debug!("Connection {} removed (was anonymous/unenrolled)", connection_id);
         }
     }
 
@@ -342,16 +470,22 @@ impl HttpApiServer {
     }
 
     /// Deploy application to a specific device
-    pub async fn deploy_application_to_device(&self, device_id: &str, app_id: &str, wasm_bytes: &[u8]) -> Result<()> {
+    pub async fn deploy_application_to_device(
+        &self,
+        device_id: &str,
+        app_id: &str,
+        wasm_bytes: &[u8],
+        config: Option<wasmbed_protocol::ApplicationConfig>,
+    ) -> Result<()> {
         let connections = self.device_connections.read().await;
-        
+
         if let Some(_connection) = connections.get(device_id) {
             // Create deployment message
             let deployment_message = ServerMessage::DeployApplication {
                 app_id: app_id.to_string(),
-                name: app_id.to_string(), // Use app_id as name for now
+                name: app_id.to_string(),
                 wasm_bytes: wasm_bytes.to_vec(),
-                config: None,
+                config,
             };
             
             // Send deployment command via TLS
@@ -569,8 +703,43 @@ async fn deploy_application(
         device_id.clone(),
         app_name,
         wasm_bytes.clone(),
-        app_config,
+        app_config.clone(),
     ).await;
+
+    // If the device reconnected anonymously after a gateway restart, we can have
+    // exactly one pending TLS sender without a bound device_id yet.
+    // In the common single-device setup, opportunistically bind it here.
+    let should_try_pending_bind = {
+        let connections = server.device_connections.read().await;
+        !connections
+            .get(&device_id)
+            .map(|c| c.tls_connected || c.tls_sender.is_some())
+            .unwrap_or(false)
+    };
+    if should_try_pending_bind {
+        let pending_connection_id = {
+            let pending = server.pending_senders.read().await;
+            if pending.len() == 1 {
+                pending.keys().next().cloned()
+            } else {
+                None
+            }
+        };
+        if let Some(connection_id) = pending_connection_id {
+            if let Ok(device_obj) = server.device_api.get(&device_id).await {
+                let public_key_b64 = device_obj.spec.public_key;
+                if !public_key_b64.is_empty() {
+                    server
+                        .activate_device_sender(&connection_id, &device_id, &public_key_b64)
+                        .await;
+                    info!(
+                        "Bound pending TLS sender {} to device {} for deployment",
+                        connection_id, device_id
+                    );
+                }
+            }
+        }
+    }
 
     // Wait for TLS connection to be established before sending deployment
     info!("Waiting for TLS connection for device {} before deployment...", device_id);
@@ -582,7 +751,7 @@ async fn deploy_application(
     loop {
         let connections = server_clone.device_connections.read().await;
         if let Some(connection) = connections.get(&device_id_clone) {
-            if connection.tls_connected {
+            if connection.tls_connected || connection.tls_sender.is_some() {
                 info!("TLS connection found for device {}, proceeding with deployment", device_id_clone);
                 drop(connections);
                 break;
@@ -617,10 +786,11 @@ async fn deploy_application(
     let app_id_clone = app_id.clone();
     let device_id_clone = device_id.clone();
     let wasm_bytes_clone = wasm_bytes.clone();
-    
+    let config_proto = app_config.as_ref().map(map_k8s_config_to_protocol);
+
     tokio::spawn(async move {
         match server_clone
-            .deploy_application_to_device(&device_id_clone, &app_id_clone, &wasm_bytes_clone)
+            .deploy_application_to_device(&device_id_clone, &app_id_clone, &wasm_bytes_clone, config_proto)
             .await
         {
             Ok(_) => {
@@ -1154,6 +1324,7 @@ async fn create_application(
             },
             config: None,
             metadata: None,
+            target_runtime: None,
         },
         status: None,
     };
@@ -1544,6 +1715,8 @@ async fn create_device(
                 info!("No preferred_gateway for device {} (gateway is empty)", name);
                 None
             },
+            device_class: None,
+            runtime_target: None,
         },
         status: Some(wasmbed_k8s_resource::DeviceStatus {
             phase: wasmbed_k8s_resource::DevicePhase::Pending,

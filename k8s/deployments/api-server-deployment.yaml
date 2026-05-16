@@ -36,10 +36,18 @@ spec:
           value: "http://172.18.0.1:30460"
         - name: RENODE_USE_DOCKER
           value: "true"
+        - name: ZEPHYR_WORKSPACE
+          value: "/home/ubuntu/retrospect/zephyr-workspace"
         # In k3d, we need to mount the Docker socket from the host via k3d server container
         volumeMounts:
         - name: docker-sock
           mountPath: /var/run/docker.sock
+          readOnly: false
+        - name: zephyr-workspace
+          mountPath: /home/ubuntu/retrospect/zephyr-workspace
+          readOnly: true
+        - name: renode-scripts
+          mountPath: /home/ubuntu/retrospect/zephyr-workspace/renode-scripts
           readOnly: false
         # Firmware is in container image, no need for host mount
         # - name: zephyr-firmware
@@ -54,17 +62,16 @@ spec:
       volumes:
       - name: docker-sock
         hostPath:
-          # In k3d, /var/run/docker.sock in the node is actually the host's Docker socket
           path: /var/run/docker.sock
           type: Socket
-      # For real k3s (not k3d), we would need to use containerd socket:
-      # path: /run/containerd/containerd.sock
-      # For k3d, we can't mount host directories directly
-      # Firmware is already in the container image, so we don't need this mount
-      # - name: zephyr-firmware
-      #   hostPath:
-      #     path: /home/lucadag/18_10_23_retrospect/retrospect/zephyr-workspace
-      #     type: Directory
+      - name: zephyr-workspace
+        hostPath:
+          path: /home/ubuntu/retrospect/zephyr-workspace
+          type: Directory
+      - name: renode-scripts
+        hostPath:
+          path: /home/ubuntu/retrospect/zephyr-workspace/renode-scripts
+          type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service

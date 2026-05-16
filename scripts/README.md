@@ -61,6 +61,42 @@ Verifica mantenimento TLS (heartbeat, unreachable, recovery) e deploy WASM su de
 
 Vedi `doc/RENODE_TLS_DEPLOY_VERIFICATION.md` per i dettagli.
 
+### `ensure-experiment-runtime.sh`
+Allinea l'ambiente runtime per esperimenti in modo ripetibile:
+- riavvia i port-forward richiesti (`3001`, `8080`, `30443`)
+- verifica che le porte siano effettivamente in ascolto
+- produce log in `/tmp/pf-api.log`, `/tmp/pf-gw-http.log`, `/tmp/pf-gw-tls.log`
+
+**Utilizzo:**
+```bash
+./scripts/ensure-experiment-runtime.sh
+```
+
+Per la parte rete TAP + DNAT (richiede root):
+```bash
+sudo ./scripts/setup-renode-net.sh
+```
+
+### `test_enrollment.py`
+Script Python per testare il flusso di enrollment TLS end-to-end direttamente contro il gateway, senza necessità di avviare Renode o il firmware.
+
+**Prerequisiti:** solo stdlib Python 3 (nessuna dipendenza esterna).
+
+**Utilizzo:**
+```bash
+# 1. Abilita pairing mode sul gateway
+curl -X POST http://<GATEWAY_HTTP_IP>:8080/api/v1/admin/pairing-mode \
+     -H 'Content-Type: application/json' -d '{"enabled":true}'
+
+# 2. Esegui il test (modifica GATEWAY_HOST/PORT se necessario)
+python3 scripts/test_enrollment.py
+```
+
+Simula la sequenza completa: TLS handshake → EnrollmentRequest → PublicKey → DeviceUuid → EnrollmentAcknowledgment → EnrollmentCompleted → Heartbeat.
+Alla fine viene creato un Device CRD in Kubernetes con `phase: Enrolled`.
+
+Vedi `doc/TLS_ENROLLMENT_FIX.md` per la documentazione tecnica dei bug risolti.
+
 ### `cleanup-k3s.sh`
 Rimozione completa del deployment Wasmbed.
 
@@ -77,6 +113,15 @@ Rimozione completa del deployment Wasmbed.
 5. Opzionalmente ferma il registry locale
 
 **Attenzione:** Questa operazione è irreversibile!
+
+### `collect_experiment_metrics.py`
+Raccoglie metriche per esperimenti smoke/scalability e ora include indicatori più adatti a paper di tipo Transactions:
+- `success_rate` con CI95 Wilson
+- profilo latenza (`mean`, `stdev`, `median`, `p90`, `p95`, `p99`, `iqr`, `cv`, `ci95`)
+- `goodput_tps` per fase
+- sezione `transactional` con:
+  - `all_stages_success_rate` (enrollment + heartbeat + deployment)
+  - `end_to_end_latency_ms` (enrollment + deployment per trial)
 
 ## Componenti Deployati
 

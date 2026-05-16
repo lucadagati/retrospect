@@ -1,0 +1,24 @@
+\appendices
+
+\section{Protocol Message Summary}
+Table~\ref{tab:proto} summarizes the main southbound messages used during enrollment and liveness supervision.
+
+\begin{table}[h]
+\centering
+\caption{Southbound protocol messages (simplified).}
+\label{tab:proto}
+\begin{tabular}{lll}
+\toprule
+\textbf{Message} & \textbf{Direction} & \textbf{Purpose} \\
+\midrule
+EnrollmentRequest & Device $\rightarrow$ Gateway & Start enrollment \\
+EnrollmentAccepted & Gateway $\rightarrow$ Device & Accept handshake \\
+PublicKey & Device $\rightarrow$ Gateway & Identity association \\
+EnrollmentCompleted & Gateway $\rightarrow$ Device & Finalize enrollment \\
+Heartbeat & Device $\rightarrow$ Gateway & Liveness signal \\
+HeartbeatAck & Gateway $\rightarrow$ Device & Liveness acknowledgment \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The simplified summary is sufficient to clarify the paper's control semantics. A production-ready protocol specification should additionally document framing conventions, error codes, retry behavior, and field-level schema constraints.

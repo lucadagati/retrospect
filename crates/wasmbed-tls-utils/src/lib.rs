@@ -171,11 +171,11 @@ pub type OnClientMessage = Box<dyn Fn(MessageContext) -> std::pin::Pin<Box<dyn s
 
 /// Enhanced callback types for gateway with PublicKey support
 pub type OnClientConnectWithKey = Box<dyn Fn(Vec<u8>) -> std::pin::Pin<Box<dyn std::future::Future<Output = AuthorizationResult> + Send>> + Send + Sync>;
-pub type OnClientDisconnectWithKey = Box<dyn Fn(Vec<u8>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
+pub type OnClientDisconnectWithKey = Box<dyn Fn(Vec<u8>, String) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
 pub type OnClientMessageWithKey = Box<dyn Fn(MessageContextWithKey) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
 
-/// Callback when a TLS connection is ready to receive server messages (public_key, sender to push ServerMessage)
-pub type OnConnectionReadyWithKey = Box<dyn Fn(Vec<u8>, mpsc::Sender<ServerMessage>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
+/// Callback when a TLS connection is ready to receive server messages (public_key, connection_id, sender to push ServerMessage)
+pub type OnConnectionReadyWithKey = Box<dyn Fn(Vec<u8>, String, mpsc::Sender<ServerMessage>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
 
 /// Server Configuration for compatibility
 pub struct ServerConfig {
@@ -924,7 +924,19 @@ impl GatewayServer {
         println!("[DEBUG] Calling ServerConfig::builder()");
         println!("[DEBUG] Certificate: {:?}", self.config.identity.certificate());
         println!("[DEBUG] Private key: {:?}", self.config.identity.private_key());
-        let server_config = ServerConfig::builder()
+        // Use ECDHE-RSA-AES128-GCM-SHA256 for TLS 1.2 — matches the RSA certificates generated
+        // by wasmbed-cert-tool. ECDSA variant is kept as fallback for future ECDSA cert migration.
+        let mut provider = rustls::crypto::ring::default_provider();
+        provider.cipher_suites = vec![
+            rustls::crypto::ring::cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+            rustls::crypto::ring::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+        ];
+        let server_config = ServerConfig::builder_with_provider(provider.into())
+            .with_protocol_versions(&[&rustls::version::TLS12])
+            .map_err(|e| {
+                log::error!("Failed to configure TLS 1.2 with cipher suites: {:?}", e);
+                e
+            })?
             .with_no_client_auth()
             .with_single_cert(
                 vec![self.config.identity.certificate().clone()],
@@ -936,7 +948,7 @@ impl GatewayServer {
             })?;
         println!("[DEBUG] ServerConfig created successfully");
         
-        log::info!("TLS server configuration created successfully");
+        log::info!("TLS server configuration created successfully (TLS 1.2 only)");
         
         let acceptor = TlsAcceptor::from(Arc::new(server_config));
         log::info!("TlsAcceptor created successfully");
@@ -947,20 +959,24 @@ impl GatewayServer {
         loop {
             match listener.accept().await {
                 Ok((stream, addr)) => {
+                    println!("[TLS] New connection from {}", addr);
                     log::info!("New connection from {}", addr);
                     
                     // Accept TLS connection
                     match acceptor.accept(stream).await {
                         Ok(tls_stream) => {
+                            println!("[TLS] Handshake OK for {}", addr);
                             log::info!("TLS handshake completed for {}", addr);
                             self.handle_tls_connection(tls_stream, addr).await?;
                         }
                         Err(e) => {
+                            println!("[TLS] Handshake FAILED for {}: {}", addr, e);
                             log::error!("TLS handshake failed for {}: {}", addr, e);
                         }
                     }
                 }
                 Err(e) => {
+                    println!("[TLS] Accept error: {}", e);
                     log::error!("Failed to accept connection: {}", e);
                 }
             }
@@ -984,65 +1000,91 @@ impl GatewayServer {
             vec![]
         };
         
+        println!("[TLS] Client public key: {} bytes", public_key.len());
         log::info!("Client public key: {} bytes", public_key.len());
         
         // Call on_client_connect callback with public key
         let auth_result = (self.config.on_client_connect)(public_key.clone()).await;
         match auth_result {
             AuthorizationResult::Authorized => {
+                println!("[TLS] Client AUTHORIZED (key {} bytes)", public_key.len());
                 log::info!("Client authorized with public key: {} bytes", public_key.len());
             }
             AuthorizationResult::Unauthorized => {
+                println!("[TLS] Client UNAUTHORIZED (key {} bytes) → closing", public_key.len());
                 log::warn!("Client unauthorized with public key: {} bytes", public_key.len());
                 return Ok(());
             }
         }
 
         let (tx, mut rx) = mpsc::channel::<ServerMessage>(32);
+        // Clone tx for reply_fn and to keep the channel alive regardless of what
+        // on_connection_ready does with its copy.
+        let tx_for_read = tx.clone();
         let on_client_message = self.config.on_client_message.clone();
         let on_client_disconnect = self.config.on_client_disconnect.clone();
         let public_key_clone = public_key.clone();
 
         tokio::spawn(async move {
-            let mut buffer = [0u8; 4096];
-            loop {
-                tokio::select! {
-                    maybe_msg = rx.recv() => {
-                        match maybe_msg {
-                            Some(msg) => {
-                                if let Ok(cbor) = minicbor::to_vec(&msg) {
-                                    let len = cbor.len() as u32;
-                                    let _ = tls_stream.write_all(&len.to_be_bytes()).await;
-                                    let _ = tls_stream.write_all(&cbor).await;
-                                    let _ = tls_stream.flush().await;
-                                }
-                            }
-                            None => break,
-                        }
-                    }
-                    result = tls_stream.read(&mut buffer) => {
-                        match result {
-                            Ok(0) => break,
-                            Ok(n) => {
-                                let mut ctx = MessageContextWithKey::new(
-                                    public_key_clone.clone(),
-                                    format!("gateway-connection-{}", addr),
-                                );
-                                if let Ok(client_message) = minicbor::decode::<ClientMessage>(&buffer[..n]) {
-                                    ctx.set_message(client_message);
-                                }
-                                (on_client_message)(ctx).await;
-                            }
-                            Err(_) => break,
-                        }
+            use tokio::io::AsyncReadExt;
+            use tokio::io::AsyncWriteExt;
+
+            // Split the stream so the read loop and write loop don't interfere.
+            let (mut reader, mut writer) = tokio::io::split(tls_stream);
+
+            // Writer task: forwards queued ServerMessage → client.
+            tokio::spawn(async move {
+                while let Some(msg) = rx.recv().await {
+                    if let Ok(cbor) = minicbor::to_vec(&msg) {
+                        let len = cbor.len() as u32;
+                        let _ = writer.write_all(&len.to_be_bytes()).await;
+                        let _ = writer.write_all(&cbor).await;
+                        let _ = writer.flush().await;
                     }
                 }
+            });
+
+            // Reader loop: reads framed messages (4-byte BE length + CBOR) from client.
+            // Holds tx_for_read to keep the writer channel alive even if on_connection_ready
+            // drops its copy of tx (e.g. when the device has no known device_id yet).
+            let _tx_keep = tx_for_read.clone();
+            loop {
+                // Read 4-byte big-endian length prefix
+                let mut len_buf = [0u8; 4];
+                match reader.read_exact(&mut len_buf).await {
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+                let msg_len = u32::from_be_bytes(len_buf) as usize;
+                if msg_len == 0 || msg_len > 65536 {
+                    log::warn!("Invalid message length {} from {}, closing", msg_len, addr);
+                    break;
+                }
+                // Read CBOR payload
+                let mut payload = vec![0u8; msg_len];
+                if reader.read_exact(&mut payload).await.is_err() {
+                    break;
+                }
+                let mut ctx = MessageContextWithKey::new(
+                    public_key_clone.clone(),
+                    addr.to_string(),
+                );
+                match minicbor::decode::<ClientMessage>(&payload) {
+                    Ok(client_message) => ctx.set_message(client_message),
+                    Err(e) => log::warn!("CBOR decode error from {}: {}", addr, e),
+                }
+                // Wire reply_fn so handlers can send responses back via the channel.
+                let tx_reply = tx_for_read.clone();
+                ctx.set_reply_fn(Box::new(move |msg: ServerMessage| {
+                    tx_reply.try_send(msg).map_err(|e| anyhow::anyhow!("Reply send failed: {}", e))
+                }));
+                (on_client_message)(ctx).await;
             }
-            (on_client_disconnect)(public_key_clone).await;
+            (on_client_disconnect)(public_key_clone, addr.to_string()).await;
         });
 
         if let Some(ref cb) = self.config.on_connection_ready {
-            (cb)(public_key, tx).await;
+            (cb)(public_key, addr.to_string(), tx).await;
         }
 
         Ok(())
@@ -1101,7 +1143,7 @@ impl GatewayServer {
         }
         
         // Call on_client_disconnect callback
-        (self.config.on_client_disconnect)(public_key.clone()).await;
+        (self.config.on_client_disconnect)(public_key.clone(), "legacy-connection".to_string()).await;
         
         Ok(())
     }

@@ -18,7 +18,7 @@ impl Device {
         // Field selectors don't work with custom spec fields in Kubernetes
         let devices = api.list(&ListParams::default()).await?;
         for device in devices {
-            if device.spec.public_key == public_key.to_string() {
+            if device.spec.public_key == public_key.to_base64() {
                 return Ok(Some(device));
             }
         }
@@ -132,12 +132,12 @@ impl DeviceStatusUpdate {
             }
             if let Some(connected_since) = self.connected_since {
                 map.insert(
-                    "connectedSince".to_string(),
+                    "connected_since".to_string(),
                     json!(connected_since),
                 );
             }
             if let Some(last_heartbeat) = self.last_heartbeat {
-                map.insert("lastHeartbeat".to_string(), json!(last_heartbeat));
+                map.insert("last_heartbeat".to_string(), json!(last_heartbeat));
             }
         } else {
             return Err(Error::Service(

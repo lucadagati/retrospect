@@ -38,16 +38,19 @@ pub struct ApplicationController {
     gateways: Api<wasmbed_k8s_resource::Gateway>,
     deployments: Api<Deployment>,
     gateway_endpoint: String,
-    // Track which applications have been moved to Deploying phase
-    // This is a workaround for the status deserialization issue
-    deploying_apps: std::sync::Arc<tokio::sync::RwLock<std::collections::HashSet<String>>>,
+    // In-memory phase cache: overrides stale k8s status (kube-rs GET does not always
+    // reflect a just-written status subresource, causing spurious Creating loops).
+    app_phases: std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<String, wasmbed_k8s_resource::ApplicationPhase>>>,
 }
 
 impl ApplicationController {
     pub fn new(client: Client) -> Self {
         // Get gateway endpoint from environment variable or use default
         let gateway_endpoint = std::env::var("GATEWAY_ENDPOINT")
-            .unwrap_or_else(|_| "http://localhost:8080".to_string());
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "http://localhost:8080".to_string());
         
         Self {
             applications: Api::<wasmbed_k8s_resource::Application>::namespaced(client.clone(), "wasmbed"),
@@ -56,7 +59,7 @@ impl ApplicationController {
             deployments: Api::<Deployment>::namespaced(client.clone(), "wasmbed"),
             client,
             gateway_endpoint,
-            deploying_apps: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashSet::new())),
+            app_phases: std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         }
     }
 
@@ -103,18 +106,19 @@ impl ApplicationController {
         };
 
         // Get current phase from status
-        let phase = if let Some(status) = application.status() {
-            status.phase
-        } else {
-            // If no status found, check if we've already moved it to Deploying
-            let is_deploying = {
-                let deploying = self.deploying_apps.read().await;
-                deploying.contains(&name)
-            };
-            if is_deploying {
-                wasmbed_k8s_resource::ApplicationPhase::Deploying
-            } else {
-                wasmbed_k8s_resource::ApplicationPhase::Creating
+        let k8s_phase = application
+            .status()
+            .map(|s| s.phase)
+            .unwrap_or(wasmbed_k8s_resource::ApplicationPhase::Creating);
+
+        // Prefer in-memory phase when it shows progress beyond Creating.
+        // kube-rs api.get() returns the spec resource; the status subresource
+        // may lag or not deserialize correctly, causing spurious Creating reads.
+        let phase = {
+            let phases = self.app_phases.read().await;
+            match phases.get(&name).copied() {
+                Some(p) if p != wasmbed_k8s_resource::ApplicationPhase::Creating => p,
+                _ => k8s_phase,
             }
         };
         
@@ -220,15 +224,15 @@ impl ApplicationController {
         let name = application.name_any();
         info!("Handling creating application: {}", name);
         
-        // Check if we've already processed this app - if so, skip to deploying
-        let already_deploying = {
-            let deploying = self.deploying_apps.read().await;
-            deploying.contains(&name)
-        };
-        
-        if already_deploying {
-            info!("Application {} already marked as deploying, skipping handle_creating", name);
-            return Ok(());
+        // If the in-memory map says this app is already past Creating, skip.
+        {
+            let phases = self.app_phases.read().await;
+            if let Some(&p) = phases.get(&name) {
+                if p != wasmbed_k8s_resource::ApplicationPhase::Creating {
+                    info!("Application {} already in phase {:?} (memory), skipping handle_creating", name, p);
+                    return Ok(());
+                }
+            }
         }
         
         // Find target devices
@@ -239,11 +243,11 @@ impl ApplicationController {
             return Ok(());
         }
 
-        // Mark this app as deploying BEFORE updating status
-        // This ensures that on the next reconciliation, we'll use Deploying phase
+        // Eagerly set in-memory phase to Deploying BEFORE the status patch
+        // so that any immediate reconcile triggered by the patch sees Deploying.
         {
-            let mut deploying = self.deploying_apps.write().await;
-            deploying.insert(name.clone());
+            let mut phases = self.app_phases.write().await;
+            phases.insert(name.clone(), wasmbed_k8s_resource::ApplicationPhase::Deploying);
         }
         
         // Update status to deploying
@@ -308,20 +312,24 @@ impl ApplicationController {
             // If endpoint is a Renode endpoint (127.0.0.1:port), construct gateway service DNS endpoint
             let gateway_endpoint = {
                 if let Some(gateway_ref) = device.status.as_ref().and_then(|s| s.gateway.as_ref()) {
-                    let endpoint = &gateway_ref.endpoint;
+                    let endpoint = gateway_ref.endpoint.trim();
                     let gateway_name = &gateway_ref.name;
                     
                     // Check if endpoint is a Renode endpoint (127.0.0.1:port) or localhost
-                    if endpoint.starts_with("127.0.0.1:") || endpoint.starts_with("localhost:") {
+                    if endpoint.is_empty() {
+                        // Empty endpoint in status can happen on transient state updates.
+                        // Fall back to the gateway service DNS endpoint.
+                        format!("{}-service.wasmbed.svc.cluster.local:8080", gateway_name)
+                    } else if endpoint.starts_with("127.0.0.1:") || endpoint.starts_with("localhost:") {
                         // Endpoint is a Renode endpoint, construct gateway service DNS endpoint
                         // Format: {gateway-name}-service.wasmbed.svc.cluster.local:8080
                         format!("{}-service.wasmbed.svc.cluster.local:8080", gateway_name)
                     } else if endpoint.contains("svc.cluster.local") {
                         // Valid Kubernetes service DNS endpoint, use as-is
-                        endpoint.clone()
+                        endpoint.to_string()
                     } else {
                         // Use endpoint as-is
-                        endpoint.clone()
+                        endpoint.to_string()
                     }
                 } else {
                     // No gateway reference, use default
@@ -387,6 +395,7 @@ impl ApplicationController {
             },
         };
 
+        // update_application_status updates app_phases for all terminal phases.
         self.update_application_status(application, status).await?;
         info!("Application {} deployment completed: {} running, {} failed", 
               application.name_any(), running_count, failed_count);
@@ -394,38 +403,40 @@ impl ApplicationController {
     }
 
     async fn handle_running(&self, application: &wasmbed_k8s_resource::Application) -> Result<(), ControllerError> {
-        info!("Application {} is running", application.name_any());
-        
-        // Update heartbeat timestamps
-        let mut device_statuses = std::collections::BTreeMap::new();
-        let target_devices = self.find_target_devices(&application.spec.target_devices).await?;
-        
-        for device in &target_devices {
-            let device_status = wasmbed_k8s_resource::DeviceApplicationStatus {
-                status: wasmbed_k8s_resource::DeviceApplicationPhase::Running,
-                last_heartbeat: Some(chrono::Utc::now().to_rfc3339()),
-                metrics: None,
+        info!("Application {} is running (stable)", application.name_any());
+
+        let current_phase = application
+            .status()
+            .map(|status| status.phase)
+            .unwrap_or(wasmbed_k8s_resource::ApplicationPhase::Creating);
+
+        if current_phase != wasmbed_k8s_resource::ApplicationPhase::Running {
+            info!(
+                "Application {} status is stale ({:?}), reconciling it back to Running",
+                application.name_any(),
+                current_phase
+            );
+
+            let status = wasmbed_k8s_resource::ApplicationStatus {
+                phase: wasmbed_k8s_resource::ApplicationPhase::Running,
+                device_statuses: application.status().and_then(|status| status.device_statuses.clone()),
+                statistics: application.status().and_then(|status| status.statistics.clone()),
+                last_updated: Some(chrono::Utc::now().to_rfc3339()),
                 error: None,
-                restart_count: 0,
             };
-            device_statuses.insert(device.name_any(), device_status);
+
+            self.update_application_status(application, status).await?;
+            return Ok(());
         }
-        
-        let status = wasmbed_k8s_resource::ApplicationStatus {
-            phase: wasmbed_k8s_resource::ApplicationPhase::Running,
-            device_statuses: Some(device_statuses),
-            statistics: Some(wasmbed_k8s_resource::ApplicationStatistics {
-                total_devices: target_devices.len() as u32,
-                deployed_devices: target_devices.len() as u32,
-                running_devices: target_devices.len() as u32,
-                failed_devices: 0,
-                stopped_devices: 0,
-            }),
-            last_updated: Some(chrono::Utc::now().to_rfc3339()),
-            error: None,
-        };
-        
-        self.update_application_status(application, status).await?;
+
+        // Refresh in-memory phase without writing to k8s.
+        // Writing to k8s on every reconcile would trigger a watch event that
+        // immediately re-queues the reconcile, creating a tight loop.
+        // The 30-second requeue is sufficient for steady-state monitoring.
+        {
+            let mut phases = self.app_phases.write().await;
+            phases.insert(application.name_any(), wasmbed_k8s_resource::ApplicationPhase::Running);
+        }
         Ok(())
     }
 
@@ -492,6 +503,11 @@ impl ApplicationController {
 
     async fn handle_stopping(&self, application: &wasmbed_k8s_resource::Application) -> Result<(), ControllerError> {
         info!("Application {} is stopping", application.name_any());
+
+        {
+            let mut phases = self.app_phases.write().await;
+            phases.insert(application.name_any(), wasmbed_k8s_resource::ApplicationPhase::Stopping);
+        }
         
         // Update status to stopped
         let status = wasmbed_k8s_resource::ApplicationStatus {
@@ -508,11 +524,19 @@ impl ApplicationController {
 
     async fn handle_stopped(&self, application: &wasmbed_k8s_resource::Application) -> Result<(), ControllerError> {
         info!("Application {} is stopped", application.name_any());
+        {
+            let mut phases = self.app_phases.write().await;
+            phases.insert(application.name_any(), wasmbed_k8s_resource::ApplicationPhase::Stopped);
+        }
         Ok(())
     }
 
     async fn handle_deleting(&self, application: &wasmbed_k8s_resource::Application) -> Result<(), ControllerError> {
         info!("Application {} is being deleted", application.name_any());
+        {
+            let mut phases = self.app_phases.write().await;
+            phases.remove(&application.name_any());
+        }
         Ok(())
     }
 
@@ -555,25 +579,22 @@ impl ApplicationController {
             "wasm_bytes": wasm_bytes_base64
         });
         
-        // Convert gateway endpoint from Kubernetes service DNS to HTTP endpoint
-        // If endpoint is like "gateway-2-service.wasmbed.svc.cluster.local:8080", use it directly
-        // If endpoint is like "127.0.0.1:30468", use it directly
-        // Otherwise, construct HTTP endpoint from gateway name
-        let http_endpoint = if gateway_endpoint.contains(":8080") {
-            gateway_endpoint.to_string()
-        } else if gateway_endpoint.contains("svc.cluster.local") {
-            // Kubernetes service DNS - use HTTP port 8080
-            gateway_endpoint.replace(":8443", ":8080").replace(":304", ":8080")
-        } else if gateway_endpoint.contains(':') {
-            // Already has port - use as is
-            gateway_endpoint.to_string()
+        // Normalize endpoint to avoid malformed URLs like "http://http//...".
+        let endpoint_no_scheme = gateway_endpoint
+            .trim()
+            .trim_start_matches("http://")
+            .trim_start_matches("https://");
+        let endpoint_with_http_port = if endpoint_no_scheme.trim().is_empty() {
+            "gateway-1-service.wasmbed.svc.cluster.local:8080".to_string()
+        } else if endpoint_no_scheme.ends_with(":8443") {
+            endpoint_no_scheme.replacen(":8443", ":8080", 1)
+        } else if endpoint_no_scheme.contains(':') {
+            endpoint_no_scheme.to_string()
         } else {
-            // No port specified - use default HTTP port
-            format!("{}:8080", gateway_endpoint)
+            format!("{}:8080", endpoint_no_scheme)
         };
-        
-        // Call gateway endpoint
-        let url = format!("http://{}/api/v1/devices/{}/deploy", http_endpoint, device_id);
+
+        let url = format!("http://{}/api/v1/devices/{}/deploy", endpoint_with_http_port, device_id);
         let client = reqwest::Client::new();
         
         match client
@@ -609,6 +630,7 @@ impl ApplicationController {
     }
 
     async fn update_application_status(&self, application: &wasmbed_k8s_resource::Application, status: wasmbed_k8s_resource::ApplicationStatus) -> Result<(), ControllerError> {
+        let phase = status.phase; // capture before status is moved into the json! macro
         let patch = serde_json::json!({
             "status": status
         });
@@ -617,7 +639,7 @@ impl ApplicationController {
         let patch = Patch::Merge(patch);
         
         // Try patch_status first, fallback to patch if status doesn't exist
-        match self.applications.patch_status(&application.name_any(), &params, &patch).await {
+        let result = match self.applications.patch_status(&application.name_any(), &params, &patch).await {
             Ok(_) => Ok(()),
             Err(e) => {
                 // If patch_status fails, try regular patch
@@ -627,7 +649,13 @@ impl ApplicationController {
                     .await?;
                 Ok(())
             }
+        };
+        // Always sync in-memory phase cache so reconcile() never reverts to Creating.
+        {
+            let mut phases = self.app_phases.write().await;
+            phases.insert(application.name_any(), phase);
         }
+        result
     }
 
     async fn create_application_deployment(&self, application: &wasmbed_k8s_resource::Application) -> Result<(), ControllerError> {

@@ -28,6 +28,34 @@ static bool network_initialized = false;
 static int socket_fd = -1;
 static struct net_if *net_iface = NULL;
 
+static int configure_static_ipv4_fallback(void)
+{
+    struct in_addr addr;
+    struct in_addr netmask;
+    struct in_addr gateway;
+
+    if (net_iface == NULL) {
+        return -1;
+    }
+
+    if (net_addr_pton(AF_INET, "192.168.1.2", &addr) < 0 ||
+        net_addr_pton(AF_INET, "255.255.255.0", &netmask) < 0 ||
+        net_addr_pton(AF_INET, "192.168.1.1", &gateway) < 0) {
+        LOG_ERR("Static IPv4 fallback parse failed");
+        return -1;
+    }
+
+    if (!net_if_ipv4_addr_add(net_iface, &addr, NET_ADDR_MANUAL, 0)) {
+        LOG_ERR("Cannot set static IPv4 fallback address");
+        return -1;
+    }
+
+    net_if_ipv4_set_netmask(net_iface, &netmask);
+    net_if_ipv4_set_gw(net_iface, &gateway);
+    LOG_INF("Static IPv4 fallback configured: 192.168.1.2/24 gw 192.168.1.1");
+    return 0;
+}
+
 /* Initialize network stack */
 int network_init(void)
 {
@@ -68,13 +96,48 @@ int network_init(void)
 #if defined(CONFIG_NET_DHCPV4)
     net_dhcpv4_start(net_iface);
     LOG_INF("DHCP client started");
+
+    /* Wait for DHCP to assign an IP address (up to 120 seconds) */
+    {
+        int dhcp_wait = 120;
+        bool got_ip = false;
+        while (dhcp_wait > 0) {
+            struct net_if_addr *unicast;
+            struct net_if_ipv4 *ipv4 = net_iface->config.ip.ipv4;
+            if (ipv4 != NULL) {
+                for (int i = 0; i < NET_IF_MAX_IPV4_ADDR; i++) {
+                    unicast = &ipv4->unicast[i];
+                    if (unicast->is_used &&
+                        unicast->addr_state == NET_ADDR_PREFERRED &&
+                        unicast->addr_type == NET_ADDR_DHCP) {
+                        got_ip = true;
+                        break;
+                    }
+                }
+            }
+            if (got_ip) {
+                break;
+            }
+            k_sleep(K_SECONDS(1));
+            dhcp_wait--;
+            if (dhcp_wait % 10 == 0) {
+                LOG_INF("Waiting for DHCP... (%d s remaining)", dhcp_wait);
+            }
+        }
+        if (got_ip) {
+            LOG_INF("DHCP address acquired");
+        } else {
+            LOG_WRN("DHCP timeout - applying static IPv4 fallback");
+            if (configure_static_ipv4_fallback() != 0) {
+                LOG_WRN("Static IPv4 fallback failed - proceeding without IP");
+            }
+        }
+    }
 #else
     /* Static IP configuration would go here */
     LOG_INF("Using static IP configuration (DHCP disabled)");
-#endif
-
-    /* Wait a bit for network to be ready */
     k_sleep(K_SECONDS(2));
+#endif
 
     network_initialized = true;
     LOG_INF("Network stack initialized");
@@ -164,24 +227,32 @@ int network_connect_tls(const char *host, uint16_t port)
         socket_fd = -1;
     }
 
-    /* Create TCP socket (TLS will be configured via socket options) */
-    socket_fd = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    /* Create TLS socket */
+    socket_fd = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TLS_1_2);
     if (socket_fd < 0) {
-        LOG_ERR("Failed to create socket: %d", errno);
+        LOG_ERR("Failed to create TLS socket: %d", errno);
         return -1;
     }
 
-    /* Configure TLS before connecting */
-    /* Set TLS hostname for SNI (Server Name Indication) */
-    int ret = zsock_setsockopt(socket_fd, SOL_TLS, TLS_HOSTNAME, host, strlen(host) + 1);
-    if (ret < 0) {
-        LOG_WRN("Failed to set TLS hostname: %d", errno);
-        /* Continue - TLS might still work without SNI */
+    /* Skip server certificate verification (no CA cert loaded) */
+    int verify = TLS_PEER_VERIFY_NONE;
+    if (zsock_setsockopt(socket_fd, SOL_TLS, TLS_PEER_VERIFY, &verify, sizeof(verify)) < 0) {
+        LOG_WRN("Failed to set TLS_PEER_VERIFY_NONE: %d", errno);
     }
 
-    /* Note: For development, we skip certificate verification
-     * In production, proper certificate validation should be enabled
-     * by setting TLS_SEC_TAG_LIST with appropriate security tags */
+    /* Set TLS hostname for SNI (required by some servers even with PEER_VERIFY_NONE) */
+    if (zsock_setsockopt(socket_fd, SOL_TLS, TLS_HOSTNAME, host, strlen(host)) < 0) {
+        LOG_WRN("Failed to set TLS_HOSTNAME (SNI): %d", errno);
+    }
+
+    /* Set send/connect timeout to 30 seconds to avoid blocking indefinitely */
+    struct zsock_timeval tv = { .tv_sec = 30, .tv_usec = 0 };
+    if (zsock_setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0) {
+        LOG_WRN("Failed to set SO_SNDTIMEO: %d", errno);
+    }
+    if (zsock_setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+        LOG_WRN("Failed to set SO_RCVTIMEO: %d", errno);
+    }
 
     /* Setup address structure */
     struct sockaddr_in addr;
@@ -195,6 +266,16 @@ int network_connect_tls(const char *host, uint16_t port)
         zsock_close(socket_fd);
         socket_fd = -1;
         return -1;
+    }
+
+    /* Only configure TLS_HOSTNAME for real hostnames.
+     * The gateway endpoint in Renode is an IP literal (192.168.1.1), and passing
+     * it as SNI is unnecessary. When we do set TLS_HOSTNAME, Zephyr expects the
+     * trailing NUL byte as in its own TLS clients. */
+    if (strchr(host, '.') == NULL || strspn(host, "0123456789.") != strlen(host)) {
+        if (zsock_setsockopt(socket_fd, SOL_TLS, TLS_HOSTNAME, host, strlen(host) + 1) < 0) {
+            LOG_WRN("Failed to set TLS_HOSTNAME (SNI): %d", errno);
+        }
     }
 
     /* Connect to server (TLS handshake happens during connect) */
@@ -251,6 +332,68 @@ int network_receive(uint8_t *buffer, uint32_t buffer_len, uint32_t *received_len
     }
 
     *received_len = (uint32_t)received;
+    return 0;
+}
+
+/* Poll socket for incoming data; returns >0 if readable, 0 on timeout, <0 on error */
+int network_poll_readable(int timeout_ms)
+{
+    if (socket_fd < 0) {
+        return -1;
+    }
+    struct zsock_pollfd pfd;
+    pfd.fd     = socket_fd;
+    pfd.events = ZSOCK_POLLIN;
+    pfd.revents = 0;
+    return zsock_poll(&pfd, 1, timeout_ms);
+}
+
+/* Receive a framed message: 4-byte BE length header + payload.
+ * Uses individual recv calls for header and payload. */
+int network_receive_framed(uint8_t *buffer, uint32_t buffer_len, uint32_t *received_len)
+{
+    if (socket_fd < 0) {
+        return -1;
+    }
+
+    *received_len = 0;
+
+    /* Read 4-byte length header — single blocking recv */
+    ssize_t r = zsock_recv(socket_fd, buffer, 4, 0);
+    if (r <= 0) {
+        return -1;
+    }
+    /* Handle partial header read by accumulating */
+    uint32_t hdr_got = (uint32_t)r;
+    while (hdr_got < 4) {
+        r = zsock_recv(socket_fd, buffer + hdr_got, 4 - hdr_got, 0);
+        if (r <= 0) {
+            return -1;
+        }
+        hdr_got += (uint32_t)r;
+    }
+
+    uint32_t payload_len = ((uint32_t)buffer[0] << 24) |
+                           ((uint32_t)buffer[1] << 16) |
+                           ((uint32_t)buffer[2] <<  8) |
+                           ((uint32_t)buffer[3]);
+
+    if (4 + payload_len > buffer_len) {
+        LOG_ERR("Frame too large: %u bytes", payload_len);
+        return -1;
+    }
+
+    /* Read payload — accumulate until complete */
+    uint32_t got = 0;
+    while (got < payload_len) {
+        r = zsock_recv(socket_fd, buffer + 4 + got, payload_len - got, 0);
+        if (r <= 0) {
+            return -1;
+        }
+        got += (uint32_t)r;
+    }
+
+    *received_len = 4 + payload_len;
     return 0;
 }
 

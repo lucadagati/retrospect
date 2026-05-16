@@ -20,6 +20,7 @@ members = [
     "crates/wasmbed-api-server",
     "crates/wasmbed-qemu-manager",
     "crates/wasmbed-config",
+    "crates/wasmbed-edge-client",
 ]
 
 [workspace.package]
