@@ -28,6 +28,34 @@ static bool network_initialized = false;
 static int socket_fd = -1;
 static struct net_if *net_iface = NULL;
 
+static int configure_static_ipv4_fallback(void)
+{
+    struct in_addr addr;
+    struct in_addr netmask;
+    struct in_addr gateway;
+
+    if (net_iface == NULL) {
+        return -1;
+    }
+
+    if (net_addr_pton(AF_INET, "192.168.1.2", &addr) < 0 ||
+        net_addr_pton(AF_INET, "255.255.255.0", &netmask) < 0 ||
+        net_addr_pton(AF_INET, "192.168.1.1", &gateway) < 0) {
+        LOG_ERR("Static IPv4 fallback parse failed");
+        return -1;
+    }
+
+    if (!net_if_ipv4_addr_add(net_iface, &addr, NET_ADDR_MANUAL, 0)) {
+        LOG_ERR("Cannot set static IPv4 fallback address");
+        return -1;
+    }
+
+    net_if_ipv4_set_netmask(net_iface, &netmask);
+    net_if_ipv4_set_gw(net_iface, &gateway);
+    LOG_INF("Static IPv4 fallback configured: 192.168.1.2/24 gw 192.168.1.1");
+    return 0;
+}
+
 /* Initialize network stack */
 int network_init(void)
 {
@@ -99,7 +127,10 @@ int network_init(void)
         if (got_ip) {
             LOG_INF("DHCP address acquired");
         } else {
-            LOG_WRN("DHCP timeout - proceeding without IP");
+            LOG_WRN("DHCP timeout - applying static IPv4 fallback");
+            if (configure_static_ipv4_fallback() != 0) {
+                LOG_WRN("Static IPv4 fallback failed - proceeding without IP");
+            }
         }
     }
 #else
@@ -235,6 +266,16 @@ int network_connect_tls(const char *host, uint16_t port)
         zsock_close(socket_fd);
         socket_fd = -1;
         return -1;
+    }
+
+    /* Only configure TLS_HOSTNAME for real hostnames.
+     * The gateway endpoint in Renode is an IP literal (192.168.1.1), and passing
+     * it as SNI is unnecessary. When we do set TLS_HOSTNAME, Zephyr expects the
+     * trailing NUL byte as in its own TLS clients. */
+    if (strchr(host, '.') == NULL || strspn(host, "0123456789.") != strlen(host)) {
+        if (zsock_setsockopt(socket_fd, SOL_TLS, TLS_HOSTNAME, host, strlen(host) + 1) < 0) {
+            LOG_WRN("Failed to set TLS_HOSTNAME (SNI): %d", errno);
+        }
     }
 
     /* Connect to server (TLS handshake happens during connect) */

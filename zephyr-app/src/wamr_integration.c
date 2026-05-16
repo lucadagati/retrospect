@@ -19,7 +19,7 @@ static bool wamr_initialized = false;
  * Con WAMR_BUILD_LIBC_WASI=1, WASI aggiunge ~10-15 KB di overhead interno
  * (fd table, environ, args) rispetto al baseline senza WASI.
  * 128 KB: linear memory (1 page=64KB) + exec stack (16KB) + instance overhead (~10KB).
- * Balanced against MAX_WASM_SIZE reduction in wasmbed_protocol.c: net BSS change ~0. */
+ * Sul target STM32F746 non c'e' headroom sufficiente per aumentarlo ulteriormente. */
 #define WAMR_HEAP_SIZE (128 * 1024)
 static uint8_t wamr_heap_buffer[WAMR_HEAP_SIZE] __aligned(8);
 
@@ -361,6 +361,41 @@ void wamr_process(void)
     }
 
     /* TODO: Process WAMR runtime events if needed */
+}
+
+/* Unload all running instances and loaded modules WITHOUT destroying the runtime.
+ * Call this before deploying a new application so WAMR slots are recycled. */
+void wamr_unload_all(void)
+{
+    if (!wamr_initialized) {
+        return;
+    }
+
+    for (int i = 0; i < MAX_INSTANCES; i++) {
+        if (instances[i].in_use) {
+            if (instances[i].exec_env) {
+                wasm_runtime_destroy_exec_env(instances[i].exec_env);
+                instances[i].exec_env = NULL;
+            }
+            if (instances[i].instance) {
+                wasm_runtime_deinstantiate(instances[i].instance);
+                instances[i].instance = NULL;
+            }
+            instances[i].in_use = false;
+        }
+    }
+
+    for (int i = 0; i < MAX_MODULES; i++) {
+        if (modules[i].in_use) {
+            if (modules[i].module) {
+                wasm_runtime_unload(modules[i].module);
+                modules[i].module = NULL;
+            }
+            modules[i].in_use = false;
+        }
+    }
+
+    LOG_INF("WAMR: all instances and modules unloaded");
 }
 
 /* Cleanup WAMR runtime */

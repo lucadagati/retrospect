@@ -1,0 +1,19 @@
+\section{Discussion}
+
+\subsection{Why Gateway-Centric Mediation Is Effective}
+Gateway mediation proved effective because it aligns the capabilities of each layer with its role. Embedded devices remain responsible for lightweight protocol participation and local execution, while the gateway assumes responsibility for identity validation, message translation, and status forwarding. This separation avoids forcing resource-constrained devices to implement cloud-facing semantics that would increase complexity, code size, and exposure.
+
+From an orchestration perspective, the gateway also serves as a semantic concentrator. It is the place where transport-level events are transformed into control-plane evidence. This is a strong architectural property because it makes policy evolution tractable: protocol refinements, compatibility handling, or additional validation logic can be introduced at the gateway without redesigning the entire cloud side or reflashing every device.
+
+\subsection{Engineering Trade-Offs}
+The architecture is not without trade-offs. A gateway-centric design introduces an additional hop in the communication path and creates a dependency on gateway correctness and availability. These are real system-level costs. However, in the class of scenarios targeted by RETROSPECT, the trade-off is justified by the resulting gains in security policy enforcement, observability, and manageability. Direct cloud-to-device integration would remove the mediation point, but only at the price of significantly increasing endpoint complexity and likely weakening the consistency of status reporting.
+
+Another trade-off concerns status ownership. The more explicit the ownership model becomes, the more carefully controllers and gateways must coordinate to avoid conflicting updates. The reconciliation hardening documented in this paper shows that such coordination is not optional; it is a prerequisite for believable system behavior.
+
+\subsection{Implications for ING-INF/05 Research}
+RETROSPECT is relevant to the ING-INF/05 area because it addresses the software engineering of distributed cyber-physical systems under realistic operational constraints. The contribution sits at the intersection of embedded systems, middleware, and distributed orchestration. It demonstrates that the critical challenges are often neither purely embedded nor purely cloud-native, but located in the interface between the two. This makes the work suitable for a Transactions-style audience interested in dependable system integration rather than isolated algorithmic novelty.
+
+\subsection{Generalizability and Extension Potential}
+Although validated on a single-node cluster and a focused workflow, the underlying design pattern generalizes to broader settings. Multiple gateways could be supported by extending the resource model and reconciliation logic toward placement and failover policies. Additional runtime targets could be integrated as long as they expose comparable life-cycle hooks and status evidence. Likewise, richer deployment policies such as staged rollout, admission checks, or adaptive scheduling could be built on top of the same declarative model.
+
+The key condition for such generalization is that state ownership remains explicit. As the system scales, ambiguous status authority becomes even more dangerous. RETROSPECT therefore suggests a broader lesson for edge orchestration research: scalability is not only about throughput or fan-out; it is also about preserving semantic clarity as the number of actors grows.

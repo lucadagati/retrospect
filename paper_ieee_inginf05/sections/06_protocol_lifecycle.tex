@@ -1,0 +1,89 @@
+\section{Protocol and Life-Cycle Flow}
+
+\subsection{Enrollment Handshake}
+The enrollment path uses framed CBOR messages transported over TLS. The protocol is intentionally compact because the target endpoints are embedded-class clients, yet it is expressive enough to support explicit identity binding and acknowledgment semantics.
+
+A simplified enrollment sequence is as follows:
+\begin{enumerate}
+    \item The device initiates a TLS session and transmits \texttt{EnrollmentRequest}.
+    \item The gateway validates the request format and returns \texttt{EnrollmentAccepted} if the session is eligible to proceed.
+    \item The device transmits its \texttt{PublicKey} or associated identity material.
+    \item The gateway matches this information against \texttt{Device.spec.publicKey} and related configuration stored in the control plane.
+    \item The device confirms reception and readiness through \texttt{EnrollmentAcknowledgment}.
+    \item The gateway emits \texttt{EnrollmentCompleted}, stores the association, and updates the corresponding resource status.
+\end{enumerate}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+    actor/.style={draw,rounded corners,align=center,minimum width=1.7cm,minimum height=0.7cm,font=\scriptsize,fill=blue!6},
+    flow/.style={-Latex,thick},
+    lab/.style={font=\scriptsize,fill=white,inner sep=1pt}
+]
+\node[actor] (device) at (0,0) {Device};
+\node[actor] (gateway) at (2.8,0) {Gateway};
+\node[actor] (control) at (5.6,0) {Kubernetes\\Control Plane};
+
+\draw[densely dashed] (device.south) -- ++(0,-4.9);
+\draw[densely dashed] (gateway.south) -- ++(0,-4.9);
+\draw[densely dashed] (control.south) -- ++(0,-4.9);
+
+\draw[flow] (0,-0.7) -- node[lab,above]{\texttt{EnrollmentRequest}} (2.8,-0.7);
+\draw[flow] (2.8,-1.5) -- node[lab,above]{Validate session metadata} (5.6,-1.5);
+\draw[flow] (2.8,-2.3) -- node[lab,above]{\texttt{EnrollmentAccepted}} (0,-2.3);
+\draw[flow] (0,-3.1) -- node[lab,above]{\texttt{PublicKey}} (2.8,-3.1);
+\draw[flow] (2.8,-3.9) -- node[lab,above]{Match against \texttt{Device.spec.publicKey}} (5.6,-3.9);
+\draw[flow] (0,-4.7) -- node[lab,above]{\texttt{EnrollmentAcknowledgment}} (2.8,-4.7);
+\draw[flow] (2.8,-5.5) -- node[lab,above]{\texttt{EnrollmentCompleted}} (0,-5.5);
+\draw[flow] (2.8,-6.3) -- node[lab,above]{Persist connected status} (5.6,-6.3);
+\end{tikzpicture}
+\caption{Enrollment workflow from TLS attachment to control-plane status registration.}
+\label{fig:enrollment-workflow}
+\end{figure}
+
+This sequence is valuable because it provides more than a best-effort connection. It establishes an explicit transition from unauthenticated attachment to platform-recognized identity. The distinction matters in orchestration settings where later application commands must be attributable to a specific declared device resource rather than to a transient socket alone.
+
+\subsection{Heartbeat and Connectivity Semantics}
+After enrollment, periodic heartbeats maintain liveness visibility. Each heartbeat has two roles. On the communication plane, it confirms that the TLS channel is still active and that the device is responsive. On the control plane, it provides evidence used to refresh reported connectivity fields such as \texttt{last\_heartbeat} and the device phase.
+
+An important design lesson from the implementation is that liveness evidence must be interpreted conservatively. A missing or delayed observation should not automatically trigger a forced disconnection if other evidence still suggests that the device remains attached. In RETROSPECT, this insight led to reconciliation hardening that preserves state continuity across transient mismatches and waits for additional evidence before declaring the device disconnected. This makes the notion of \texttt{Connected} operationally meaningful instead of brittle.
+
+\subsection{Application Deployment Flow}
+WASM deployment is modeled as a resource-driven life-cycle rather than as an imperative one-off command. The basic sequence is:
+\begin{enumerate}
+    \item An operator or higher-level service writes the desired application intent to the \texttt{Application} CRD.
+    \item A controller observes the resource update and determines the corresponding gateway and target device.
+    \item The gateway serializes the deployment intent into TLS/CBOR southbound messages.
+    \item The device firmware invokes the WAMR life-cycle operations needed to load, instantiate, or manage the WASM payload.
+    \item The device returns status or acknowledgment information to the gateway.
+    \item The gateway patches \texttt{Application.status} and related per-device execution fields in Kubernetes.
+\end{enumerate}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+    box/.style={draw,rounded corners,align=center,minimum width=2.3cm,minimum height=0.8cm,font=\scriptsize},
+    flow/.style={-Latex,thick},
+    note/.style={font=\scriptsize,align=center}
+]
+\node[box,fill=blue!8] (intent) at (0,0) {Application CRD\\desired state};
+\node[box,fill=blue!8] (controller) at (0,-1.6) {Application\\controller};
+\node[box,fill=green!10] (gateway) at (0,-3.2) {Gateway\\orchestrator};
+\node[box,fill=orange!10] (device) at (0,-4.8) {Device + WAMR\\runtime};
+\node[box,fill=blue!8] (status) at (0,-6.4) {Application/Device\\reported state};
+
+\draw[flow] (intent) -- node[right,note]{Observe new intent} (controller);
+\draw[flow] (controller) -- node[right,note]{Resolve gateway and target} (gateway);
+\draw[flow] (gateway) -- node[right,note]{Send TLS/CBOR deploy command} (device);
+\draw[flow] (device) -- node[left,note]{Ack and execution result} (gateway);
+\draw[flow] (gateway) -- node[right,note]{Patch \texttt{Application.status}\\and execution fields} (status);
+\draw[flow] ([xshift=1.6cm]status.east) |- ++(0.9,5.0) -| node[pos=0.75,above,note]{Reconciliation closes the loop} ([xshift=1.6cm]intent.east);
+\end{tikzpicture}
+\caption{Application deployment workflow and status-reconciliation loop.}
+\label{fig:deployment-workflow}
+\end{figure}
+
+This workflow preserves a declarative pattern: the control plane stores what should happen, while lower layers report what did happen. Such separation is essential if later versions of the platform are to support retries, staged rollout policies, or multi-gateway scheduling decisions.
+
+\subsection{Failure Handling and State Ownership}
+Protocol correctness alone does not guarantee correct platform behavior. If status ownership is unclear, a successful enrollment can still be followed by a misleading disconnection transition or by stale deployment metadata. RETROSPECT addresses this by giving the gateway clear authority over protocol-derived observations and by constraining controller logic to reconcile those observations without overreacting to transient visibility gaps. The resulting life-cycle flow is therefore not simply a message sequence diagram, but a policy about when state transitions are considered justified by evidence.

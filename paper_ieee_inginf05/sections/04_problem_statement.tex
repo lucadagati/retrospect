@@ -1,0 +1,20 @@
+\section{Problem Statement and Design Goals}
+
+The platform addresses the following problem:
+\begin{quote}
+\emph{How can a Kubernetes-based control plane reliably manage secure enrollment and WebAssembly application life-cycle operations for heterogeneous embedded devices while preserving observability, reproducibility, and declarative status consistency?}
+\end{quote}
+
+This problem statement contains three distinct tensions. The first is a resource-model tension: Kubernetes assumes a declarative control plane with explicit status ownership, whereas embedded deployments often rely on imperative, device-local procedures that are opaque to the cloud. The second is a transport tension: constrained devices need lightweight and secure communication paths, but the cloud side requires rich enough semantics to express enrollment, liveness, and application control. The third is an operational tension: even when protocol messages are correct, the platform can still fail if reconciliation logic misinterprets transient conditions and reports an incorrect device state.
+
+To make these tensions actionable, we derive the following design goals.
+
+\begin{itemize}
+    \item \textbf{G1 - Unified control plane.} Desired and observed states for devices, applications, and gateways must remain represented in Kubernetes resources so that operators can reason about the platform through a single authoritative interface.
+    \item \textbf{G2 - Secure edge attachment.} Device enrollment must occur over a protected channel and must bind transport-level identity to platform-level resource identity in a way that is auditable and robust.
+    \item \textbf{G3 - Runtime portability.} The application format and life-cycle interface should remain portable across cloud, fog, and constrained edge targets, motivating the adoption of WebAssembly as a common execution abstraction.
+    \item \textbf{G4 - Operational observability.} The platform must expose enough runtime evidence to confirm enrollment, liveness, deployment status, and gateway association without requiring manual inspection of device internals.
+    \item \textbf{G5 - Reproducible validation.} The complete stack should be deployable and testable in a commodity research environment so that experiments can be repeated, reviewed, and extended.
+\end{itemize}
+
+These goals imply an architectural consequence: the system cannot treat communication, orchestration, and status management as separate concerns. A platform that satisfies G2 but violates G1 or G4 would remain difficult to operate, while a platform that satisfies G1 but not G2 would be insecure by construction. RETROSPECT therefore adopts a deliberately integrated design in which resource modeling, gateway behavior, and controller reconciliation are co-designed rather than layered opportunistically.

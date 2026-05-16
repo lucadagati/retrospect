@@ -31,6 +31,9 @@ int wamr_call_wasi_start(uint32_t instance_id);
 /* Process WAMR runtime (call periodically) */
 void wamr_process(void);
 
+/* Unload all instances and modules, keeping the runtime alive (for re-use) */
+void wamr_unload_all(void);
+
 /* Cleanup WAMR runtime */
 void wamr_cleanup(void);
 

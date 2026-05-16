@@ -1506,7 +1506,7 @@ impl RenodeManager {
             "using sysbus\n\
              mach create \"{id}\"\n\
              machine LoadPlatformDescription @platforms/boards/{platform}.repl\n\
-             showAnalyzer sysbus.{uart}\n\
+             sysbus.{uart} CreateFileBackend @/tmp/uart-{id}.log true\n\
              sysbus LoadELF @{elf}\n",
             id = device_id,
             platform = platform,
@@ -1522,7 +1522,7 @@ impl RenodeManager {
         script.push_str(&endpoint_write);
         script.push('\n');
         script.push_str(pc_sp);
-        script.push_str("logLevel -1\n");
+        script.push_str("logLevel 3\n");
         script.push_str("start\n");
 
         Ok(script)

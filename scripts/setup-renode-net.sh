@@ -16,6 +16,8 @@ TAP_IP="192.168.1.1"
 DEVICE_SUBNET="192.168.1.0/24"
 K3S_IFACE="cni0"    # bridge k3s (pod network 10.42.0.0/16)
 WAN_IFACE="ens18"   # interfaccia fisica
+GATEWAY_TLS_PORT="30443"
+GATEWAY_TLS_DST="127.0.0.1:30443"
 
 echo "=== Wasmbed network setup ==="
 
@@ -45,6 +47,11 @@ echo "✅ iptables: forwarding tap0 ↔ ${K3S_IFACE}"
 iptables -t nat -C POSTROUTING -s ${DEVICE_SUBNET} -o ${WAN_IFACE} -j MASQUERADE 2>/dev/null || \
   iptables -t nat -A POSTROUTING -s ${DEVICE_SUBNET} -o ${WAN_IFACE} -j MASQUERADE
 echo "✅ NAT masquerade: ${DEVICE_SUBNET} → ${WAN_IFACE}"
+
+# 5b. DNAT per inoltrare il traffico TLS del device verso il port-forward locale del gateway
+iptables -t nat -C PREROUTING -d ${TAP_IP} -p tcp --dport ${GATEWAY_TLS_PORT} -j DNAT --to-destination ${GATEWAY_TLS_DST} 2>/dev/null || \
+  iptables -t nat -A PREROUTING -d ${TAP_IP} -p tcp --dport ${GATEWAY_TLS_PORT} -j DNAT --to-destination ${GATEWAY_TLS_DST}
+echo "✅ DNAT: ${TAP_IP}:${GATEWAY_TLS_PORT} → ${GATEWAY_TLS_DST}"
 
 # 6. Avvia dnsmasq per DHCP su tap0
 pkill dnsmasq 2>/dev/null || true

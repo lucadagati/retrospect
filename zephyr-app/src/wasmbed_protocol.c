@@ -449,10 +449,25 @@ static int handle_deploy_application(const uint8_t *cbor, uint32_t cbor_len,
     uint32_t module_id = 0, instance_id = 0;
     int ret;
 
+    ARG_UNUSED(cbor);
+    ARG_UNUSED(cbor_len);
+
     if (wasm_len == 0 || wasm_len > MAX_WASM_SIZE) {
         LOG_ERR("WASM size invalid: %u", (unsigned)wasm_len);
         return -1;
     }
+
+    /* Reset the WAMR runtime completely before a new deployment.
+     * Unloading instances/modules alone is not sufficient when a previous
+     * load attempt left the allocator state fragmented or exhausted. */
+    wamr_cleanup();
+    if (wamr_init() != 0) {
+        LOG_ERR("Failed to reinitialize WAMR runtime");
+        return -1;
+    }
+    app_deployed = false;
+    current_instance_id = 0;
+
     memcpy(wasm_copy_buf, wasm_ptr, wasm_len);
 
     ret = wamr_load_module(wasm_copy_buf, wasm_len, &module_id);
@@ -476,12 +491,14 @@ static int handle_deploy_application(const uint8_t *cbor, uint32_t cbor_len,
     return 0;
 }
 
-/* Encode and send ApplicationDeployAck: array(4), tag 5, app_id (str), success (bool), error (null). */
+/* Encode and send ApplicationDeployAck: array(4), tag 5, app_id (str), success (bool), error (null/text). */
 static void send_deploy_ack(const char *app_id, bool success, const char *error_msg)
 {
-    uint8_t buf[4 + 64 + 16];
+    uint8_t buf[4 + 64 + 96];
     uint32_t app_id_len = (uint32_t)strlen(app_id);
+    uint32_t error_len = error_msg ? (uint32_t)strlen(error_msg) : 0;
     if (app_id_len >= 64) app_id_len = 63;
+    if (error_len >= 64) error_len = 63;
     uint32_t off = 4; /* leave space for length prefix */
     buf[off++] = 0x84;
     buf[off++] = 0x05;
@@ -494,13 +511,23 @@ static void send_deploy_ack(const char *app_id, bool success, const char *error_
     memcpy(buf + off, app_id, app_id_len);
     off += app_id_len;
     buf[off++] = success ? 0xf5 : 0xf4;
-    buf[off++] = 0xf6; /* null error */
+    if (error_len == 0) {
+        buf[off++] = 0xf6; /* null error */
+    } else if (error_len <= 23) {
+        buf[off++] = (uint8_t)(0x60 + error_len);
+        memcpy(buf + off, error_msg, error_len);
+        off += error_len;
+    } else {
+        buf[off++] = 0x78;
+        buf[off++] = (uint8_t)error_len;
+        memcpy(buf + off, error_msg, error_len);
+        off += error_len;
+    }
     uint32_t cbor_len = off - 4;
     buf[0] = (uint8_t)(cbor_len >> 24);
     buf[1] = (uint8_t)(cbor_len >> 16);
     buf[2] = (uint8_t)(cbor_len >> 8);
     buf[3] = (uint8_t)cbor_len;
-    (void)error_msg;
     wasmbed_protocol_send_message(buf, off);
 }
 
