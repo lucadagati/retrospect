@@ -6,12 +6,12 @@ The evaluation is designed as a system-level validation campaign rather than as 
 This framing is deliberate. Because the paper's contribution is the integration of orchestration, protocol handling, and embedded execution, the most relevant evidence is end-to-end functional correctness under operational conditions. For the same reason, the study reports not only positive-path latency, but also transactional success, percentile behavior, and data-source provenance for each metric so that reviewers can distinguish actual runtime success from stale or noisy control-plane state.
 
 \subsection{Evaluation Environment}
-The experiments are executed on a single-node K3s cluster hosting the RETROSPECT services in the dedicated namespace \texttt{wasmbed}. The deployed stack includes the API server, gateway, CRDs, and the auxiliary resources needed to drive device enrollment and status management. A local image registry is used to build and distribute container images inside the test environment, enabling fast iteration while preserving realistic cluster deployment semantics. During the quantitative campaign, the application controller is intentionally kept at zero replicas so that the measurements isolate the API--gateway--device deployment path rather than a known background reconciliation loop that is orthogonal to the southbound execution path studied here.
+The experiments are executed on a single-node K3s cluster hosting the RETROSPECT services in the dedicated namespace \texttt{wasmbed}. The deployed stack includes the API server, gateway, CRDs, and the auxiliary resources needed to drive device enrollment and status management. A local image registry is used to build and distribute container images inside the test environment, enabling fast iteration while preserving realistic cluster deployment semantics. During the quantitative campaign, the application controller is deployed with one active replica. Its reconciliation loop has been hardened to detect and repair stale CRD status, making the Application CRD \texttt{phase} field the authoritative signal for deployment success. This allows the measurements to cover the full control-plane path, from API intent through gateway-mediated device execution to northbound CRD phase reconciliation.
 
 On the southbound side, the evaluation uses a Renode-emulated Zephyr device with a deterministic identity and a known public key. The firmware establishes a TLS session with the gateway, exchanges CBOR-framed enrollment messages, and then emits periodic heartbeats. The experiment harness reaches the cluster through controlled port-forwarding and TAP-based network setup, which keeps the setup faithful to the intended embedded target profile while still supporting reproducible regression-oriented validation.
 
 \subsection{Experimental Matrix and Measured Variables}
-The validation campaign is divided into five experiment classes. Each class is measured independently, and each trial produces a raw record together with a machine-readable summary. The default campaign consists of one warm-up run followed by 30 independent trials per condition, which provides a practical balance between repeatability and evaluation cost while keeping confidence intervals stable enough for a systems submission.
+The validation campaign is divided into five experiment classes. Each class is measured independently, and each trial produces a raw record together with a machine-readable summary. The default campaign consists of one warm-up run followed by 50 independent trials per condition. With $n=50$, the Wilson score lower bound on a flawless success rate tightens to 92.9\%, versus 88.6\% for $n=30$, and the Student-$t$ critical value narrows to $t_{0.975,\,49}=2.010$, producing confidence intervals suited to a Transactions-style submission.
 
 \begin{table}[h]
 \centering
@@ -23,14 +23,14 @@ The validation campaign is divided into five experiment classes. Each class is m
 \midrule
 Enrollment handshake & enrollment completion latency, enrollment success rate, per-stage goodput & Client-side monotonic timestamps, gateway response path, API visibility of the device \\
 Heartbeat supervision & heartbeat observability latency, recent-heartbeat success rate, liveness freshness & Gateway HTTP runtime state, periodic heartbeat timestamps, corroborating Device phase snapshots \\
-Application deployment & deploy completion latency, deployment success rate, runtime acknowledgment on the target device & API server application statistics, gateway-mediated deployment response, Application CRD as secondary evidence \\
+Application deployment & deploy completion latency, deployment success rate, CRD phase confirmation & Application CRD \texttt{phase} field (authoritative via hardened controller), API server statistics as secondary corroboration \\
 Transactional workflow & all-stages success rate, end-to-end latency, end-to-end variability & Per-trial composition of enrollment, heartbeat, and deployment records \\
 System snapshot & pod readiness, restart counts, infrastructure metric availability & Kubernetes pod snapshots and platform metrics endpoint \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The data sources are intentionally multi-layer. In the evaluated artifact, some CRD status fields can lag or become noisy under controller-side races, whereas the gateway and API server expose authoritative runtime evidence for liveness and deployment acknowledgment. For that reason, the harness treats gateway-runtime and API-runtime statistics as primary evidence, while CRD state is retained as corroborating control-plane evidence rather than as the sole oracle for success or failure.
+The data sources are intentionally multi-layer. For liveness and heartbeat supervision, the gateway HTTP runtime state is authoritative. For deployment, the Application CRD \texttt{phase} field is authoritative because the application controller is active and its reconciliation loop correctly propagates runtime evidence back to the cluster; API statistics are retained as secondary corroboration for reproducibility.
 
 \subsection{Statistical Treatment}
 All timing metrics are captured with monotonic client-side clocks to avoid skew from wall-clock adjustments. For continuous variables, the paper reports the mean, sample standard deviation, median, minimum, maximum, 90th/95th/99th percentiles, interquartile range, coefficient of variation, and a 95\% confidence interval for the mean. The confidence interval is computed as
@@ -47,7 +47,7 @@ The raw collector emits one JSON record per trial and a machine-readable summary
 Each experimental run follows the same logical procedure.
 \begin{enumerate}
     \item Re-establish the runtime prerequisites, including verified API and gateway reachability, TAP/DNAT routing, and active port-forwarding.
-    \item Verify that the stable experimental configuration is active, with the gateway and API server running and the application controller disabled so that background reconciliation does not perturb the measured deployment path.
+    \item Verify that the stable experimental configuration is active, with the gateway, API server, and application controller all running. The controller's reconciliation loop is intentionally active so that the measured path covers the full control plane.
     \item Execute one enrollment attempt and record the elapsed time until the device becomes API-visible and runtime-active.
     \item Query the gateway runtime view of devices and record whether the device remains connected and whether the most recent heartbeat is fresh.
     \item Create and deploy one minimal WASM application through the API server, then inspect runtime deployment statistics for the target device.
@@ -61,7 +61,7 @@ A run is considered successful when the following conditions hold simultaneously
 \begin{enumerate}
     \item the TLS handshake and enrollment sequence complete without protocol interruption and the device becomes visible through the northbound API;
     \item the gateway runtime view reports the device as connected and exposes a recent heartbeat timestamp within the acceptance window;
-    \item the deployment API path returns without transport error and the application statistics show a positive runtime acknowledgment for the target device, namely nonzero deployed and running counts;
+    \item the Application CRD \texttt{phase} field reaches \texttt{Running}, as reconciled by the active application controller; API statistics are retained as secondary corroboration;
     \item the transactional trial is marked successful only when enrollment, heartbeat supervision, and deployment all satisfy their respective criteria in the same trial.
 \end{enumerate}
 

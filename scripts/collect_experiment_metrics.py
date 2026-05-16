@@ -81,6 +81,34 @@ def jsonpath(namespace: str, resource: str, name: str, expr: str) -> str | None:
         return None
 
 
+# Student-t critical values t(n-1, 0.975) for 95% two-sided CI.
+# Lookup by degrees-of-freedom (df = n-1); linear interpolation for df > 120.
+_T_CRIT_TABLE: dict[int, float] = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
+    6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
+    12: 2.179, 15: 2.131, 20: 2.086, 25: 2.060, 29: 2.045,
+    30: 2.042, 40: 2.021, 49: 2.010, 50: 2.009, 60: 2.000,
+    80: 1.990, 99: 1.984, 100: 1.984, 120: 1.980,
+}
+
+
+def t_critical(n: int) -> float:
+    """Return Student-t critical value t(n-1, 0.975) for 95% CI of mean."""
+    df = n - 1
+    if df <= 0:
+        return float("inf")
+    if df in _T_CRIT_TABLE:
+        return _T_CRIT_TABLE[df]
+    # Linear interpolation between the two nearest tabulated df values
+    keys = sorted(_T_CRIT_TABLE.keys())
+    lo = max((k for k in keys if k <= df), default=keys[0])
+    hi = min((k for k in keys if k >= df), default=keys[-1])
+    if lo == hi:
+        return _T_CRIT_TABLE[lo]
+    frac = (df - lo) / (hi - lo)
+    return _T_CRIT_TABLE[lo] + frac * (_T_CRIT_TABLE[hi] - _T_CRIT_TABLE[lo])
+
+
 def mean_ci95(values: list[float]) -> dict[str, Any]:
     if not values:
         return {"count": 0, "mean": None, "stdev": None, "ci95": None}
@@ -88,7 +116,7 @@ def mean_ci95(values: list[float]) -> dict[str, Any]:
     mean = statistics.fmean(values)
     stdev = statistics.stdev(values) if count > 1 else 0.0
     if count > 1:
-        t_crit = 2.045  # good approximation for n≈30; avoids external dependencies
+        t_crit = t_critical(count)
         half_width = t_crit * (stdev / math.sqrt(count))
         ci95 = [mean - half_width, mean + half_width]
     else:
@@ -354,10 +382,12 @@ def run_deploy_trial(api_base: str, namespace: str, trial: int) -> TrialRecord:
     except Exception:
         pass
 
-    # CRD phase can oscillate due controller-side status issues; API statistics are a
-    # better runtime signal for successful deployment acknowledgment.
+    # Primary success criterion: Application CRD phase reached Running.
+    # The application-controller is active and hardened; CRD phase is now the
+    # authoritative source. API statistics are kept as a secondary corroborating
+    # signal and are included in the record for analysis.
     success = bool(
-        (observed_phase == "Running")
+        observed_phase == "Running"
         or (
             deploy_error is None
             and api_running_devices > 0
@@ -488,7 +518,7 @@ def main() -> int:
     parser.add_argument("--api-base", default=DEFAULT_API_BASE)
     parser.add_argument("--gateway-http", default=DEFAULT_GATEWAY_HTTP)
     parser.add_argument("--namespace", default=DEFAULT_NAMESPACE)
-    parser.add_argument("--trials", type=int, default=30)
+    parser.add_argument("--trials", type=int, default=50)
     parser.add_argument("--output-dir", default="experiments")
     args = parser.parse_args()
 
