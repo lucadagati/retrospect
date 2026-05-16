@@ -204,7 +204,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Generate RETROSPECT paper figures")
     parser.add_argument(
         "--input",
-        default="../experiments/scalability_metrics_1778929086.json",
+        default="../experiments/scalability_metrics_1778938959.json",
         help="Path to experiment JSON relative to this script or absolute",
     )
     parser.add_argument("--output-dir", default="figures", help="Output directory for figures")
