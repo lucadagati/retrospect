@@ -1,26 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/wasmbed-tcp-bridge",
-    "crates/wasmbed-cert",
-    "crates/wasmbed-cert-tool",
-    "crates/wasmbed-gateway",
+    "crates/wasmbed-config",
     "crates/wasmbed-k8s-resource",
     "crates/wasmbed-k8s-resource-tool",
-    "crates/wasmbed-protocol",
-    "crates/wasmbed-protocol-tool",
     "crates/wasmbed-test-utils",
-    "crates/wasmbed-tls-utils",
     "crates/wasmbed-types",
-    "crates/wasmbed-wasm-runtime",
-    "crates/wasmbed-device-controller",
-    "crates/wasmbed-application-controller",
-    "crates/wasmbed-gateway-controller",
-    "crates/wasmbed-infrastructure",
-    "crates/wasmbed-api-server",
-    "crates/wasmbed-qemu-manager",
-    "crates/wasmbed-config",
-    "crates/wasmbed-edge-client",
 ]
 
 [workspace.package]
@@ -76,17 +61,7 @@ panic = "abort"
 [profile.release]
 panic = "abort"
 
-# Workspace dependencies to resolve version conflicts
-[workspace.dependencies]
-# TLS dependencies (for device-runtime)
-# Note: rustls 0.23 requires subtle ^2.5.0
-# embedded-tls 0.8 requires subtle <2.5, but we can test without TLS (TCP only)
-# ed25519-dalek 2.2 requires subtle ^2.3.0 (compatible with 2.5.0)
-embedded-tls = { git = "https://github.com/fratrung/embedded-tls.git", default-features = true }  # Fork with Ed25519 support and correct exports
-embedded-io = { version = "0.6", default-features = false }
-# Force compatible versions to resolve conflicts
-# Use subtle 2.5.0 for rustls 0.23 (ed25519-dalek 2.2 is compatible with ^2.3.0 which includes 2.5.0)
-subtle = { version = "2.5", default-features = false }
-ed25519-dalek = { version = "2.2", default-features = false }
-
-# Note: Removed patches for deprecated no_std components (wasmbed-device-runtime)
+# Note: workspace.dependencies for TLS/crypto removed together with the
+# OCRE control-plane crates (wasmbed-gateway, wasmbed-tls-utils, wasmbed-cert, …).
+# The remaining 5 crates (config, k8s-resource, k8s-resource-tool, test-utils, types)
+# do not share any common versioned dependency that needs workspace pinning.

@@ -756,12 +756,15 @@ Per usare credenziali diverse: modificare i valori, fare `ninja -C build`.
 - [x] Deploy WASM via Manager REST → MQTT → WAMR → risultato
 - [x] Test E2E `add(10,20)=30` verde
 
-### Da fare (Fase B — Cleanup)
+### Completato (Fase B — Cleanup)
 
-- [ ] Rimozione 13+ crates Rust legacy (`wasmbed-gateway`, `wasmbed-protocol`, ...)
-- [ ] Rimozione Dockerfile legacy, manifest K8s obsoleti
-- [ ] Rimozione `ocre-workspace/` (sostituita da embed-proplet)
-- [ ] Pulizia namespace K3s `wasmbed` (6 deployment legacy ancora attivi)
+- [x] Rimossi 14 crates Rust legacy (gateway, protocol, tls-utils, cert, infrastructure, qemu-manager, api-server, edge-client, …)
+- [x] `wasmbed-qemu-manager` archiviato in `archive/wasmbed-qemu-manager/` (non eliminato, vedi §10.1)
+- [x] Rimossi Dockerfile.gateway, .gateway-controller, .device-controller, .application-controller
+- [x] Rimossi script legacy (generate-gateway-certs.sh, verify-tls-and-deploy.sh, deploy-k3s.sh, cleanup-k3s.sh, test_enrollment.py)
+- [x] Rimossi CRD K8s (application, device, gateway) e manifest deployment legacy
+- [x] Namespace K3s `wasmbed` eliminato (6 deployment rimossi)
+- [x] Workspace Cargo ridotto a 5 crates: config, k8s-resource, k8s-resource-tool, test-utils, types
 
 ### Da fare (Fase C — Documentazione)
 
@@ -769,9 +772,57 @@ Per usare credenziali diverse: modificare i valori, fare `ninja -C build`.
 - [ ] Tabella completa rimosso→sostituito con riferimenti commit
 
 ### Aperto (Fase D — Emulazione MCU)
-∏
+
 - [ ] Research: QEMU vs Renode per STM32U5 / Cortex-M33 (b_u585i_iot02a)
-- [ ] Portare embed-proplet su board MCU reale o emulata
+- [ ] Portare embed-proplet su board MCU reale o emulata (vedi §10.1 per guida)
+
+### 10.1 — Perché `wasmbed-qemu-manager` è archiviato e non eliminato
+
+`wasmbed-qemu-manager` (ora in `archive/wasmbed-qemu-manager/`) era il **Renode Orchestrator** dell'architettura OCRE. Faceva queste cose:
+
+1. Avviava il container Docker `antmicro/renode:nightly` con monitor TCP
+2. Inviava comandi Renode via TCP per caricare il firmware `.elf` sulla board emulata
+3. Gestiva un `TcpBridge` (proxy TCP) tra Renode e il `wasmbed-gateway` (TLS+CBOR)
+4. Registrava la board al gateway (`POST /api/v1/board/register`)
+5. Traduceva indirizzi ClusterIP K8s → NodePort (perché Renode girava su host network)
+
+**Perché non serve più con Propeller**: tutta questa logica era al servizio dell'architettura OCRE. Il gateway TLS+CBOR è eliminato; `embed-proplet` si connette direttamente al broker MQTT Magistrala. Non c'è più né gateway da registrare né TcpBridge da gestire.
+
+**Perché è archiviato e non eliminato**: contiene informazioni preziose per **Fase D** (emulazione MCU reale):
+
+- La lista `McuType` con i nomi delle piattaforme Renode (`stm32f7_discovery-bb`, `frdm_k64f`, `esp32`, `nrf52840dk_nrf52840`, ecc.)
+- I template `.resc` (Renode Script) che configura per ogni MCU (caricamento ELF, configurazione rete TAP)
+- La logica di attesa boot e connessione monitor TCP
+
+#### Come dovrà funzionare Fase D (emulazione con Propeller)
+
+Il `wasmbed-qemu-manager` **non è riutilizzabile direttamente** per Propeller perché è cablato sul vecchio gateway. Quello che serve per far girare `embed-proplet` su un MCU emulato con Propeller è un tool molto più semplice:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Nuovo launcher MCU (script o tool Go/Python)           │
+│                                                          │
+│  1. Compila embed-proplet per la board target            │
+│     cmake -DBOARD=b_u585i_iot02a ...                    │
+│                                                          │
+│  2. Avvia Renode con il .resc della board               │
+│     renode --plain script.resc                          │
+│     (carica zephyr.elf, configura TAP networking)       │
+│                                                          │
+│  3. Configura TAP per connettere la rete emulata        │
+│     al broker Magistrala sull'host                      │
+│     (setup-renode-net.sh già presente in scripts/)      │
+│                                                          │
+│  4. Il firmware si connette a MQTT Magistrala           │
+│     esattamente come native_sim, ma su MCU emulato      │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Differenza chiave rispetto all'architettura OCRE**: non serve nessun TcpBridge né registrazione al gateway. Basta che la rete TAP del device emulato raggiunga l'host sulla porta 1883 (MQTT).
+
+Il file `scripts/setup-renode-net.sh` (già presente) configura il TAP e il routing NAT necessari.
+
+Come riferimento per i template `.resc` MCU e i nomi di piattaforma Renode, consultare `archive/wasmbed-qemu-manager/src/lib.rs` (funzione `renode_platform()` e generatore `.resc`).
 
 ### Nota sulla Dashboard
 
