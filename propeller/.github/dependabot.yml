@@ -1,0 +1,46 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "./.github/workflows"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+    groups:
+      gh-dependency:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "gomod"
+    directories:
+      - "./"
+      - "examples/fl-demo/aggregator"
+      - "examples/fl-demo/coordinator-http"
+      - "examples/fl-demo/local-data-store"
+      - "examples/fl-demo/model-registry"
+      - "examples/fl-demo"
+
+    schedule:
+      interval: "monthly"
+      day: "monday"
+    groups:
+      go-dependency:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "cargo"
+    directories:
+      - "proplet"
+      - "examples/attestation-test"
+      - "examples/http-client"
+      - "examples/http-server"
+      - "examples/plugin-auth"
+      - "examples/plugin-proxy"
+      - "examples/proplet-plugin-example"
+      - "examples/wasi-nn"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+    groups:
+      rs-dependencies:
+        patterns:
+          - "*"

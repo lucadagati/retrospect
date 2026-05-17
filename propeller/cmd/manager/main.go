@@ -1,0 +1,262 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"log/slog"
+	"net/url"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/absmach/magistrala/pkg/jaeger"
+	"github.com/absmach/magistrala/pkg/prometheus"
+	"github.com/absmach/magistrala/pkg/server"
+	httpserver "github.com/absmach/magistrala/pkg/server/http"
+	"github.com/absmach/propeller"
+	"github.com/absmach/propeller/manager"
+	"github.com/absmach/propeller/manager/api"
+	"github.com/absmach/propeller/manager/middleware"
+	"github.com/absmach/propeller/pkg/mqtt"
+	"github.com/absmach/propeller/pkg/plugin"
+	"github.com/absmach/propeller/pkg/scheduler"
+	"github.com/absmach/propeller/pkg/storage"
+	"github.com/caarlos0/env/v11"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
+	"golang.org/x/sync/errgroup"
+)
+
+const (
+	svcName         = "manager"
+	defHTTPPort     = "7070"
+	envPrefixHTTP   = "MANAGER_HTTP_"
+	configPath      = "config.toml"
+	shutdownTimeout = 30 * time.Second
+)
+
+type config struct {
+	LogLevel       string        `env:"MANAGER_LOG_LEVEL"           envDefault:"info"`
+	MQTTAddress    string        `env:"MANAGER_MQTT_ADDRESS"        envDefault:"tcp://localhost:1883"`
+	MQTTQoS        uint8         `env:"MANAGER_MQTT_QOS"            envDefault:"2"`
+	MQTTTimeout    time.Duration `env:"MANAGER_MQTT_TIMEOUT"        envDefault:"30s"`
+	DomainID       string        `env:"MANAGER_DOMAIN_ID"`
+	ChannelID      string        `env:"MANAGER_CHANNEL_ID"`
+	ClientID       string        `env:"MANAGER_CLIENT_ID"`
+	ClientKey      string        `env:"MANAGER_CLIENT_KEY"`
+	CoordinatorURL string        `env:"MANAGER_COORDINATOR_URL"`
+	Server         server.Config
+	OTELURL        url.URL `env:"MANAGER_OTEL_URL"`
+	TraceRatio     float64 `env:"MANAGER_TRACE_RATIO" envDefault:"0"`
+	PluginDir      string  `env:"MANAGER_PLUGIN_DIR"`
+}
+
+func main() {
+	exitCode := 0
+	defer func() {
+		if exitCode != 0 {
+			os.Exit(exitCode)
+		}
+	}()
+
+	cfg := config{}
+	if err := env.Parse(&cfg); err != nil {
+		log.Printf("failed to load configuration : %s", err.Error())
+		exitCode = 1
+
+		return
+	}
+
+	if err := ensureManagerCredentials(&cfg); err != nil {
+		log.Printf("%s", err.Error())
+		exitCode = 1
+
+		return
+	}
+
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(cfg.LogLevel)); err != nil {
+		log.Printf("failed to parse log level: %s", err.Error())
+		exitCode = 1
+
+		return
+	}
+	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+	})
+	logger := slog.New(logHandler)
+	slog.SetDefault(logger)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+	g, ctx := errgroup.WithContext(ctx)
+
+	var tp trace.TracerProvider
+	switch cfg.OTELURL {
+	case url.URL{}:
+		tp = noop.NewTracerProvider()
+	default:
+		sdktp, err := jaeger.NewProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
+		if err != nil {
+			logger.Error("failed to initialize opentelemetry", slog.String("error", err.Error()))
+			exitCode = 1
+
+			return
+		}
+		defer func() {
+			if err := sdktp.Shutdown(ctx); err != nil {
+				logger.Error("error shutting down tracer provider", slog.Any("error", err))
+			}
+		}()
+		tp = sdktp
+	}
+	tracer := tp.Tracer(svcName)
+
+	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.ClientID, cfg.ClientID, cfg.ClientKey, cfg.DomainID, cfg.ChannelID, cfg.MQTTTimeout, logger)
+	if err != nil {
+		logger.Error("failed to initialize mqtt pubsub", slog.String("error", err.Error()))
+		exitCode = 1
+
+		return
+	}
+
+	storageCfg := storage.Config{}
+	if err := env.Parse(&storageCfg); err != nil {
+		logger.Error("failed to load storage configuration", slog.String("error", err.Error()))
+		exitCode = 1
+
+		return
+	}
+
+	repos, err := storage.NewRepositories(storageCfg)
+	if err != nil {
+		logger.Error("failed to initialize storage", slog.String("error", err.Error()))
+		exitCode = 1
+
+		return
+	}
+	if repos.Closer != nil {
+		defer func() {
+			if err := repos.Closer.Close(); err != nil {
+				logger.Error("database close error", slog.Any("error", err))
+			}
+		}()
+	}
+
+	pluginRegistry, err := plugin.LoadDirectory(ctx, cfg.PluginDir, logger)
+	if err != nil {
+		logger.Error("failed to load plugins", slog.String("error", err.Error()))
+		exitCode = 1
+
+		return
+	}
+	defer func() {
+		if err := pluginRegistry.Close(context.Background()); err != nil {
+			logger.Error("plugin registry close error", slog.Any("error", err))
+		}
+	}()
+
+	svc, cronScheduler, workflowCoordinator := manager.NewService(
+		repos,
+		scheduler.NewRoundRobin(),
+		mqttPubSub,
+		cfg.DomainID,
+		cfg.ChannelID,
+		cfg.CoordinatorURL,
+		logger,
+		pluginRegistry,
+	)
+	svc = middleware.Plugin(pluginRegistry, logger, svc)
+	svc = middleware.Logging(logger, svc)
+	svc = middleware.Tracing(tracer, svc)
+	counter, latency := prometheus.MakeMetrics(svcName, "api")
+	svc = middleware.Metrics(counter, latency, svc)
+	// Wire the fully-wrapped service back into cron and workflow coordinator so
+	// that cron- and workflow-triggered StartTask calls flow through the full
+	// middleware chain (plugin authorize, logging, tracing, metrics).
+	cronScheduler.SetService(svc)
+	workflowCoordinator.SetService(svc)
+
+	if err := svc.Subscribe(ctx); err != nil {
+		logger.Error("failed to subscribe to manager channel", slog.String("error", err.Error()))
+		exitCode = 1
+
+		return
+	}
+
+	if err := svc.RecoverInterruptedTasks(ctx); err != nil {
+		logger.Warn("failed to recover interrupted tasks from previous run", slog.Any("error", err))
+	}
+
+	g.Go(func() error {
+		return cronScheduler.Start(ctx)
+	})
+
+	httpServerConfig := server.Config{Port: defHTTPPort}
+	if err := env.ParseWithOptions(&httpServerConfig, env.Options{Prefix: envPrefixHTTP}); err != nil {
+		logger.Error(fmt.Sprintf("failed to load %s HTTP server configuration : %s", svcName, err.Error()))
+		exitCode = 1
+
+		return
+	}
+
+	hs := httpserver.NewServer(ctx, stop, svcName, httpServerConfig, api.MakeHandler(svc, logger, cfg.ClientID), logger)
+
+	g.Go(func() error {
+		return hs.Start()
+	})
+
+	g.Go(func() error {
+		return server.StopSignalHandler(ctx, stop, logger, svcName, hs)
+	})
+
+	if err := g.Wait(); err != nil {
+		logger.Error(fmt.Sprintf("%s service exited with error: %s", svcName, err))
+		exitCode = 1
+	}
+
+	// Coordinated shutdown: use a fresh background context because the parent ctx
+	// is already cancelled (that's what triggered the shutdown). The timeout
+	// ensures we don't wait indefinitely for in-flight operations.
+	logger.Info("initiating graceful shutdown")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer shutdownCancel()
+
+	if err := svc.Shutdown(shutdownCtx); err != nil {
+		logger.Error("service shutdown error", slog.Any("error", err))
+	}
+
+	if err := mqttPubSub.Disconnect(shutdownCtx); err != nil {
+		logger.Error("mqtt disconnect error", slog.Any("error", err))
+	}
+
+	logger.Info("graceful shutdown complete")
+}
+
+func ensureManagerCredentials(cfg *config) error {
+	if cfg.DomainID == "" || cfg.ClientID == "" || cfg.ClientKey == "" || cfg.ChannelID == "" {
+		_, err := os.Stat(configPath)
+		switch err {
+		case nil:
+			conf, err := propeller.LoadConfig(configPath)
+			if err != nil {
+				return fmt.Errorf("failed to load TOML configuration: %w", err)
+			}
+			cfg.DomainID = conf.Manager.DomainID
+			cfg.ClientID = conf.Manager.ClientID
+			cfg.ClientKey = conf.Manager.ClientKey
+			cfg.ChannelID = conf.Manager.ChannelID
+		default:
+			return fmt.Errorf("failed to load TOML configuration: %w", err)
+		}
+	}
+
+	if cfg.DomainID == "" || cfg.ChannelID == "" || cfg.ClientID == "" || cfg.ClientKey == "" {
+		return errors.New("MANAGER_DOMAIN_ID, MANAGER_CHANNEL_ID, MANAGER_CLIENT_ID, and MANAGER_CLIENT_KEY must be set")
+	}
+
+	return nil
+}

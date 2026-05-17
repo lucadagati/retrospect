@@ -1,0 +1,438 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
+	"net/http"
+	"strings"
+
+	"github.com/absmach/magistrala"
+	apiutil "github.com/absmach/magistrala/api/http/util"
+	"github.com/absmach/propeller/manager"
+	"github.com/absmach/propeller/pkg/api"
+	"github.com/absmach/propeller/pkg/plugin"
+	"github.com/go-chi/chi/v5"
+	kithttp "github.com/go-kit/kit/transport/http"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+)
+
+const (
+	maxFileSize = 1024 * 1024 * 100
+	fileKey     = "file"
+	wasmMagic   = "\x00asm"
+)
+
+func MakeHandler(svc manager.Service, logger *slog.Logger, instanceID string) http.Handler {
+	mux := chi.NewRouter()
+	mux.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, maxFileSize)
+			next.ServeHTTP(w, r)
+		})
+	})
+	mux.Use(authContextMiddleware)
+
+	opts := []kithttp.ServerOption{
+		kithttp.ServerErrorEncoder(apiutil.LoggingErrorEncoder(logger, api.EncodeError)),
+	}
+
+	mux.Route("/proplets", func(r chi.Router) {
+		r.Get("/", otelhttp.NewHandler(kithttp.NewServer(
+			listPropletsEndpoint(svc),
+			decodeListEntityReq(propletStatusFilter),
+			api.EncodeResponse,
+			opts...,
+		), "list-proplets").ServeHTTP)
+		r.Route("/{propletID}", func(r chi.Router) {
+			r.Get("/", otelhttp.NewHandler(kithttp.NewServer(
+				getPropletEndpoint(svc),
+				decodeEntityReq("propletID"),
+				api.EncodeResponse,
+				opts...,
+			), "get-proplet").ServeHTTP)
+			r.Delete("/", otelhttp.NewHandler(kithttp.NewServer(
+				deletePropletEndpoint(svc),
+				decodeEntityReq("propletID"),
+				api.EncodeResponse,
+				opts...,
+			), "delete-proplet").ServeHTTP)
+			r.Get("/sdf", otelhttp.NewHandler(kithttp.NewServer(
+				getPropletSDFEndpoint(svc),
+				decodeEntityReq("propletID"),
+				api.EncodeResponse,
+				opts...,
+			), "get-proplet-sdf").ServeHTTP)
+			r.Get("/metrics", otelhttp.NewHandler(kithttp.NewServer(
+				getPropletMetricsEndpoint(svc),
+				decodeMetricsReq("propletID"),
+				api.EncodeResponse,
+				opts...,
+			), "get-proplet-metrics").ServeHTTP)
+			r.Get("/alive-history", otelhttp.NewHandler(kithttp.NewServer(
+				getPropletAliveHistoryEndpoint(svc),
+				decodeMetricsReq("propletID"),
+				api.EncodeResponse,
+				opts...,
+			), "get-proplet-alive-history").ServeHTTP)
+		})
+	})
+
+	mux.Route("/tasks", func(r chi.Router) {
+		r.Post("/", otelhttp.NewHandler(kithttp.NewServer(
+			createTaskEndpoint(svc),
+			decodeTaskReq,
+			api.EncodeResponse,
+			opts...,
+		), "create-task").ServeHTTP)
+		r.Get("/", otelhttp.NewHandler(kithttp.NewServer(
+			listTasksEndpoint(svc),
+			decodeListTasksReq,
+			api.EncodeResponse,
+			opts...,
+		), "list-tasks").ServeHTTP)
+		r.Route("/{taskID}", func(r chi.Router) {
+			r.Get("/", otelhttp.NewHandler(kithttp.NewServer(
+				getTaskEndpoint(svc),
+				decodeEntityReq("taskID"),
+				api.EncodeResponse,
+				opts...,
+			), "get-task").ServeHTTP)
+			r.Put("/", otelhttp.NewHandler(kithttp.NewServer(
+				updateTaskEndpoint(svc),
+				decodeUpdateTaskReq,
+				api.EncodeResponse,
+				opts...,
+			), "update-task").ServeHTTP)
+			r.Put("/upload", otelhttp.NewHandler(kithttp.NewServer(
+				updateTaskEndpoint(svc),
+				decodeUploadTaskFileReq,
+				api.EncodeResponse,
+				opts...,
+			), "upload-task-file").ServeHTTP)
+			r.Delete("/", otelhttp.NewHandler(kithttp.NewServer(
+				deleteTaskEndpoint(svc),
+				decodeEntityReq("taskID"),
+				api.EncodeResponse,
+				opts...,
+			), "delete-task").ServeHTTP)
+			r.Post("/start", otelhttp.NewHandler(kithttp.NewServer(
+				startTaskEndpoint(svc),
+				decodeEntityReq("taskID"),
+				api.EncodeResponse,
+				opts...,
+			), "start-task").ServeHTTP)
+			r.Post("/stop", otelhttp.NewHandler(kithttp.NewServer(
+				stopTaskEndpoint(svc),
+				decodeEntityReq("taskID"),
+				api.EncodeResponse,
+				opts...,
+			), "stop-task").ServeHTTP)
+			r.Get("/metrics", otelhttp.NewHandler(kithttp.NewServer(
+				getTaskMetricsEndpoint(svc),
+				decodeMetricsReq("taskID"),
+				api.EncodeResponse,
+				opts...,
+			), "get-task-metrics").ServeHTTP)
+			r.Get("/results", otelhttp.NewHandler(kithttp.NewServer(
+				getTaskResultsEndpoint(svc),
+				decodeEntityReq("taskID"),
+				api.EncodeResponse,
+				opts...,
+			), "get-task-results").ServeHTTP)
+		})
+	})
+
+	// Federated Learning API
+	// Manager acts as Orchestrator/Experiment Config (Step 1 in diagram)
+	// Also provides forwarding endpoints for compatibility
+	mux.Route("/fl", func(r chi.Router) {
+		// POST /experiments - Configure experiment with FL Coordinator (Step 1: Orchestrator → Coordinator)
+		r.Post("/experiments", otelhttp.NewHandler(kithttp.NewServer(
+			configureExperimentEndpoint(svc),
+			decodeExperimentConfigReq,
+			api.EncodeResponse,
+			opts...,
+		), "configure-experiment").ServeHTTP)
+
+		// GET /task - Forward task request to FL Coordinator
+		//
+		// IMPORTANT: Clients MUST call FL Coordinator directly (Step 3 in workflow diagram)
+		// This endpoint exists ONLY for compatibility/MQTT forwarding scenarios
+		//
+		// Correct client flow: Client → FL Coordinator (GET /task)
+		// NOT: Client → Manager → FL Coordinator
+		r.Get("/task", otelhttp.NewHandler(kithttp.NewServer(
+			getFLTaskEndpoint(svc),
+			decodeFLTaskReq,
+			api.EncodeResponse,
+			opts...,
+		), "get-fl-task").ServeHTTP)
+
+		// POST /update - Forward update to FL Coordinator
+		//
+		// IMPORTANT: Clients MUST call FL Coordinator directly (Step 7 in workflow diagram)
+		// This endpoint exists ONLY for compatibility/MQTT forwarding scenarios
+		// Manager does NOT aggregate - only forwards
+		//
+		// Correct client flow: Client → FL Coordinator (POST /update)
+		// NOT: Client → Manager → FL Coordinator
+		r.Post("/update", otelhttp.NewHandler(kithttp.NewServer(
+			postFLUpdateEndpoint(svc),
+			decodeFLUpdateReq,
+			api.EncodeResponse,
+			opts...,
+		), "post-fl-update").ServeHTTP)
+
+		// POST /update_cbor - Forward CBOR update to FL Coordinator
+		//
+		// IMPORTANT: Clients MUST call FL Coordinator directly (Step 7 in workflow diagram)
+		// This endpoint exists ONLY for compatibility/MQTT forwarding scenarios
+		//
+		// Correct client flow: Client → FL Coordinator (POST /update_cbor)
+		// NOT: Client → Manager → FL Coordinator
+		r.Post("/update_cbor", otelhttp.NewHandler(kithttp.NewServer(
+			postFLUpdateCBOREndpoint(svc),
+			decodeFLUpdateCBORReq,
+			api.EncodeResponse,
+			opts...,
+		), "post-fl-update-cbor").ServeHTTP)
+
+		// GET /rounds/{round_id}/complete - Forward round status request to FL Coordinator
+		r.Get("/rounds/{round_id}/complete", otelhttp.NewHandler(kithttp.NewServer(
+			getRoundStatusEndpoint(svc),
+			decodeRoundStatusReq,
+			api.EncodeResponse,
+			opts...,
+		), "get-round-status").ServeHTTP)
+	})
+
+	mux.Post("/workflows", otelhttp.NewHandler(kithttp.NewServer(
+		createWorkflowEndpoint(svc),
+		decodeWorkflowReq,
+		api.EncodeResponse,
+		opts...,
+	), "create-workflow").ServeHTTP)
+
+	mux.Route("/jobs", func(r chi.Router) {
+		r.Post("/", otelhttp.NewHandler(kithttp.NewServer(
+			createJobEndpoint(svc),
+			decodeJobReq,
+			api.EncodeResponse,
+			opts...,
+		), "create-job").ServeHTTP)
+		r.Get("/", otelhttp.NewHandler(kithttp.NewServer(
+			listJobsEndpoint(svc),
+			decodeListEntityReq(jobStatusFilter),
+			api.EncodeResponse,
+			opts...,
+		), "list-jobs").ServeHTTP)
+		r.Route("/{jobID}", func(r chi.Router) {
+			r.Get("/", otelhttp.NewHandler(kithttp.NewServer(
+				getJobEndpoint(svc),
+				decodeEntityReq("jobID"),
+				api.EncodeResponse,
+				opts...,
+			), "get-job").ServeHTTP)
+			r.Post("/start", otelhttp.NewHandler(kithttp.NewServer(
+				startJobEndpoint(svc),
+				decodeEntityReq("jobID"),
+				api.EncodeResponse,
+				opts...,
+			), "start-job").ServeHTTP)
+			r.Post("/stop", otelhttp.NewHandler(kithttp.NewServer(
+				stopJobEndpoint(svc),
+				decodeEntityReq("jobID"),
+				api.EncodeResponse,
+				opts...,
+			), "stop-job").ServeHTTP)
+		})
+	})
+
+	mux.Get("/health", magistrala.Health("manager", instanceID))
+	mux.Handle("/metrics", promhttp.Handler())
+
+	return mux
+}
+
+func decodeEntityReq(key string) kithttp.DecodeRequestFunc {
+	return func(_ context.Context, r *http.Request) (any, error) {
+		return entityReq{
+			id: chi.URLParam(r, key),
+		}, nil
+	}
+}
+
+func decodeTaskReq(_ context.Context, r *http.Request) (any, error) {
+	if !strings.Contains(r.Header.Get("Content-Type"), api.ContentType) {
+		return nil, errors.Join(apiutil.ErrValidation, apiutil.ErrUnsupportedContentType)
+	}
+
+	var req taskReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, errors.Join(err, apiutil.ErrValidation)
+	}
+
+	return req, nil
+}
+
+func decodeUploadTaskFileReq(_ context.Context, r *http.Request) (any, error) {
+	var req taskReq
+	if err := r.ParseMultipartForm(maxFileSize); err != nil {
+		return nil, err
+	}
+	file, header, err := r.FormFile(fileKey)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	if !strings.HasSuffix(header.Filename, ".wasm") {
+		return nil, errors.Join(apiutil.ErrValidation, errors.New("invalid file extension"))
+	}
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) < 4 || string(data[:4]) != wasmMagic {
+		return nil, errors.Join(apiutil.ErrValidation, errors.New("invalid WASM file: missing magic bytes"))
+	}
+	req.File = data
+	req.ID = chi.URLParam(r, "taskID")
+
+	return req, nil
+}
+
+func decodeUpdateTaskReq(_ context.Context, r *http.Request) (any, error) {
+	if !strings.Contains(r.Header.Get("Content-Type"), api.ContentType) {
+		return nil, errors.Join(apiutil.ErrValidation, apiutil.ErrUnsupportedContentType)
+	}
+	var req taskReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, errors.Join(err, apiutil.ErrValidation)
+	}
+	req.ID = chi.URLParam(r, "taskID")
+
+	return req, nil
+}
+
+func decodeListEntityReq(statusFilter listEntityStatus) kithttp.DecodeRequestFunc {
+	return func(_ context.Context, r *http.Request) (any, error) {
+		o, err := apiutil.ReadNumQuery[uint64](r, api.OffsetKey, api.DefOffset)
+		if err != nil {
+			return nil, errors.Join(apiutil.ErrValidation, err)
+		}
+
+		l, err := apiutil.ReadNumQuery[uint64](r, api.LimitKey, api.DefLimit)
+		if err != nil {
+			return nil, errors.Join(apiutil.ErrValidation, err)
+		}
+
+		s, err := apiutil.ReadStringQuery(r, "status", "")
+		if err != nil {
+			return nil, errors.Join(apiutil.ErrValidation, err)
+		}
+
+		return listEntityReq{
+			offset:       o,
+			limit:        l,
+			status:       s,
+			statusFilter: statusFilter,
+		}, nil
+	}
+}
+
+func decodeListTasksReq(_ context.Context, r *http.Request) (any, error) {
+	o, err := apiutil.ReadNumQuery[uint64](r, api.OffsetKey, api.DefOffset)
+	if err != nil {
+		return nil, errors.Join(apiutil.ErrValidation, err)
+	}
+
+	l, err := apiutil.ReadNumQuery[uint64](r, api.LimitKey, api.DefLimit)
+	if err != nil {
+		return nil, errors.Join(apiutil.ErrValidation, err)
+	}
+
+	meta, err := apiutil.ReadMetadataQuery(r, api.MetadataKey, nil)
+	if err != nil {
+		return nil, errors.Join(apiutil.ErrValidation, err)
+	}
+
+	return listTasksReq{
+		offset:   o,
+		limit:    l,
+		metadata: meta,
+	}, nil
+}
+
+func decodeMetricsReq(key string) kithttp.DecodeRequestFunc {
+	return func(_ context.Context, r *http.Request) (any, error) {
+		o, err := apiutil.ReadNumQuery[uint64](r, api.OffsetKey, api.DefOffset)
+		if err != nil {
+			return nil, errors.Join(apiutil.ErrValidation, err)
+		}
+
+		l, err := apiutil.ReadNumQuery[uint64](r, api.LimitKey, api.DefLimit)
+		if err != nil {
+			return nil, errors.Join(apiutil.ErrValidation, err)
+		}
+
+		return metricsReq{
+			id:     chi.URLParam(r, key),
+			offset: o,
+			limit:  l,
+		}, nil
+	}
+}
+
+func decodeWorkflowReq(_ context.Context, r *http.Request) (any, error) {
+	if !strings.Contains(r.Header.Get("Content-Type"), api.ContentType) {
+		return nil, errors.Join(apiutil.ErrValidation, apiutil.ErrUnsupportedContentType)
+	}
+
+	var req workflowReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, errors.Join(err, apiutil.ErrValidation)
+	}
+
+	return req, nil
+}
+
+// authContextMiddleware populates AuthContext from request headers.
+//
+// SECURITY: X-User-Id is accepted as-is from the client and is NOT authenticated.
+// The manager MUST sit behind a trusted reverse proxy that validates the caller and
+// sets (or strips and re-sets) X-User-Id. Deploying the manager without such a proxy
+// allows any client to impersonate any user identity, bypassing plugin authorization.
+// Plugin logic that enforces ownership must only be used in deployments with a
+// validating authenticating proxy in front.
+func authContextMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Header.Get("X-User-Id")
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if userID != "" || token != "" {
+			ctx := plugin.ContextWithAuth(r.Context(), plugin.AuthContext{
+				UserID: userID,
+				Token:  token,
+			})
+			r = r.WithContext(ctx)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func decodeJobReq(_ context.Context, r *http.Request) (any, error) {
+	if !strings.Contains(r.Header.Get("Content-Type"), api.ContentType) {
+		return nil, errors.Join(apiutil.ErrValidation, apiutil.ErrUnsupportedContentType)
+	}
+
+	var req jobReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, errors.Join(err, apiutil.ErrValidation)
+	}
+
+	return req, nil
+}

@@ -1,0 +1,22 @@
+dir: '{{.InterfaceDirRelative}}/mocks'
+pkgname: mocks
+template: testify
+template-data:
+  unroll-variadic: true
+filename: "{{snakecase .InterfaceName}}.go"
+packages:
+  github.com/absmach/propeller/manager:
+    interfaces:
+      Service: {}
+  github.com/absmach/propeller/pkg/mqtt:
+    interfaces:
+      PubSub: {}
+  github.com/absmach/propeller/pkg/scheduler:
+    interfaces:
+      Scheduler: {}
+  github.com/absmach/propeller/pkg/storage:
+    interfaces:
+      MetricsRepository: {}
+      PropletRepository: {}
+      TaskPropletRepository: {}
+      TaskRepository: {}

@@ -89,3 +89,13 @@ zephyr-workspace/
 
 # WAMR (cloned separately)
 wamr/
+
+# Zephyr workspace bind-mount (ocre-workspace/zephyr, mounted at runtime via /etc/fstab)
+propeller-ws/
+
+# Propeller embed-proplet build artifacts
+propeller/embed-proplet/build/
+
+# ocre-workspace submodules (cloned separately)
+ocre-workspace/zephyr/
+ocre-workspace/ocre-runtime/

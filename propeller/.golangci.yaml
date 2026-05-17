@@ -1,0 +1,61 @@
+version: "2"
+linters:
+  default: all
+  disable:
+    - cyclop
+    - depguard
+    - dupl
+    - err113
+    - exhaustruct
+    - funlen
+    - gochecknoglobals
+    - gosec
+    - interfacebloat
+    - ireturn
+    - lll
+    - mnd
+    - musttag
+    - noctx
+    - nonamedreturns
+    - revive
+    - tagalign
+    - tagliatelle
+    - varnamelen
+    - wrapcheck
+    - wsl
+    - wsl_v5
+    - noinlineerr
+  settings:
+    gocritic:
+      enable-all: true
+      disabled-checks:
+        - hugeParam
+        - whyNoLint
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - examples/
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 100
+  max-same-issues: 100
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - examples/
+      - third_party$
+      - builtin$
+      - examples$

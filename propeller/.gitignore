@@ -1,0 +1,32 @@
+# Propellerd Build
+build
+config.toml
+
+# Rust
+target/
+**/*.rs.bk
+*.pdb
+
+# Zephyr
+embed-proplet/.cache
+embed-proplet/.west
+embed-proplet/bootloader
+embed-proplet/modules
+embed-proplet/tools
+embed-proplet/zephyr
+
+# ML-WASM example generated files
+examples/ml-wasm/mymodel.pkl
+examples/ml-wasm/mymodel.wasm
+
+# Ignore env backups
+*.env.bak
+*.bak
+.env.*.bak
+
+
+# Ignore Openbao data directory as it contains runtime-generated data
+docker/addons/certs/openbao/
+
+# Ignore SeaweedFS data directory as it contains runtime-generated data
+docker/data/*

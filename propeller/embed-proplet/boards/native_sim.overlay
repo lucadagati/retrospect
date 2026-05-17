@@ -1,0 +1,5 @@
+/*
+ * native_sim/native/64 overlay for embed-proplet.
+ * NSOS networking requires no TAP or DTS changes.
+ * Settings are disabled so no flash/NVS partition is needed.
+ */

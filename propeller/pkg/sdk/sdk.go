@@ -1,0 +1,192 @@
+package sdk
+
+import (
+	"bytes"
+	"crypto/tls"
+	"fmt"
+	"io"
+	"net/http"
+
+	"github.com/absmach/propeller/pkg/proplet"
+	"github.com/absmach/propeller/pkg/sdf"
+	"github.com/absmach/propeller/pkg/task"
+)
+
+const CTJSON string = "application/json"
+
+type PageMetadata struct {
+	Offset   uint64        `json:"offset"`
+	Limit    uint64        `json:"limit"`
+	Metadata task.Metadata `json:"metadata,omitempty"`
+}
+
+type SDK interface {
+	// CreateTask creates a new task.
+	//
+	// example:
+	//  task := sdk.Task{
+	//    Name:	 "John Doe"
+	//  }
+	//  task, _ := sdk.CreateTask(task)
+	//  fmt.Println(task)
+	CreateTask(task Task) (Task, error)
+
+	// GetTask gets a task by id.
+	//
+	// example:
+	//  task, _ := sdk.GetTask("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
+	//  fmt.Println(task)
+	GetTask(id string) (Task, error)
+
+	// ListTasks lists tasks with optional metadata filtering.
+	//
+	// example:
+	//  taskPage, _ := sdk.ListTasks(sdk.PageMetadata{Offset: 0, Limit: 10})
+	//  fmt.Println(taskPage)
+	ListTasks(pm PageMetadata) (TaskPage, error)
+
+	// UpdateTask updates a task.
+	//
+	// example:
+	//  task := sdk.Task{
+	//    Name:	 "John Doe"
+	//  }
+	//  task, _ := sdk.UpdateTask(task)
+	//  fmt.Println(task)
+	UpdateTask(task Task) (Task, error)
+
+	// DeleteTask deletes a task.
+	//
+	// example:
+	//  task, _ := sdk.DeleteTask("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
+	//  fmt.Println(task)
+	DeleteTask(id string) error
+
+	// StartTask starts a task.
+	//
+	// example:
+	//  task, _ := sdk.StartTask("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
+	//  fmt.Println(task)
+	StartTask(id string) error
+
+	// StopTask stops a task.
+	//
+	// example:
+	//  task, _ := sdk.StopTask("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
+	//  fmt.Println(task)
+	StopTask(id string) error
+
+	// CreateJob creates a new job with multiple tasks.
+	//
+	// example:
+	//  req := sdk.JobRequest{
+	//    Name: "my-job",
+	//    Tasks: []sdk.Task{...},
+	//    ExecutionMode: "parallel",
+	//  }
+	//  job, _ := sdk.CreateJob(req)
+	CreateJob(req JobRequest) (JobResponse, error)
+
+	// GetJob gets a job by id.
+	//
+	// example:
+	//  job, _ := sdk.GetJob("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
+	GetJob(jobID string) (JobResponse, error)
+
+	// ListJobs lists jobs with optional status filter.
+	// Status can be "pending", "running", "completed", "failed", or "" (all).
+	//
+	// example:
+	//  jobPage, _ := sdk.ListJobs(0, 10, "")
+	//  jobPage, _ := sdk.ListJobs(0, 10, "running")
+	ListJobs(offset uint64, limit uint64, status string) (JobPage, error)
+
+	// StartJob starts a job.
+	//
+	// example:
+	//  _ := sdk.StartJob("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
+	StartJob(jobID string) error
+
+	// StopJob stops a job.
+	//
+	// example:
+	//  _ := sdk.StopJob("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
+	StopJob(jobID string) error
+
+	// GetPropletAliveHistory returns the paginated heartbeat history for a proplet.
+	//
+	// example:
+	//  page, _ := sdk.GetPropletAliveHistory("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040", 0, 10)
+	//  fmt.Println(page)
+	GetPropletAliveHistory(id string, offset, limit uint64) (proplet.PropletAliveHistoryPage, error)
+
+	// ListProplets returns a paginated list of proplets, optionally filtered by status.
+	//
+	// example:
+	//  page, _ := sdk.ListProplets(0, 10, "")
+	//  fmt.Println(page)
+	ListProplets(offset, limit uint64, status string) (PropletPage, error)
+
+	// GetPropletSDF returns the SDF description of a proplet.
+	//
+	// example:
+	//  doc, _ := sdk.GetPropletSDF("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
+	//  fmt.Println(doc)
+	GetPropletSDF(id string) (sdf.Document, error)
+
+	// DeleteProplet deletes a proplet by id.
+	//
+	// example:
+	//  err := sdk.DeleteProplet("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
+	//  fmt.Println(err)
+	DeleteProplet(id string) error
+}
+
+type propSDK struct {
+	managerURL string
+	client     *http.Client
+}
+
+type Config struct {
+	ManagerURL      string
+	TLSVerification bool
+}
+
+func NewSDK(cfg Config) SDK {
+	return &propSDK{
+		managerURL: cfg.ManagerURL,
+		client: &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: !cfg.TLSVerification,
+				},
+			},
+		},
+	}
+}
+
+func (sdk *propSDK) processRequest(method, reqURL string, data []byte, expectedRespCode int) ([]byte, error) {
+	req, err := http.NewRequest(method, reqURL, bytes.NewReader(data))
+	if err != nil {
+		return []byte{}, err
+	}
+
+	req.Header.Add("Content-Type", CTJSON)
+
+	resp, err := sdk.client.Do(req)
+	if err != nil {
+		return []byte{}, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	if resp.StatusCode != expectedRespCode {
+		return []byte{}, fmt.Errorf("unexpected response code: %d", resp.StatusCode)
+	}
+
+	return body, nil
+}

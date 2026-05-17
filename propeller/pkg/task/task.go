@@ -1,0 +1,199 @@
+package task
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/absmach/propeller/pkg/proplet"
+)
+
+type FlexStrings []string
+
+func (f *FlexStrings) UnmarshalJSON(data []byte) error {
+	var raw []json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*f = make(FlexStrings, len(raw))
+	for i, r := range raw {
+		var s string
+		if err := json.Unmarshal(r, &s); err == nil {
+			(*f)[i] = s
+
+			continue
+		}
+		var n json.Number
+		if err := json.Unmarshal(r, &n); err != nil {
+			return fmt.Errorf("inputs[%d]: expected string or number", i)
+		}
+		(*f)[i] = n.String()
+	}
+
+	return nil
+}
+
+type State uint8
+
+const (
+	Pending State = iota
+	Scheduled
+	Running
+	Completed
+	Failed
+	Skipped
+	Interrupted
+)
+
+func (s State) IsTerminal() bool {
+	return s == Completed || s == Failed || s == Skipped || s == Interrupted
+}
+
+func (s State) String() string {
+	switch s {
+	case Pending:
+		return "Pending"
+	case Scheduled:
+		return "Scheduled"
+	case Running:
+		return "Running"
+	case Completed:
+		return "Completed"
+	case Failed:
+		return "Failed"
+	case Skipped:
+		return "Skipped"
+	case Interrupted:
+		return "Interrupted"
+	default:
+		return "Unknown"
+	}
+}
+
+type Mode string
+
+const (
+	ModeInfer Mode = "infer"
+	ModeTrain Mode = "train"
+)
+
+type TaskKind string
+
+const (
+	TaskKindStandard  TaskKind = "standard"
+	TaskKindFederated TaskKind = "federated"
+)
+
+const (
+	RunIfSuccess = "success"
+	RunIfFailure = "failure"
+)
+
+var ErrInvalidJobStatus = errors.New("invalid job status")
+
+type JobStatus uint8
+
+const (
+	PendingStatus JobStatus = iota
+	RunningStatus
+	CompletedStatus
+	FailedStatus
+)
+
+const (
+	JobStatusPending   = "pending"
+	JobStatusRunning   = "running"
+	JobStatusCompleted = "completed"
+	JobStatusFailed    = "failed"
+	JobStatusUnknown   = "unknown"
+)
+
+func (s JobStatus) String() string {
+	switch s {
+	case PendingStatus:
+		return JobStatusPending
+	case RunningStatus:
+		return JobStatusRunning
+	case CompletedStatus:
+		return JobStatusCompleted
+	case FailedStatus:
+		return JobStatusFailed
+	default:
+		return JobStatusUnknown
+	}
+}
+
+func ToJobStatus(status string) (JobStatus, error) {
+	switch status {
+	case JobStatusPending:
+		return PendingStatus, nil
+	case JobStatusRunning:
+		return RunningStatus, nil
+	case JobStatusCompleted:
+		return CompletedStatus, nil
+	case JobStatusFailed:
+		return FailedStatus, nil
+	default:
+		return JobStatus(0), ErrInvalidJobStatus
+	}
+}
+
+func (s JobStatus) State() State {
+	switch s {
+	case PendingStatus:
+		return Pending
+	case RunningStatus:
+		return Running
+	case CompletedStatus:
+		return Completed
+	case FailedStatus:
+		return Failed
+	default:
+		return Pending
+	}
+}
+
+type Metadata map[string]any
+
+type Task struct {
+	ID                string                     `json:"id"`
+	Name              string                     `json:"name"`
+	Kind              TaskKind                   `json:"kind,omitempty"`
+	State             State                      `json:"state"`
+	ImageURL          string                     `json:"image_url,omitempty"`
+	File              []byte                     `json:"file,omitempty"`
+	CLIArgs           []string                   `json:"cli_args"`
+	Inputs            FlexStrings                `json:"inputs,omitempty"`
+	Env               map[string]string          `json:"env,omitempty"`
+	Daemon            bool                       `json:"daemon"`
+	Encrypted         bool                       `json:"encrypted"`
+	KBSResourcePath   string                     `json:"kbs_resource_path,omitempty"`
+	PropletID         string                     `json:"proplet_id,omitempty"`
+	DependsOn         []string                   `json:"depends_on,omitempty"`
+	RunIf             string                     `json:"run_if,omitempty"`
+	WorkflowID        string                     `json:"workflow_id,omitempty"`
+	JobID             string                     `json:"job_id,omitempty"`
+	Results           any                        `json:"results,omitempty"`
+	Error             string                     `json:"error,omitempty"`
+	MonitoringProfile *proplet.MonitoringProfile `json:"monitoring_profile,omitempty"`
+	StartTime         time.Time                  `json:"start_time"`
+	FinishTime        time.Time                  `json:"finish_time"`
+	CreatedAt         time.Time                  `json:"created_at"`
+	UpdatedAt         time.Time                  `json:"updated_at"`
+	Mode              Mode                       `json:"mode,omitempty"`
+	Schedule          string                     `json:"schedule,omitempty"`
+	NextRun           time.Time                  `json:"next_run"`
+	IsRecurring       bool                       `json:"is_recurring,omitempty"`
+	Timezone          string                     `json:"timezone,omitempty"`
+	Broadcast         bool                       `json:"broadcast,omitempty"`
+	Priority          int                        `json:"priority,omitempty"`
+	Metadata          Metadata                   `json:"metadata,omitempty"`
+}
+
+type TaskPage struct {
+	Offset uint64 `json:"offset"`
+	Limit  uint64 `json:"limit"`
+	Total  uint64 `json:"total"`
+	Tasks  []Task `json:"tasks"`
+}

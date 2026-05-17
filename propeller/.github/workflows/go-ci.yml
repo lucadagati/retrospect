@@ -1,0 +1,50 @@
+name: Go Continuous Integration Pipeline
+
+on:
+  pull_request:
+    branches:
+      - main
+
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+jobs:
+  go-lint-and-build:
+    name: Go Lint and Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.26
+          cache-dependency-path: "go.sum"
+
+      - name: Run linters
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11.3
+          args: --config ./.golangci.yaml
+
+      - name: Install TinyGo
+        run: |
+          wget https://github.com/tinygo-org/tinygo/releases/download/v0.41.0/tinygo_0.41.0_amd64.deb
+          sudo dpkg -i tinygo_0.41.0_amd64.deb
+
+      - name: Install wabt
+        run: sudo apt-get install -y wabt
+
+      - name: Install wasmtools
+        run: cargo install --locked wasm-tools
+
+      - name: Add wasm32-wasip2 target
+        run: rustup target add wasm32-wasip2
+
+      - name: Build Artifacts
+        run: make all -j $(nproc)

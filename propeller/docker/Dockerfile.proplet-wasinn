@@ -1,0 +1,71 @@
+FROM rust:1.94.0 AS builder
+
+ARG VERSION
+ARG COMMIT
+ARG TIME
+
+WORKDIR /build
+
+RUN apt update && apt install -y clang libclang-dev
+
+COPY proplet/ ./
+
+RUN cargo build --release
+
+FROM ubuntu:25.10
+
+LABEL org.opencontainers.image.source=https://github.com/absmach/propeller
+LABEL org.opencontainers.image.licenses=Apache-2.0
+LABEL org.opencontainers.image.title="Propeller Proplet with wasi-nn"
+LABEL org.opencontainers.image.description="Propeller edge runtime with wasi-nn/OpenVINO support"
+
+ARG WASMTIME_VERSION=42.0.1
+ARG WASMTIME_SHA256=dd5253f3cb521bb094f9951c3d2c45c746b31e5723b07ce56f162ec9bab44d59
+ARG OPENVINO_VERSION=2025.4.0.20398.8fdad55727d
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        wget \
+        curl \
+        xz-utils \
+        libtbb12 && \
+    TARBALL="wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz" && \
+    wget -q "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/${TARBALL}" && \
+    echo "${WASMTIME_SHA256}  ${TARBALL}" | sha256sum -c - || { rm -f "${TARBALL}"; exit 1; } && \
+    tar -xf "${TARBALL}" && \
+    mv "wasmtime-v${WASMTIME_VERSION}-x86_64-linux/wasmtime" /usr/local/bin/ && \
+    rm -rf "wasmtime-v${WASMTIME_VERSION}-x86_64-linux" "${TARBALL}" && \
+    mkdir -p /opt/intel && \
+    cd /tmp && \
+    curl -L https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.4/linux/openvino_toolkit_ubuntu24_${OPENVINO_VERSION}_x86_64.tgz --output openvino.tgz && \
+    tar -xf openvino.tgz && \
+    mv openvino_toolkit_ubuntu24_${OPENVINO_VERSION}* /opt/intel/openvino_2025 && \
+    rm -f /tmp/openvino.tgz && \
+    apt-get remove -y wget curl xz-utils && \
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r proplet && \
+    useradd -r -g proplet -s /bin/false proplet
+
+COPY --from=builder /build/target/release/proplet /usr/local/bin/proplet
+
+RUN chown proplet:proplet /usr/local/bin/proplet && \
+    chmod +x /usr/local/bin/proplet && \
+    mkdir -p /home/proplet && \
+    chown proplet:proplet /home/proplet
+
+ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2025
+ENV LD_LIBRARY_PATH=/opt/intel/openvino_2025/runtime/lib/intel64
+ENV OpenVINO_DIR=/opt/intel/openvino_2025/runtime/cmake
+
+USER proplet
+
+WORKDIR /home/proplet
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/usr/local/bin/proplet", "--help"]
+
+ENTRYPOINT ["/usr/local/bin/proplet"]
