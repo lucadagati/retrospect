@@ -17,11 +17,19 @@ La differenza è sottile ma importante:
 | Claim | Stesso `.wasm`, ambienti diversi | Linguaggi diversi, stesso runtime |
 | Portabilità | Cloud (Spin) + Edge (WAMR/Zephyr) | Rust + Go → stesso shim Kubernetes |
 | Dipendenze host | Solo WASI standard | Spin host functions (KV, HTTP trigger) |
-| "Write once, run anywhere" | ✓ in senso stretto | ✗ — i binari sono legati al runtime Spin |
 
-**Perché `polyglot-guestbook` non è "write once, run anywhere":** i componenti usano l'SDK di Spin (`spin_key_value_open`, `wasi:http/incoming-handler`) che sono host functions specifiche del runtime Spin. WAMR su Zephyr espone solo WASI standard e non conosce queste funzioni — il caricamento fallirebbe con "import not satisfied". Per girare su WAMR bisognerebbe riscrivere i componenti senza Spin SDK, perdendo KV store e HTTP trigger nativi.
 
 **Cosa dimostriamo invece:** WebAssembly come **target di compilazione universale**. Rust e Go sono linguaggi con paradigmi, gestione della memoria e toolchain radicalmente diversi. Entrambi producono lo stesso formato `.wasm` (`wasm32-wasip1`), vengono impacchettati in un unico artefatto OCI, ed eseguiti dallo stesso `containerd-shim-spin` all'interno dello stesso pod Kubernetes — condividendo stato tramite il KV store built-in di Spin. Il runtime non sa né gli importa in quale linguaggio sia scritto ciascun componente.
+
+### Cosa fa l'applicazione
+
+`polyglot-guestbook` è un registro di messaggi (guestbook) distribuito su due microservizi HTTP:
+
+- **`edge-collector`** (Rust) — simula un nodo edge che raccoglie letture di sensori. Esposto su `/edge/...`. Accetta `POST /edge/add` con un testo libero nel body (es. una lettura di temperatura) e lo salva nel KV store con il prefisso `[edge]`. Con `GET /edge/list` restituisce tutti i messaggi registrati finora.
+
+- **`go-telemetry`** (Go) — simula un servizio cloud di analisi. Esposto su `/go/...`. Fa esattamente la stessa cosa ma prefissa i messaggi con `[go]`. Con `GET /go/list` legge dallo **stesso** KV store — e quindi vede anche i messaggi scritti da `edge-collector`.
+
+I due componenti non si chiamano mai direttamente: comunicano solo attraverso il KV store `"default"` di Spin, che è condiviso tra tutti i componenti dello stesso pod. È il runtime Spin a fornirlo come servizio built-in — nessun database esterno, nessun broker.
 
 ### La punchline dimostrabile con `curl`
 
