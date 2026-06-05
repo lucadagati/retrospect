@@ -1,0 +1,15 @@
+[package]
+name = "edge-collector"
+version = "0.1.0"
+edition = "2021"
+
+# cdylib is required by the Spin Wasm component model
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+spin-sdk = "5.2.0"
+anyhow = "1"
+
+# Isolate from the retrospect workspace (retrospect/Cargo.toml)
+[workspace]

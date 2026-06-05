@@ -1,5 +1,6 @@
 # Rust
 /target/
+**/target/
 **/*.rs.bk
 Cargo.lock
 
@@ -89,3 +90,9 @@ zephyr-workspace/
 
 # WAMR (cloned separately)
 wamr/
+
+# Spin runtime state (generated locally)
+**/.spin/
+
+# propeller-ws — repo Git separato (1.4GB), non è un submodule registrato
+propeller-ws/

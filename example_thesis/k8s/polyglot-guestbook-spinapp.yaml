@@ -1,0 +1,14 @@
+apiVersion: core.spinkube.dev/v1alpha1
+kind: SpinApp
+metadata:
+  name: polyglot-guestbook
+  namespace: poc-runtime
+spec:
+  image: "ghcr.io/antoniodev0/polyglot-guestbook:v2"
+  executor: containerd-shim-spin
+  replicas: 1
+  # spin-operator auto-creates a ClusterIP Service named "polyglot-guestbook" (port 80)
+  #
+  # The "default" Spin KV store is built-in (no external Redis needed).
+  # Both components (edge-collector and go-telemetry) share the same KV store
+  # within the same pod — the shared-state punchline of the polyglot demo.

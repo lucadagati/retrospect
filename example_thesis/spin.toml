@@ -1,0 +1,35 @@
+spin_manifest_version = 2
+
+[application]
+name = "polyglot-guestbook"
+version = "0.1.0"
+authors = ["antonio.ciliberto@smartme.io"]
+description = "Polyglot Wasm demo: Rust + Go microservices sharing Spin KV on SpinKube (mixed runtimes)"
+
+# ── Edge component (Rust) — simulates an edge node writing telemetry ──────────
+[[trigger.http]]
+route = "/edge/..."
+component = "edge-collector"
+
+[component.edge-collector]
+source = "edge-collector/target/wasm32-wasip1/release/edge_collector.wasm"
+key_value_stores = ["default"]
+
+[component.edge-collector.build]
+command = "cargo build --target wasm32-wasip1 --release"
+workdir = "edge-collector"
+watch = ["src/**/*.rs", "Cargo.toml"]
+
+# ── Go component (TinyGo 0.34 via Docker) — cloud analytics service ──────────
+[[trigger.http]]
+route = "/go/..."
+component = "go-telemetry"
+
+[component.go-telemetry]
+source = "go-telemetry/main.wasm"
+key_value_stores = ["default"]
+
+[component.go-telemetry.build]
+command = "bash build-tinygo.sh"
+workdir = "go-telemetry"
+watch = ["**/*.go", "go.mod"]

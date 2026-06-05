@@ -1,0 +1,49 @@
+# NOTE: Redis is NOT required for the polyglot-guestbook demo (which uses Spin KV store).
+# This manifest is kept as an example of deploying a stateful container service
+# alongside Wasm workloads on the same cluster — demonstrating mixed-runtime cooperation.
+#
+# To deploy Redis separately (e.g. for the hello-wasm POC):
+#   kubectl apply -f redis-deployment.yaml
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: poc-runtime
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      # No runtimeClassName → default runtime (containerd-shim-runc-v2)
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args: ["--save", "", "--appendonly", "no"]
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "64Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: poc-runtime
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379

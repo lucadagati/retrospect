@@ -1,0 +1,9 @@
+apiVersion: core.spinkube.dev/v1alpha1
+kind: SpinApp
+metadata:
+  name: hello-wasm
+  namespace: poc-runtime
+spec:
+  image: "ghcr.io/antoniodev0/hello-wasm:v1"
+  executor: containerd-shim-spin
+  replicas: 1
