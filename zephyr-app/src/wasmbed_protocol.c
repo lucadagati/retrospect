@@ -16,6 +16,23 @@
 #if defined(CONFIG_ARCH_POSIX)
 #include "cmdline.h"
 #include "soc.h"
+/* Forward-declare CLI arg pointers so functions below can reference them before
+ * native_add_command_line_opts is wired up via NATIVE_TASK. */
+static char *native_gateway_arg = NULL;
+static char *native_device_key_arg = NULL;
+/* High-resolution µs timer for native_sim: uses get_host_us_time() from Zephyr's
+ * native simulator timer model, which calls clock_gettime(CLOCK_MONOTONIC_RAW) on
+ * the host OS — bypasses Zephyr's POSIX shim (which returns simulated tick time). */
+extern uint64_t get_host_us_time(void);
+static inline uint64_t _proto_timing_us(void)
+{
+    return get_host_us_time();
+}
+#else
+static inline uint64_t _proto_timing_us(void)
+{
+    return (uint64_t)k_uptime_get_32() * 1000ULL;  /* ms → µs on real HW */
+}
 #endif
 
 LOG_MODULE_REGISTER(wasmbed_protocol, LOG_LEVEL_INF);
@@ -156,9 +173,35 @@ static int do_enrollment(void)
     uint32_t key_len;
     {
 #if defined(CONFIG_ARCH_POSIX)
-        /* native_sim: 0x20002000 is not guaranteed to be mapped; use static key */
-        LOG_WRN("native_sim: using static test key (0xAB * 32)");
-        memset(pub_key, 0xAB, sizeof(pub_key));
+        /* native_sim: use --device-key=HEX64 if provided for scalability experiments.
+         * Fall back to static 0xAB key when argument is absent (single-device testing). */
+        if (native_device_key_arg != NULL && strlen(native_device_key_arg) == 64U) {
+            bool key_ok = true;
+            for (int ki = 0; ki < 32 && key_ok; ki++) {
+                char c0 = native_device_key_arg[ki * 2];
+                char c1 = native_device_key_arg[ki * 2 + 1];
+                unsigned hi = (c0 >= '0' && c0 <= '9') ? (unsigned)(c0 - '0') :
+                              (c0 >= 'a' && c0 <= 'f') ? (unsigned)(c0 - 'a' + 10) :
+                              (c0 >= 'A' && c0 <= 'F') ? (unsigned)(c0 - 'A' + 10) : 255U;
+                unsigned lo = (c1 >= '0' && c1 <= '9') ? (unsigned)(c1 - '0') :
+                              (c1 >= 'a' && c1 <= 'f') ? (unsigned)(c1 - 'a' + 10) :
+                              (c1 >= 'A' && c1 <= 'F') ? (unsigned)(c1 - 'A' + 10) : 255U;
+                if (hi == 255U || lo == 255U) {
+                    key_ok = false;
+                } else {
+                    pub_key[ki] = (uint8_t)((hi << 4) | lo);
+                }
+            }
+            if (key_ok) {
+                LOG_INF("native_sim: device key from --device-key (byte[0]=0x%02x)", pub_key[0]);
+            } else {
+                LOG_WRN("native_sim: --device-key parse error, using static test key (0xAB*32)");
+                memset(pub_key, 0xAB, sizeof(pub_key));
+            }
+        } else {
+            LOG_WRN("native_sim: using static test key (0xAB * 32)");
+            memset(pub_key, 0xAB, sizeof(pub_key));
+        }
         key_len = sizeof(pub_key);
 #else
         volatile uint32_t *klen_ptr = (volatile uint32_t *)DEVICE_KEY_ADDR;
@@ -233,8 +276,8 @@ static int do_enrollment(void)
 }
 
 #if defined(CONFIG_ARCH_POSIX)
-/* Pointer filled by --gateway=HOST:PORT command-line option */
-static char *native_gateway_arg = NULL;
+/* native_gateway_arg and native_device_key_arg are declared near the top of this file,
+ * after the CONFIG_ARCH_POSIX includes, so do_enrollment() can reference them. */
 
 static struct args_struct_t wasmbed_cmdline_opts[] = {
     { .manual = false, .is_mandatory = false, .is_switch = false,
@@ -242,6 +285,11 @@ static struct args_struct_t wasmbed_cmdline_opts[] = {
       .dest = (void *)&native_gateway_arg,
       .call_when_found = NULL,
       .descript = "Wasmbed gateway endpoint (host:port)" },
+    { .manual = false, .is_mandatory = false, .is_switch = false,
+      .option = "device-key", .name = "HEX64", .type = 's',
+      .dest = (void *)&native_device_key_arg,
+      .call_when_found = NULL,
+      .descript = "32-byte device public key as 64 hex chars (scalability experiments)" },
     ARG_TABLE_ENDMARKER
 };
 
@@ -364,8 +412,14 @@ int wasmbed_protocol_init(void)
 }
 
 /* Max WASM module size we accept (copy to static buffer per WAMR).
- * 16 KB: saves 2×32KB BSS vs 48KB; offset by WAMR_HEAP_SIZE increase to 128KB. */
+ * native_sim (CONFIG_ARCH_POSIX): 1 MB for size-sweep experiments — x86 BSS is cheap,
+ *   LittleFS overlay is 16 MB. NOT feasible on real MCU (STM32 LittleFS ~256 KB).
+ * ARM/STM32: 16 KB (Flash budget + LittleFS partition constraint). */
+#if defined(CONFIG_ARCH_POSIX)
+#define MAX_WASM_SIZE (1024 * 1024)
+#else
 #define MAX_WASM_SIZE (16 * 1024)
+#endif
 #define MAX_APP_ID_LEN 64
 
 static uint8_t wasm_copy_buf[MAX_WASM_SIZE];
@@ -442,6 +496,10 @@ static int cbor_read_bytes(const uint8_t **pp, const uint8_t *end, const uint8_t
     } else if (*p == 0x59 && p + 3 <= end) {
         len = (uint32_t)p[1] << 8 | p[2];
         start = p + 3;
+    } else if (*p == 0x5a && p + 5 <= end) {
+        /* 4-byte additional info: required for byte strings > 65535 bytes (e.g. 500 KB, 1 MB) */
+        len = (uint32_t)p[1] << 24 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 8 | p[4];
+        start = p + 5;
     } else {
         return -1;
     }
@@ -462,6 +520,10 @@ static const uint8_t *cbor_skip_one(const uint8_t *p, const uint8_t *end)
     if (*p >= 0x40 && *p <= 0x57) { return p + 1 + (*p - 0x40); }
     if (*p == 0x58 && p + 2 <= end) { return p + 2 + p[1]; }
     if (*p == 0x59 && p + 3 <= end) { return p + 3 + ((uint32_t)p[1]<<8|p[2]); }
+    if (*p == 0x5a && p + 5 <= end) {
+        uint32_t n = (uint32_t)p[1]<<24|(uint32_t)p[2]<<16|(uint32_t)p[3]<<8|p[4];
+        return p + 5 + n;
+    }
     if (*p == 0xf6 || *p == 0xf4 || *p == 0xf5) return p + 1;
     if (*p >= 0x00 && *p <= 0x17) return p + 1;
     if (*p == 0x18 && p + 2 <= end) return p + 2;
@@ -647,11 +709,19 @@ int wasmbed_protocol_recv_and_handle(int timeout_ms)
     /* Data is available: receive the complete frame (data is there so recv_frame won't block long) */
     static uint8_t frame_buf[MAX_WASM_SIZE + 128];
     uint32_t total_len = 0;
+    uint64_t t_transfer_start_us = _proto_timing_us();
     int ret = recv_frame(frame_buf, sizeof(frame_buf), &total_len, 5000);
     if (ret < 0 || total_len == 0) {
         LOG_WRN("recv_frame error - connection may be lost");
         gateway_connected = false;
         return -1;
+    }
+    uint64_t t_transfer_end_us = _proto_timing_us();
+    /* Log transfer timing only for deploy messages (0x85 0x05 after 4-byte length header) */
+    if (total_len > 6 && frame_buf[4] == 0x85 && frame_buf[5] == 0x05) {
+        LOG_INF("TIMING transfer_us=%llu frame_bytes=%u",
+                (unsigned long long)(t_transfer_end_us - t_transfer_start_us),
+                (unsigned)total_len);
     }
     return wasmbed_protocol_handle_message(frame_buf, total_len);
 }

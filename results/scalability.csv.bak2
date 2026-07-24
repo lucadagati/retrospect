@@ -1,0 +1,11 @@
+N,rep,enroll_total_s,deploy_total_s,enroll_success,deploy_success,enroll_errors,deploy_errors
+1,1,4.64,2.79,1,1,,
+1,2,5.76,1.51,1,1,,
+10,1,10.25,2.81,10,10,,
+10,2,9.32,2.76,10,10,,
+50,1,39.42,5.4,50,50,,
+50,2,37.63,5.37,50,50,,
+100,1,64.86,13.86,100,100,,
+100,2,66.62,27.6,100,100,,
+500,1,271.93,2000.5,500,180,,PARTIAL 180/500
+1000,1,678.286,,991,0,device-000000000000000000000000009a214c: phase=Unreachable; device-000000000000000000000000009a213b: phase=Unreachable; device-000000000000000000000000009a2112: phase=Unreachable; device-000000000000000000000000009a2135: phase=Unreachable; device-000000000000000000000000009a24ca: phase=Unreachable,enrollment incomplete

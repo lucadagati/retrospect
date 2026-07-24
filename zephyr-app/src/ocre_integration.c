@@ -14,12 +14,32 @@
 #include "ocre_integration.h"
 
 #include <zephyr/logging/log.h>
+#include <zephyr/kernel.h>
 #include <ocre/ocre.h>
 #include <fcntl.h>
 #include <string.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <errno.h>
+
+/* High-resolution timer: µs wall-clock time.
+ * On native_sim (CONFIG_ARCH_POSIX): use get_host_us_time() from Zephyr's native
+ * simulator timer model, which calls clock_gettime(CLOCK_MONOTONIC_RAW) on the
+ * host OS directly — bypasses Zephyr's POSIX shim that returns simulated tick time.
+ * On real HW: fall back to k_uptime_get_32() with ms→µs conversion (1ms resolution). */
+#if defined(CONFIG_ARCH_POSIX)
+/* Declared in zephyr/scripts/native_simulator/native/src/timer_model.c */
+extern uint64_t get_host_us_time(void);
+static inline uint64_t _timing_us(void)
+{
+    return get_host_us_time();
+}
+#else
+static inline uint64_t _timing_us(void)
+{
+    return (uint64_t)k_uptime_get_32() * 1000ULL;  /* ms → µs, 1ms resolution on HW */
+}
+#endif
 
 LOG_MODULE_REGISTER(ocre_integration, LOG_LEVEL_INF);
 
@@ -124,14 +144,20 @@ ocre_handle_t ocre_integration_deploy(const uint8_t *wasm_bytes, uint32_t wasm_s
     char img_name[64];
     snprintf(img_name, sizeof(img_name), "app_%u.wasm", next_handle);
 
+    /* --- Phase 1: LittleFS write --- */
+    uint64_t t_lfs_start = _timing_us();
     int ret = write_wasm_image(img_name, wasm_bytes, wasm_size);
+    uint64_t t_lfs_end = _timing_us();
     if (ret != 0) {
         LOG_ERR("Failed to write WASM image: %d", ret);
         return OCRE_INVALID_HANDLE;
     }
+    LOG_INF("TIMING lfs_write_us=%llu wasm_bytes=%u",
+            (unsigned long long)(t_lfs_end - t_lfs_start), (unsigned)wasm_size);
 
+    /* --- Phase 2: WAMR load (ocre_context_create_container) --- */
     LOG_INF("Creating OCRE container from %s (%u bytes)", img_name, wasm_size);
-
+    uint64_t t_load_start = _timing_us();
     struct ocre_container *c = ocre_context_create_container(
         g_ocre_ctx,
         img_name,
@@ -140,18 +166,24 @@ ocre_handle_t ocre_integration_deploy(const uint8_t *wasm_bytes, uint32_t wasm_s
         true,   /* detached — run in background */
         NULL,   /* no extra args */
         -1, -1, -1);
+    uint64_t t_load_end = _timing_us();
 
     if (!c) {
         LOG_ERR("ocre_context_create_container failed");
         return OCRE_INVALID_HANDLE;
     }
+    LOG_INF("TIMING wamr_load_us=%llu", (unsigned long long)(t_load_end - t_load_start));
 
+    /* --- Phase 3: WAMR start (ocre_container_start) --- */
+    uint64_t t_start_start = _timing_us();
     ret = ocre_container_start(c);
+    uint64_t t_start_end = _timing_us();
     if (ret != 0) {
         LOG_ERR("ocre_container_start failed: %d", ret);
         (void)ocre_context_remove_container(g_ocre_ctx, c);
         return OCRE_INVALID_HANDLE;
     }
+    LOG_INF("TIMING wamr_start_us=%llu", (unsigned long long)(t_start_end - t_start_start));
 
     slots[slot].handle    = next_handle++;
     slots[slot].container = c;

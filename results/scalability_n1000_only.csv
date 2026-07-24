@@ -1,0 +1,2 @@
+N,rep,enroll_total_s,deploy_total_s,enroll_success,deploy_success,enroll_errors,deploy_errors
+1000,1,678.286,,991,0,device-000000000000000000000000009a214c: phase=Unreachable; device-000000000000000000000000009a213b: phase=Unreachable; device-000000000000000000000000009a2112: phase=Unreachable; device-000000000000000000000000009a2135: phase=Unreachable; device-000000000000000000000000009a24ca: phase=Unreachable,enrollment incomplete

@@ -1,0 +1,16 @@
+{
+  "enrollment": {
+    "n_trials": 100,
+    "success_rate": 1.0,
+    "mean_s": 4.322007191181183,
+    "std_s": 0.5456080464926888,
+    "timeouts": 0
+  },
+  "deploy": {
+    "n_trials": 100,
+    "success_rate": 1.0,
+    "mean_s": 1.6838054800033568,
+    "std_s": 0.4209096283888556,
+    "timeouts": 0
+  }
+}
