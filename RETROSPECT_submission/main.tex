@@ -1,0 +1,70 @@
+\documentclass[a4paper,fleqn]{cas-dc}
+
+\usepackage[utf8]{inputenc}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{siunitx}
+\usepackage{listings}
+\usepackage{tikz}
+\usepackage{enumitem}
+\usepackage{placeins}
+\usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric}
+\graphicspath{{figures/}{els-cas-templates/}}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=blue
+}
+
+\begin{document}
+\let\WriteBookmarks\relax
+% Relax float placement in two-column mode so figures stay near their sections.
+\setcounter{topnumber}{4}
+\setcounter{dbltopnumber}{3}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.8}
+\renewcommand{\textfraction}{0.08}
+\renewcommand{\floatpagefraction}{0.75}
+
+\shorttitle{Reproducible Edge-to-Cloud Research Infrastructure}
+\shortauthors{D'Agati et~al.}
+
+\title[mode=title]{\texorpdfstring{A Reproducible Edge-to-Cloud Infrastructure\\ for Sustainable Orchestration of Embedded WebAssembly IoT Devices}{A Reproducible Edge-to-Cloud Infrastructure for Sustainable Orchestration of Embedded WebAssembly IoT Devices}}
+
+\author[unime]{Luca D'Agati}\cormark[1]
+\ead{ldagati@unime.it}
+
+\author[unime]{Giuseppe Tricomi}
+\author[unime]{Fabio Orazio Mirto}
+\author[unime,cini]{Francesco Longo}
+\author[unime,cini]{Giovanni Merlino}
+\address[unime]{Department of Engineering, University of Messina, Messina, Italy}
+\address[cini]{CINI: National Interuniversity Consortium for Informatics, Rome, Italy}
+
+\cortext[1]{Corresponding author.}
+
+\input{sections/01_highlights}
+\input{sections/00_abstract}
+
+\ExplSyntaxOn
+\bool_gset_true:N \g_stm_nologo_bool
+\ExplSyntaxOff
+\maketitle
+
+\input{sections/02_introduction}
+\input{sections/03_related_work}
+\input{sections/04_problem_statement}
+\input{sections/05_architecture}
+\input{sections/06_protocol_lifecycle}
+\input{sections/07_implementation}
+\input{sections/08_methodology}
+\input{sections/10_discussion}
+\input{sections/13_conclusion}
+\input{sections/14_declarations}
+
+\FloatBarrier
+\bibliographystyle{els-cas-templates/cas-model2-names}
+\bibliography{references}
+
+\end{document}

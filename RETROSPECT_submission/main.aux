@@ -1,0 +1,150 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\csgdef{mark@corau1}{1}
+\emailauthor{ldagati@unime.it}{Luca D'Agati}
+\NewLabel{unime}{a}
+\NewLabel{cini}{b}
+\citation{kubernetes}
+\citation{haas_wasm}
+\citation{wamr,zephyr}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\newlabel{sec:introduction}{{1}{1}{Introduction}{section.1}{}}
+\citation{bonomi_fog,shi_edge,satyanarayanan_edge,chiang_fog}
+\citation{kubernetes,kubernetes_operators}
+\citation{k3s,microk8s}
+\citation{kubeedge,openyurt,akri,krustlet}
+\citation{dagati_iot_orchestration_s4t}
+\citation{edgex,fiware,onem2m,lwm2m,opcua}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Scope and Contributions}{2}{subsection.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{2}{section.2}\protected@file@percent }
+\newlabel{sec:related-work}{{2}{2}{Related Work}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Cloud-Native Edge and IoT Orchestration}{2}{subsection.2.1}\protected@file@percent }
+\citation{zephyr,freertos,riot,contiki}
+\citation{tinyos}
+\citation{haas_wasm,wasm_core}
+\citation{wasi}
+\citation{wamr,wasmtime,wasmedge,wasm3}
+\citation{runwasi,spin}
+\citation{rfc8446,rfc9147}
+\citation{rfc7252,mqtt}
+\citation{rfc8613,rfc9052}
+\citation{rfc8949}
+\citation{kubernetes,kubernetes_operators}
+\citation{kubeedge,openyurt,akri,edgex,lwm2m}
+\citation{fdida2022slices}
+\citation{renode,cooja,ns3,omnet}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Constrained Execution and Secure Communication}{3}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Reconciliation, Evaluation, and Positioning}{3}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Problem Formulation and Design Requirements}{3}{section.3}\protected@file@percent }
+\newlabel{sec:problem}{{3}{3}{Problem Formulation and Design Requirements}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Design Tensions}{4}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Design Requirements}{4}{subsection.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Architecture}{4}{section.4}\protected@file@percent }
+\newlabel{sec:architecture}{{4}{4}{Architecture}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Layered View}{4}{subsection.4.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Primary CRDs and control/evidence ownership.}}{4}{table.1}\protected@file@percent }
+\newlabel{tab:resource-model}{{1}{4}{Primary CRDs and control/evidence ownership}{table.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Gateway-Centric Control}{4}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Resource Model}{4}{subsection.4.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces High-level architecture of the proposed framework. Declarative cloud intent is mediated by the gateway and translated into verifiable embedded WASM execution.}}{5}{figure.1}\protected@file@percent }
+\newlabel{fig:architecture}{{1}{5}{High-level architecture of the proposed framework. Declarative cloud intent is mediated by the gateway and translated into verifiable embedded WASM execution}{figure.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Control and Observability Boundaries}{5}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Protocol and Reconciliation}{5}{section.5}\protected@file@percent }
+\newlabel{sec:protocol}{{5}{5}{Protocol and Reconciliation}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Southbound Life-Cycle}{5}{subsection.5.1}\protected@file@percent }
+\citation{kubernetes,kubernetes_operators}
+\citation{zephyr}
+\citation{wamr}
+\citation{k3s}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Application deployment workflow and status-reconciliation loop.}}{6}{figure.2}\protected@file@percent }
+\newlabel{fig:deployment-workflow}{{2}{6}{Application deployment workflow and status-reconciliation loop}{figure.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Protocol Sequences}{6}{subsection.5.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Enrollment and heartbeat sequence. Device-originated evidence is validated by the gateway and reflected into Kubernetes status.}}{6}{figure.3}\protected@file@percent }
+\newlabel{fig:enrollment-sequence}{{3}{6}{Enrollment and heartbeat sequence. Device-originated evidence is validated by the gateway and reflected into Kubernetes status}{figure.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces WASM deployment sequence. Declarative application intent is translated by the gateway into device execution and reconciled as application status.}}{6}{figure.4}\protected@file@percent }
+\newlabel{fig:deployment-sequence}{{4}{6}{WASM deployment sequence. Declarative application intent is translated by the gateway into device execution and reconciled as application status}{figure.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Reconciliation Policy}{6}{subsection.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Implementation}{6}{section.6}\protected@file@percent }
+\newlabel{sec:implementation}{{6}{6}{Implementation}{section.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Experimental testbed and software configuration.}}{7}{table.2}\protected@file@percent }
+\newlabel{tab:testbed}{{2}{7}{Experimental testbed and software configuration}{table.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Experimental Evaluation}{7}{section.7}\protected@file@percent }
+\newlabel{sec:evaluation}{{7}{7}{Experimental Evaluation}{section.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Evaluation Design and Testbed}{7}{subsection.7.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Latency profile ($n{=}100$ trials). All values in milliseconds.}}{7}{table.3}\protected@file@percent }
+\newlabel{tab:quantitative-latency}{{3}{7}{Latency profile ($n{=}100$ trials). All values in milliseconds}{table.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Functional Validation Results}{7}{subsection.7.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Distribution of trial-level stage latencies ($n{=}100$, log scale). Diamonds indicate sample means.}}{7}{figure.5}\protected@file@percent }
+\newlabel{fig:latency-boxplot}{{5}{7}{Distribution of trial-level stage latencies ($n{=}100$, log scale). Diamonds indicate sample means}{figure.5}{}}
+\citation{kubernetes}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Empirical CDF of enrollment, deployment, and end-to-end latencies ($n{=}100$).}}{8}{figure.6}\protected@file@percent }
+\newlabel{fig:latency-cdf}{{6}{8}{Empirical CDF of enrollment, deployment, and end-to-end latencies ($n{=}100$)}{figure.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Sustainability-Oriented Metrics}{8}{subsection.7.3}\protected@file@percent }
+\newlabel{sec:sustainability-metrics}{{7.3}{8}{Sustainability-Oriented Metrics}{subsection.7.3}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {7.3.1}Southbound wire efficiency}{8}{subsubsection.7.3.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Application-layer wire sizes (4-byte length prefix + CBOR) for representative protocol messages.}}{8}{figure.7}\protected@file@percent }
+\newlabel{fig:wire-sizes}{{7}{8}{Application-layer wire sizes (4-byte length prefix + CBOR) for representative protocol messages}{figure.7}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {7.3.2}Edge footprint}{8}{subsubsection.7.3.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Orchestration model comparison.}}{8}{table.4}\protected@file@percent }
+\newlabel{tab:arch-compare}{{4}{8}{Orchestration model comparison}{table.4}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {7.3.3}Control-plane resources}{8}{subsubsection.7.3.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Mean CPU (millicores) and RAM (MiB) for control-plane pods during the sustainability measurement pass.}}{8}{figure.8}\protected@file@percent }
+\newlabel{fig:pod-resources}{{8}{8}{Mean CPU (millicores) and RAM (MiB) for control-plane pods during the sustainability measurement pass}{figure.8}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {7.3.4}Architectural comparison}{8}{subsubsection.7.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}Discussion}{8}{section.8}\protected@file@percent }
+\newlabel{sec:discussion}{{8}{8}{Discussion}{section.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.1}Architectural and RI Implications}{8}{subsection.8.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.2}Validity and Scope}{9}{subsection.8.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.3}Reproducibility}{9}{subsection.8.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion and Future Work}{9}{section.9}\protected@file@percent }
+\newlabel{sec:conclusion}{{9}{9}{Conclusion and Future Work}{section.9}{}}
+\bibstyle{els-cas-templates/cas-model2-names}
+\bibdata{references}
+\bibcite{akri}{{1}{2026}{{Akri Authors}}{{}}}
+\bibcite{freertos}{{2}{2026}{{Amazon Web Services}}{{}}}
+\bibcite{renode}{{3}{2026}{{Antmicro}}{{}}}
+\bibcite{riot}{{4}{2013}{{Baccelli et~al.}}{{Baccelli, Hahm, Gunes, Wahlisch and Schmidt}}}
+\bibcite{bonomi_fog}{{5}{2012}{{Bonomi et~al.}}{{Bonomi, Milito, Zhu and Addepalli}}}
+\bibcite{rfc8949}{{6}{2020}{{Bormann and Hoffman}}{{}}}
+\bibcite{wasmtime}{{7}{2026a}{{Bytecode Alliance}}{{}}}
+\bibcite{wasi}{{8}{2026b}{{Bytecode Alliance}}{{}}}
+\bibcite{wamr}{{9}{2026}{{Bytecode Alliance and WAMR Contributors}}{{}}}
+\bibcite{microk8s}{{10}{2026}{{Canonical}}{{}}}
+\bibcite{chiang_fog}{{11}{2016}{{Chiang and Zhang}}{{}}}
+\bibcite{runwasi}{{12}{2026}{{containerd Contributors}}{{}}}
+\bibcite{dagati_iot_orchestration_s4t}{{13}{2025}{{D'Agati et~al.}}{{D'Agati, Tricomi, Arena, Longo, Puliafito and Merlino}}}
+\bibcite{contiki}{{14}{2004}{{Dunkels et~al.}}{{Dunkels, Gronvall and Voigt}}}
+\bibcite{edgex}{{15}{2026}{{EdgeX Foundry}}{{}}}
+\bibcite{fdida2022slices}{{16}{2022}{{Fdida et~al.}}{{Fdida, Makris, Korakis, Bruno, Passarella, Andreou, Belter, Crettaz, Dabbous, Demchenko et~al.}}}
+\bibcite{spin}{{17}{2026}{{Fermyon Technologies}}{{}}}
+\bibcite{fiware}{{18}{2026}{{FIWARE Foundation}}{{}}}
+\bibcite{haas_wasm}{{19}{2017}{{Haas et~al.}}{{Haas, Rossberg et~al.}}}
+\bibcite{krustlet}{{20}{2026}{{Krustlet Authors}}{{}}}
+\bibcite{kubeedge}{{21}{2026}{{KubeEdge Authors}}{{}}}
+\bibcite{kubernetes_operators}{{22}{2026}{{Kubernetes Community}}{{}}}
+\bibcite{tinyos}{{23}{2005}{{Levis et~al.}}{{Levis, Madden, Polastre, Szewczyk, Whitehouse, Woo, Gay, Hill, Welsh, Brewer and Culler}}}
+\bibcite{mqtt}{{24}{2019}{{OASIS}}{{}}}
+\bibcite{onem2m}{{25}{2026}{{oneM2M}}{{}}}
+\bibcite{opcua}{{26}{2026}{{OPC Foundation}}{{}}}
+\bibcite{lwm2m}{{27}{2022}{{Open Mobile Alliance}}{{}}}
+\bibcite{openyurt}{{28}{2026}{{OpenYurt Authors}}{{}}}
+\bibcite{cooja}{{29}{2006}{{Osterlind et~al.}}{{Osterlind, Dunkels, Eriksson, Finne and Voigt}}}
+\bibcite{k3s}{{30}{2026}{{Rancher Labs}}{{}}}
+\bibcite{rfc8446}{{31}{2018}{{Rescorla}}{{}}}
+\bibcite{rfc9147}{{32}{2022}{{Rescorla et~al.}}{{Rescorla, Tschofenig and Modadugu}}}
+\bibcite{ns3}{{33}{2010}{{Riley and Henderson}}{{}}}
+\bibcite{satyanarayanan_edge}{{34}{2017}{{Satyanarayanan}}{{}}}
+\bibcite{rfc9052}{{35}{2022}{{Schaad}}{{}}}
+\bibcite{rfc8613}{{36}{2019}{{Selander et~al.}}{{Selander, Mattsson, Palombini and Seitz}}}
+\bibcite{rfc7252}{{37}{2014}{{Shelby et~al.}}{{Shelby, Hartke and Bormann}}}
+\bibcite{shi_edge}{{38}{2016}{{Shi et~al.}}{{Shi, Cao, Zhang, Li and Xu}}}
+\bibcite{kubernetes}{{39}{2026}{{The Kubernetes Authors}}{{}}}
+\bibcite{zephyr}{{40}{2026}{{The Zephyr Project}}{{}}}
+\bibcite{omnet}{{41}{2008}{{Varga and Hornig}}{{}}}
+\bibcite{wasm3}{{42}{2026}{{Wasm3 Authors}}{{}}}
+\bibcite{wasmedge}{{43}{2026}{{WasmEdge Authors}}{{}}}
+\bibcite{wasm_core}{{44}{2019}{{World Wide Web Consortium}}{{}}}
+\csxdef{lastpage}{11}
+\gdef \@abspage@last{12}

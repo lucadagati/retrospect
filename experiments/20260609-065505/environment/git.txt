@@ -1,0 +1,90 @@
+origin	https://github.com/lucadagati/retrospect.git (fetch)
+origin	https://github.com/lucadagati/retrospect.git (push)
+dad717c8c04703004c39dbb7d19151453cd526e0
+ M crates/wasmbed-qemu-manager/src/lib.rs
+ M k8s/deployments/api-server-deployment.yaml
+ D paper_ieee_inginf05/README.md
+ D paper_ieee_inginf05/appendices/a_protocol_summary.tex
+ D paper_ieee_inginf05/appendices/b_reviewer_clarifications.tex
+ D paper_ieee_inginf05/author_metadata_template.md
+ D paper_ieee_inginf05/cover_letter.md
+ D paper_ieee_inginf05/figures/latency_boxplot.png
+ D paper_ieee_inginf05/figures/latency_cdf.png
+ D paper_ieee_inginf05/figures/latency_ci_profile.png
+ D paper_ieee_inginf05/figures/latency_trial_scatter.png
+ D paper_ieee_inginf05/generate_figures.py
+ D paper_ieee_inginf05/main.aux
+ D paper_ieee_inginf05/main.bbl
+ D paper_ieee_inginf05/main.blg
+ D paper_ieee_inginf05/main.fdb_latexmk
+ D paper_ieee_inginf05/main.fls
+ D paper_ieee_inginf05/main.out
+ D paper_ieee_inginf05/main.pdf
+ D paper_ieee_inginf05/main.tex
+ D paper_ieee_inginf05/references.bib
+ D paper_ieee_inginf05/sections/00_abstract.tex
+ D paper_ieee_inginf05/sections/01_scope.tex
+ D paper_ieee_inginf05/sections/02_introduction.tex
+ D paper_ieee_inginf05/sections/03_related_work.tex
+ D paper_ieee_inginf05/sections/04_problem_statement.tex
+ D paper_ieee_inginf05/sections/05_system_architecture.tex
+ D paper_ieee_inginf05/sections/06_protocol_lifecycle.tex
+ D paper_ieee_inginf05/sections/07_implementation.tex
+ D paper_ieee_inginf05/sections/08_methodology.tex
+ D paper_ieee_inginf05/sections/09_results.tex
+ D paper_ieee_inginf05/sections/10_discussion.tex
+ D paper_ieee_inginf05/sections/11_threats.tex
+ D paper_ieee_inginf05/sections/12_reproducibility.tex
+ D paper_ieee_inginf05/sections/13_conclusion.tex
+ D paper_ieee_inginf05/sections/14_declarations.tex
+ D paper_ieee_inginf05/submission_checklist.md
+ D paper_ieee_inginf05_submission.zip
+ M scripts/collect_experiment_metrics.py
+ m wamr
+?? RETROSPECT_submission.zip
+?? RETROSPECT_submission/
+?? experiments/
+?? scripts/generate_ablation_figure.py
+?? scripts/postprocess_experiment.py
+?? scripts/run_experiment_campaign.sh
+ crates/wasmbed-qemu-manager/src/lib.rs             |   8 +-
+ k8s/deployments/api-server-deployment.yaml         |   6 +-
+ paper_ieee_inginf05/README.md                      |  60 ---
+ .../appendices/a_protocol_summary.tex              |  24 -
+ .../appendices/b_reviewer_clarifications.tex       |  11 -
+ paper_ieee_inginf05/author_metadata_template.md    |  46 --
+ paper_ieee_inginf05/cover_letter.md                |  38 --
+ paper_ieee_inginf05/figures/latency_boxplot.png    | Bin 46805 -> 0 bytes
+ paper_ieee_inginf05/figures/latency_cdf.png        | Bin 61377 -> 0 bytes
+ paper_ieee_inginf05/figures/latency_ci_profile.png | Bin 49055 -> 0 bytes
+ .../figures/latency_trial_scatter.png              | Bin 107540 -> 0 bytes
+ paper_ieee_inginf05/generate_figures.py            | 234 ---------
+ paper_ieee_inginf05/main.aux                       | 111 -----
+ paper_ieee_inginf05/main.bbl                       |  67 ---
+ paper_ieee_inginf05/main.blg                       |  56 ---
+ paper_ieee_inginf05/main.fdb_latexmk               | 241 ---------
+ paper_ieee_inginf05/main.fls                       | 553 ---------------------
+ paper_ieee_inginf05/main.out                       |  55 --
+ paper_ieee_inginf05/main.pdf                       | Bin 486315 -> 0 bytes
+ paper_ieee_inginf05/main.tex                       |  65 ---
+ paper_ieee_inginf05/references.bib                 |  79 ---
+ paper_ieee_inginf05/sections/00_abstract.tex       |  13 -
+ paper_ieee_inginf05/sections/01_scope.tex          |   7 -
+ paper_ieee_inginf05/sections/02_introduction.tex   |  22 -
+ paper_ieee_inginf05/sections/03_related_work.tex   |  16 -
+ .../sections/04_problem_statement.tex              |  20 -
+ .../sections/05_system_architecture.tex            |  68 ---
+ .../sections/06_protocol_lifecycle.tex             |  89 ----
+ paper_ieee_inginf05/sections/07_implementation.tex |  33 --
+ paper_ieee_inginf05/sections/08_methodology.tex    |  73 ---
+ paper_ieee_inginf05/sections/09_results.tex        | 116 -----
+ paper_ieee_inginf05/sections/10_discussion.tex     |  19 -
+ paper_ieee_inginf05/sections/11_threats.tex        |  13 -
+ .../sections/12_reproducibility.tex                |  27 -
+ paper_ieee_inginf05/sections/13_conclusion.tex     |   9 -
+ paper_ieee_inginf05/sections/14_declarations.tex   |  17 -
+ paper_ieee_inginf05/submission_checklist.md        |  47 --
+ paper_ieee_inginf05_submission.zip                 | Bin 389763 -> 0 bytes
+ scripts/collect_experiment_metrics.py              |  33 +-
+ wamr                                               |   0
+ 40 files changed, 43 insertions(+), 2233 deletions(-)

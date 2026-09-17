@@ -1,0 +1,75 @@
+{
+  "generated_at": "2026-06-11T09:32:22.197021+00:00",
+  "wire_sizes_bytes": {
+    "client_heartbeat": 6,
+    "client_enrollment_request": 6,
+    "client_public_key": 40,
+    "client_enrollment_ack": 6,
+    "client_deploy_ack": 23,
+    "server_heartbeat_ack": 6,
+    "server_enrollment_accepted": 6,
+    "server_device_uuid": 23,
+    "server_enrollment_completed": 6,
+    "server_deploy_minimal_wasm": 67
+  },
+  "minimal_wasm_module_bytes": 33,
+  "control_traffic_model": {
+    "heartbeat_period_s": 25,
+    "heartbeat_roundtrip_bytes": 12,
+    "heartbeat_bytes_per_hour_per_device": 1728,
+    "enrollment_roundtrip_bytes_once": 87,
+    "deploy_roundtrip_bytes_once": 90,
+    "steady_state_control_bytes_per_hour_per_device": 1728
+  },
+  "edge_footprint": {
+    "firmware_images": [
+      {
+        "path": "/firmware/device-gateway-1-1/zephyr.elf",
+        "bytes": 0
+      },
+      {
+        "path": "/firmware/native-sim-1/zephyr.elf",
+        "bytes": 8030556
+      }
+    ]
+  },
+  "gateway_pod_resources_idle": {},
+  "gateway_board_scaling": [
+    {
+      "synthetic_boards_registered": 1,
+      "gateway_cpu_millicores": null,
+      "gateway_memory_mib": null,
+      "boards_visible": 1
+    },
+    {
+      "synthetic_boards_registered": 10,
+      "gateway_cpu_millicores": null,
+      "gateway_memory_mib": null,
+      "boards_visible": 1
+    },
+    {
+      "synthetic_boards_registered": 25,
+      "gateway_cpu_millicores": null,
+      "gateway_memory_mib": null,
+      "boards_visible": 1
+    },
+    {
+      "synthetic_boards_registered": 50,
+      "gateway_cpu_millicores": null,
+      "gateway_memory_mib": null,
+      "boards_visible": 1
+    }
+  ],
+  "k8s_node_proxy": {
+    "node_count": 1,
+    "allocatable_cpu": "32",
+    "allocatable_memory": "65967408Ki",
+    "note": "Full Kubernetes worker agents (kubelet + runtime) are not deployed on embedded endpoints; this node capacity is control-plane overhead for comparison only."
+  },
+  "design_comparison": {
+    "edge_runs_kubelet": false,
+    "edge_runs_container_runtime": false,
+    "edge_agent_model": "Zephyr firmware + WAMR + TLS/CBOR client only",
+    "orchestration_mediated_by": "gateway fog component"
+  }
+}

@@ -444,4 +444,65 @@ mod test {
     fn test_server_message_heartbeat_ack() {
         assert_encode_decode(&ServerMessage::HeartbeatAck);
     }
+
+    /// Emits JSON wire-size report for paper sustainability metrics.
+    /// Run: cargo test -p wasmbed-protocol wire_sizes_report -- --nocapture
+    #[test]
+    fn wire_sizes_report() {
+        use alloc::vec;
+        use alloc::string::String;
+        use minicbor::Encoder;
+
+        fn wire_len(msg: &impl Encode<()>) -> usize {
+            let mut buf = alloc::vec::Vec::new();
+            let mut enc = Encoder::new(&mut buf);
+            msg.encode(&mut enc, &mut ()).expect("encode");
+            4 + buf.len()
+        }
+
+        let ed25519_pubkey = vec![0xABu8; 32];
+        let minimal_wasm = vec![
+            0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x04, 0x01, 0x60, 0x00, 0x00,
+            0x03, 0x02, 0x01, 0x00, 0x07, 0x07, 0x01, 0x03, 0x72, 0x75, 0x6e, 0x00, 0x00,
+            0x0a, 0x04, 0x01, 0x02, 0x00, 0x0b,
+        ];
+        let uuid = DeviceUuid::new([0x11; 16]);
+
+        let messages: [(&str, usize); 12] = [
+            ("client_heartbeat", wire_len(&ClientMessage::Heartbeat)),
+            ("client_enrollment_request", wire_len(&ClientMessage::EnrollmentRequest)),
+            ("client_public_key", wire_len(&ClientMessage::PublicKey { key: ed25519_pubkey.clone() })),
+            ("client_enrollment_ack", wire_len(&ClientMessage::EnrollmentAcknowledgment)),
+            ("client_deploy_ack", wire_len(&ClientMessage::ApplicationDeployAck {
+                app_id: "experiment-app".into(),
+                success: true,
+                error: None,
+            })),
+            ("server_heartbeat_ack", wire_len(&ServerMessage::HeartbeatAck)),
+            ("server_enrollment_accepted", wire_len(&ServerMessage::EnrollmentAccepted)),
+            ("server_device_uuid", wire_len(&ServerMessage::DeviceUuid { uuid })),
+            ("server_enrollment_completed", wire_len(&ServerMessage::EnrollmentCompleted)),
+            ("server_deploy_minimal_wasm", wire_len(&ServerMessage::DeployApplication {
+                app_id: "experiment-app".into(),
+                name: "benchmark".into(),
+                wasm_bytes: minimal_wasm.clone(),
+                config: None,
+            })),
+            ("client_device_info", wire_len(&ClientMessage::DeviceInfo {
+                available_memory: 262144,
+                cpu_arch: "arm".into(),
+                wasm_features: vec!["mvp".into()],
+                max_app_size: 65536,
+            })),
+        ];
+
+        print!("{{\"wire_sizes_bytes\":{{");
+        for (i, (name, size)) in messages.iter().enumerate() {
+            if i > 0 {
+                print!(",");
+            }
+            print!("\"{name}\":{size}");
+        }
+        print!("},\"minimal_wasm_cbor_payload_bytes\":{}}}", minimal_wasm.len());
+    }
 }

@@ -338,7 +338,7 @@ def run_deploy_trial(api_base: str, namespace: str, trial: int) -> TrialRecord:
     deploy_started = time.perf_counter()
     deploy_error = None
     try:
-        deploy_response = requests.post(f"{api_base}/api/v1/applications/{app_name}/deploy", json={}, timeout=10)
+        deploy_response = requests.post(f"{api_base}/api/v1/applications/{app_name}/deploy", json={}, timeout=120)
         if deploy_response.status_code >= 400:
             deploy_error = f"deploy failed: {deploy_response.status_code}"
     except Exception as exc:
@@ -382,6 +382,29 @@ def run_deploy_trial(api_base: str, namespace: str, trial: int) -> TrialRecord:
     except Exception:
         pass
 
+    evidence_consistent = True
+    evidence_issues: list[str] = []
+    try:
+        gw_response = requests.get(f"{DEFAULT_GATEWAY_HTTP}/api/v1/devices", timeout=10)
+        gw_devices = {d["device_id"]: d for d in (gw_response.json().get("devices") or [])}
+        gw_device = gw_devices.get(device_name, {})
+        if not gw_device.get("connected"):
+            evidence_consistent = False
+            evidence_issues.append("gateway_not_connected")
+        gw_hb = gw_device.get("last_heartbeat") or {}
+        if time.time() - gw_hb.get("secs_since_epoch", 0) > 120:
+            evidence_consistent = False
+            evidence_issues.append("heartbeat_stale")
+    except Exception as exc:
+        evidence_consistent = False
+        evidence_issues.append(f"gateway_query_failed:{exc}")
+    if observed_phase != "Running":
+        evidence_consistent = False
+        evidence_issues.append(f"crd_phase_{observed_phase}")
+    if api_failed_devices > 0 and observed_phase == "Running":
+        evidence_consistent = False
+        evidence_issues.append("api_contradicts_running")
+
     # Primary success criterion: Application CRD phase reached Running.
     # The application-controller is active and hardened; CRD phase is now the
     # authoritative source. API statistics are kept as a secondary corroborating
@@ -409,6 +432,10 @@ def run_deploy_trial(api_base: str, namespace: str, trial: int) -> TrialRecord:
             "api_failed_devices": api_failed_devices,
             "api_deployed_count": api_deployed_count,
             "error": deploy_error,
+            "evidence_consistent": evidence_consistent,
+            "evidence_issues": evidence_issues,
+            "gateway_ack": deploy_error is None,
+            "api_stats_corroborated": api_running_devices > 0 or observed_phase == "Running",
         },
     )
 
@@ -495,6 +522,7 @@ def summarize(records: list[TrialRecord]) -> dict[str, Any]:
     deployment_by_trial = trial_map(deployment_rows)
 
     transaction_successes = 0
+    evidence_consistent_count = 0
     end_to_end_ms: list[float] = []
     for trial in common_trials:
         enr = enrollment_by_trial[trial]
@@ -502,12 +530,15 @@ def summarize(records: list[TrialRecord]) -> dict[str, Any]:
         dep = deployment_by_trial[trial]
         if enr.success and hrt.success and dep.success:
             transaction_successes += 1
+            if (dep.details or {}).get("evidence_consistent"):
+                evidence_consistent_count += 1
         if enr.duration_ms is not None and dep.duration_ms is not None:
             end_to_end_ms.append(enr.duration_ms + dep.duration_ms)
 
     summary["transactional"] = {
         "trials": len(common_trials),
         "all_stages_success_rate": wilson_interval(transaction_successes, len(common_trials)),
+        "evidence_consistency_rate": wilson_interval(evidence_consistent_count, len(common_trials)),
         "end_to_end_latency_ms": latency_profile(end_to_end_ms),
     }
     return summary
@@ -546,8 +577,8 @@ def main() -> int:
     output_path = output_dir / f"scalability_metrics_{int(time.time())}.json"
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
-    print(json.dumps(summary, indent=2))
-    print(f"Wrote {output_path}")
+    print(json.dumps(summary, indent=2), file=sys.stderr)
+    print(output_path)
     return 0
 
 

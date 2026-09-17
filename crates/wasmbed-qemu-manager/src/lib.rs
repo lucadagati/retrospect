@@ -52,7 +52,7 @@ fn translate_to_nodeport_endpoint(endpoint: &str) -> String {
     };
     if is_cluster_ip {
         let host = std::env::var("RENODE_GATEWAY_HOST")
-            .unwrap_or_else(|_| "192.168.100.179".to_string());
+            .unwrap_or_else(|_| "192.168.1.1".to_string());
         let port = std::env::var("RENODE_GATEWAY_PORT")
             .unwrap_or_else(|_| "30443".to_string());
         format!("{}:{}", host, port)
@@ -961,7 +961,11 @@ impl RenodeManager {
                 .unwrap_or_else(|| std::ffi::OsStr::new("zephyr.elf"))
                 .to_string_lossy()
                 .to_string();
-            let gateway_endpoint_str = device.gateway_endpoint.as_deref().unwrap_or("127.0.0.1:8443").to_string();
+            let gateway_endpoint_str = device.gateway_endpoint.clone().unwrap_or_else(|| {
+                let host = std::env::var("RENODE_GATEWAY_HOST").unwrap_or_else(|_| "192.168.1.1".to_string());
+                let port = std::env::var("RENODE_GATEWAY_PORT").unwrap_or_else(|_| "30443".to_string());
+                format!("{}:{}", host, port)
+            });
             // In Docker mode the emulated device runs on the HOST network (--net=host), but
             // ClusterIP addresses are only reachable inside the k8s overlay. Translate the
             // ClusterIP endpoint to the host-visible NodePort endpoint so Zephyr firmware

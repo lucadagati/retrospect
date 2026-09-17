@@ -1,0 +1,326 @@
+\begin{thebibliography}{44}
+\expandafter\ifx\csname natexlab\endcsname\relax\def\natexlab#1{#1}\fi
+\providecommand{\url}[1]{\texttt{#1}}
+\providecommand{\href}[2]{#2}
+\providecommand{\path}[1]{#1}
+\providecommand{\DOIprefix}{doi:}
+\providecommand{\ArXivprefix}{arXiv:}
+\providecommand{\URLprefix}{URL: }
+\providecommand{\Pubmedprefix}{pmid:}
+\providecommand{\doi}[1]{\href{http://dx.doi.org/#1}{\path{#1}}}
+\providecommand{\Pubmed}[1]{\href{pmid:#1}{\path{#1}}}
+\providecommand{\bibinfo}[2]{#2}
+\ifx\xfnm\relax \def\xfnm[#1]{\unskip,\space#1}\fi
+%Type = Misc
+\bibitem[{{Akri Authors}(2026)}]{akri}
+\bibinfo{author}{{Akri Authors}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Akri: A kubernetes resource interface for the edge}.
+\newblock \bibinfo{howpublished}{\url{https://docs.akri.sh/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Misc
+\bibitem[{{Amazon Web Services}(2026)}]{freertos}
+\bibinfo{author}{{Amazon Web Services}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Freertos documentation}.
+\newblock \bibinfo{howpublished}{\url{https://www.freertos.org/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Misc
+\bibitem[{{Antmicro}(2026)}]{renode}
+\bibinfo{author}{{Antmicro}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Renode: Development framework for multi-node embedded
+  networks}.
+\newblock \bibinfo{howpublished}{\url{https://renode.io/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Inproceedings
+\bibitem[{Baccelli et~al.(2013)Baccelli, Hahm, Gunes, Wahlisch and
+  Schmidt}]{riot}
+\bibinfo{author}{Baccelli, E.}, \bibinfo{author}{Hahm, O.},
+  \bibinfo{author}{Gunes, M.}, \bibinfo{author}{Wahlisch, M.},
+  \bibinfo{author}{Schmidt, T.C.}, \bibinfo{year}{2013}.
+\newblock \bibinfo{title}{{RIOT OS}: Towards an os for the internet of things},
+  in: \bibinfo{booktitle}{Proceedings of the IEEE Conference on Computer
+  Communications Workshops}, pp. \bibinfo{pages}{79--80}.
+%Type = Inproceedings
+\bibitem[{Bonomi et~al.(2012)Bonomi, Milito, Zhu and Addepalli}]{bonomi_fog}
+\bibinfo{author}{Bonomi, F.}, \bibinfo{author}{Milito, R.},
+  \bibinfo{author}{Zhu, J.}, \bibinfo{author}{Addepalli, S.},
+  \bibinfo{year}{2012}.
+\newblock \bibinfo{title}{Fog computing and its role in the internet of
+  things}, in: \bibinfo{booktitle}{Proceedings of the First Edition of the MCC
+  Workshop on Mobile Cloud Computing}, pp. \bibinfo{pages}{13--16}.
+%Type = Misc
+\bibitem[{Bormann and Hoffman(2020)}]{rfc8949}
+\bibinfo{author}{Bormann, C.}, \bibinfo{author}{Hoffman, P.},
+  \bibinfo{year}{2020}.
+\newblock \bibinfo{title}{{RFC 8949}: Concise binary object representation
+  (cbor)}.
+\newblock \bibinfo{howpublished}{RFC 8949}.
+%Type = Misc
+\bibitem[{{Bytecode Alliance}(2026a)}]{wasmtime}
+\bibinfo{author}{{Bytecode Alliance}}, \bibinfo{year}{2026}a.
+\newblock \bibinfo{title}{Wasmtime: A fast and secure runtime for webassembly}.
+\newblock \bibinfo{howpublished}{\url{https://wasmtime.dev/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Misc
+\bibitem[{{Bytecode Alliance}(2026b)}]{wasi}
+\bibinfo{author}{{Bytecode Alliance}}, \bibinfo{year}{2026}b.
+\newblock \bibinfo{title}{Webassembly system interface (wasi)}.
+\newblock \bibinfo{howpublished}{\url{https://wasi.dev/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Misc
+\bibitem[{{Bytecode Alliance and WAMR Contributors}(2026)}]{wamr}
+\bibinfo{author}{{Bytecode Alliance and WAMR Contributors}},
+  \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Webassembly micro runtime (wamr)}.
+\newblock
+  \bibinfo{howpublished}{\url{https://github.com/bytecodealliance/wasm-micro-runtime}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Misc
+\bibitem[{{Canonical}(2026)}]{microk8s}
+\bibinfo{author}{{Canonical}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Microk8s documentation}.
+\newblock \bibinfo{howpublished}{\url{https://microk8s.io/docs}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Article
+\bibitem[{Chiang and Zhang(2016)}]{chiang_fog}
+\bibinfo{author}{Chiang, M.}, \bibinfo{author}{Zhang, T.},
+  \bibinfo{year}{2016}.
+\newblock \bibinfo{title}{Fog and iot: An overview of research opportunities}.
+\newblock \bibinfo{journal}{IEEE Internet of Things Journal}
+  \bibinfo{volume}{3}, \bibinfo{pages}{854--864}.
+%Type = Misc
+\bibitem[{{containerd Contributors}(2026)}]{runwasi}
+\bibinfo{author}{{containerd Contributors}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{runwasi: Webassembly runtime integration for
+  containerd}.
+\newblock \bibinfo{howpublished}{\url{https://github.com/containerd/runwasi}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Inproceedings
+\bibitem[{D'Agati et~al.(2025)D'Agati, Tricomi, Arena, Longo, Puliafito and
+  Merlino}]{dagati_iot_orchestration_s4t}
+\bibinfo{author}{D'Agati, L.}, \bibinfo{author}{Tricomi, G.},
+  \bibinfo{author}{Arena, M.}, \bibinfo{author}{Longo, F.},
+  \bibinfo{author}{Puliafito, A.}, \bibinfo{author}{Merlino, G.},
+  \bibinfo{year}{2025}.
+\newblock \bibinfo{title}{Iot orchestration in the compute continuum:
+  Integrating kubernetes with stack4things}, in: \bibinfo{booktitle}{2025 IEEE
+  25th International Symposium on Cluster, Cloud and Internet Computing
+  Workshops (CCGridW)}, pp. \bibinfo{pages}{140--147}.
+\newblock \DOIprefix\doi{10.1109/CCGridW65158.2025.00028}.
+%Type = Inproceedings
+\bibitem[{Dunkels et~al.(2004)Dunkels, Gronvall and Voigt}]{contiki}
+\bibinfo{author}{Dunkels, A.}, \bibinfo{author}{Gronvall, B.},
+  \bibinfo{author}{Voigt, T.}, \bibinfo{year}{2004}.
+\newblock \bibinfo{title}{Contiki -- a lightweight and flexible operating
+  system for tiny networked sensors}, in: \bibinfo{booktitle}{Proceedings of
+  the 29th Annual IEEE International Conference on Local Computer Networks},
+  pp. \bibinfo{pages}{455--462}.
+%Type = Misc
+\bibitem[{{EdgeX Foundry}(2026)}]{edgex}
+\bibinfo{author}{{EdgeX Foundry}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Edgex foundry documentation}.
+\newblock \bibinfo{howpublished}{\url{https://www.edgexfoundry.org/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Article
+\bibitem[{Fdida et~al.(2022)Fdida, Makris, Korakis, Bruno, Passarella, Andreou,
+  Belter, Crettaz, Dabbous, Demchenko et~al.}]{fdida2022slices}
+\bibinfo{author}{Fdida, S.}, \bibinfo{author}{Makris, N.},
+  \bibinfo{author}{Korakis, T.}, \bibinfo{author}{Bruno, R.},
+  \bibinfo{author}{Passarella, A.}, \bibinfo{author}{Andreou, P.},
+  \bibinfo{author}{Belter, B.}, \bibinfo{author}{Crettaz, C.},
+  \bibinfo{author}{Dabbous, W.}, \bibinfo{author}{Demchenko, Y.}, et~al.,
+  \bibinfo{year}{2022}.
+\newblock \bibinfo{title}{Slices, a scientific instrument for the networking
+  community}.
+\newblock \bibinfo{journal}{Computer Communications} \bibinfo{volume}{193},
+  \bibinfo{pages}{189--203}.
+%Type = Misc
+\bibitem[{{Fermyon Technologies}(2026)}]{spin}
+\bibinfo{author}{{Fermyon Technologies}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Spin: Framework for webassembly applications}.
+\newblock \bibinfo{howpublished}{\url{https://www.fermyon.com/spin}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Misc
+\bibitem[{{FIWARE Foundation}(2026)}]{fiware}
+\bibinfo{author}{{FIWARE Foundation}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Fiware documentation}.
+\newblock \bibinfo{howpublished}{\url{https://www.fiware.org/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Inproceedings
+\bibitem[{Haas et~al.(2017)Haas, Rossberg et~al.}]{haas_wasm}
+\bibinfo{author}{Haas, A.}, \bibinfo{author}{Rossberg, A.}, et~al.,
+  \bibinfo{year}{2017}.
+\newblock \bibinfo{title}{Bringing the web up to speed with webassembly}, in:
+  \bibinfo{booktitle}{Proceedings of the 38th ACM SIGPLAN Conference on
+  Programming Language Design and Implementation (PLDI)}, pp.
+  \bibinfo{pages}{185--200}.
+%Type = Misc
+\bibitem[{{Krustlet Authors}(2026)}]{krustlet}
+\bibinfo{author}{{Krustlet Authors}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Krustlet: Kubernetes kubelet in rust for webassembly
+  workloads}.
+\newblock \bibinfo{howpublished}{\url{https://krustlet.dev/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Misc
+\bibitem[{{KubeEdge Authors}(2026)}]{kubeedge}
+\bibinfo{author}{{KubeEdge Authors}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Kubeedge documentation}.
+\newblock \bibinfo{howpublished}{\url{https://kubeedge.io/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Misc
+\bibitem[{{Kubernetes Community}(2026)}]{kubernetes_operators}
+\bibinfo{author}{{Kubernetes Community}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Operator pattern}.
+\newblock
+  \bibinfo{howpublished}{\url{https://kubernetes.io/docs/concepts/extend-kubernetes/operator/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Article
+\bibitem[{Levis et~al.(2005)Levis, Madden, Polastre, Szewczyk, Whitehouse, Woo,
+  Gay, Hill, Welsh, Brewer and Culler}]{tinyos}
+\bibinfo{author}{Levis, P.}, \bibinfo{author}{Madden, S.},
+  \bibinfo{author}{Polastre, J.}, \bibinfo{author}{Szewczyk, R.},
+  \bibinfo{author}{Whitehouse, K.}, \bibinfo{author}{Woo, A.},
+  \bibinfo{author}{Gay, D.}, \bibinfo{author}{Hill, J.},
+  \bibinfo{author}{Welsh, M.}, \bibinfo{author}{Brewer, E.},
+  \bibinfo{author}{Culler, D.}, \bibinfo{year}{2005}.
+\newblock \bibinfo{title}{Tinyos: An operating system for sensor networks}.
+\newblock \bibinfo{journal}{Ambient Intelligence} , \bibinfo{pages}{115--148}.
+%Type = Misc
+\bibitem[{{OASIS}(2019)}]{mqtt}
+\bibinfo{author}{{OASIS}}, \bibinfo{year}{2019}.
+\newblock \bibinfo{title}{{MQTT} version 5.0}.
+\newblock \bibinfo{howpublished}{OASIS Standard}.
+%Type = Misc
+\bibitem[{{oneM2M}(2026)}]{onem2m}
+\bibinfo{author}{{oneM2M}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{onem2m technical specifications}.
+\newblock
+  \bibinfo{howpublished}{\url{https://www.onem2m.org/technical/published-specifications}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Misc
+\bibitem[{{OPC Foundation}(2026)}]{opcua}
+\bibinfo{author}{{OPC Foundation}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Opc unified architecture specification}.
+\newblock
+  \bibinfo{howpublished}{\url{https://opcfoundation.org/about/opc-technologies/opc-ua/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Misc
+\bibitem[{{Open Mobile Alliance}(2022)}]{lwm2m}
+\bibinfo{author}{{Open Mobile Alliance}}, \bibinfo{year}{2022}.
+\newblock \bibinfo{title}{Lightweight machine to machine technical
+  specification}.
+\newblock \bibinfo{howpublished}{OMA SpecWorks}.
+%Type = Misc
+\bibitem[{{OpenYurt Authors}(2026)}]{openyurt}
+\bibinfo{author}{{OpenYurt Authors}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Openyurt: Extending kubernetes to edge computing}.
+\newblock \bibinfo{howpublished}{\url{https://openyurt.io/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Inproceedings
+\bibitem[{Osterlind et~al.(2006)Osterlind, Dunkels, Eriksson, Finne and
+  Voigt}]{cooja}
+\bibinfo{author}{Osterlind, F.}, \bibinfo{author}{Dunkels, A.},
+  \bibinfo{author}{Eriksson, J.}, \bibinfo{author}{Finne, N.},
+  \bibinfo{author}{Voigt, T.}, \bibinfo{year}{2006}.
+\newblock \bibinfo{title}{Cross-level sensor network simulation with cooja},
+  in: \bibinfo{booktitle}{Proceedings of the 31st IEEE Conference on Local
+  Computer Networks}, pp. \bibinfo{pages}{641--648}.
+%Type = Misc
+\bibitem[{{Rancher Labs}(2026)}]{k3s}
+\bibinfo{author}{{Rancher Labs}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{{K3s}: Lightweight kubernetes}.
+\newblock \bibinfo{howpublished}{\url{https://k3s.io/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Misc
+\bibitem[{Rescorla(2018)}]{rfc8446}
+\bibinfo{author}{Rescorla, E.}, \bibinfo{year}{2018}.
+\newblock \bibinfo{title}{{RFC 8446}: The transport layer security (tls)
+  protocol version 1.3}.
+\newblock \bibinfo{howpublished}{RFC 8446}.
+%Type = Misc
+\bibitem[{Rescorla et~al.(2022)Rescorla, Tschofenig and Modadugu}]{rfc9147}
+\bibinfo{author}{Rescorla, E.}, \bibinfo{author}{Tschofenig, H.},
+  \bibinfo{author}{Modadugu, N.}, \bibinfo{year}{2022}.
+\newblock \bibinfo{title}{{RFC 9147}: The datagram transport layer security
+  (dtls) protocol version 1.3}.
+\newblock \bibinfo{howpublished}{RFC 9147}.
+%Type = Inproceedings
+\bibitem[{Riley and Henderson(2010)}]{ns3}
+\bibinfo{author}{Riley, G.F.}, \bibinfo{author}{Henderson, T.R.},
+  \bibinfo{year}{2010}.
+\newblock \bibinfo{title}{The ns-3 network simulator}, in:
+  \bibinfo{booktitle}{Modeling and Tools for Network Simulation},
+  \bibinfo{publisher}{Springer}. pp. \bibinfo{pages}{15--34}.
+%Type = Article
+\bibitem[{Satyanarayanan(2017)}]{satyanarayanan_edge}
+\bibinfo{author}{Satyanarayanan, M.}, \bibinfo{year}{2017}.
+\newblock \bibinfo{title}{The emergence of edge computing}.
+\newblock \bibinfo{journal}{Computer} \bibinfo{volume}{50},
+  \bibinfo{pages}{30--39}.
+%Type = Misc
+\bibitem[{Schaad(2022)}]{rfc9052}
+\bibinfo{author}{Schaad, J.}, \bibinfo{year}{2022}.
+\newblock \bibinfo{title}{{RFC 9052}: Cbor object signing and encryption
+  (cose): Structures and process}.
+\newblock \bibinfo{howpublished}{RFC 9052}.
+%Type = Misc
+\bibitem[{Selander et~al.(2019)Selander, Mattsson, Palombini and
+  Seitz}]{rfc8613}
+\bibinfo{author}{Selander, G.}, \bibinfo{author}{Mattsson, J.},
+  \bibinfo{author}{Palombini, F.}, \bibinfo{author}{Seitz, L.},
+  \bibinfo{year}{2019}.
+\newblock \bibinfo{title}{{RFC 8613}: Object security for constrained restful
+  environments (oscore)}.
+\newblock \bibinfo{howpublished}{RFC 8613}.
+%Type = Misc
+\bibitem[{Shelby et~al.(2014)Shelby, Hartke and Bormann}]{rfc7252}
+\bibinfo{author}{Shelby, Z.}, \bibinfo{author}{Hartke, K.},
+  \bibinfo{author}{Bormann, C.}, \bibinfo{year}{2014}.
+\newblock \bibinfo{title}{{RFC 7252}: The constrained application protocol
+  (coap)}.
+\newblock \bibinfo{howpublished}{RFC 7252}.
+%Type = Article
+\bibitem[{Shi et~al.(2016)Shi, Cao, Zhang, Li and Xu}]{shi_edge}
+\bibinfo{author}{Shi, W.}, \bibinfo{author}{Cao, J.}, \bibinfo{author}{Zhang,
+  Q.}, \bibinfo{author}{Li, Y.}, \bibinfo{author}{Xu, L.},
+  \bibinfo{year}{2016}.
+\newblock \bibinfo{title}{Edge computing: Vision and challenges}.
+\newblock \bibinfo{journal}{IEEE Internet of Things Journal}
+  \bibinfo{volume}{3}, \bibinfo{pages}{637--646}.
+%Type = Misc
+\bibitem[{{The Kubernetes Authors}(2026)}]{kubernetes}
+\bibinfo{author}{{The Kubernetes Authors}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Kubernetes documentation}.
+\newblock \bibinfo{howpublished}{\url{https://kubernetes.io/docs/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Misc
+\bibitem[{{The Zephyr Project}(2026)}]{zephyr}
+\bibinfo{author}{{The Zephyr Project}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Zephyr project documentation}.
+\newblock \bibinfo{howpublished}{\url{https://docs.zephyrproject.org/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Article
+\bibitem[{Varga and Hornig(2008)}]{omnet}
+\bibinfo{author}{Varga, A.}, \bibinfo{author}{Hornig, R.},
+  \bibinfo{year}{2008}.
+\newblock \bibinfo{title}{An overview of the omnet++ simulation environment}.
+\newblock \bibinfo{journal}{Proceedings of the 1st International Conference on
+  Simulation Tools and Techniques for Communications, Networks and Systems} .
+%Type = Misc
+\bibitem[{{Wasm3 Authors}(2026)}]{wasm3}
+\bibinfo{author}{{Wasm3 Authors}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Wasm3: A fast webassembly interpreter}.
+\newblock \bibinfo{howpublished}{\url{https://github.com/wasm3/wasm3}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Misc
+\bibitem[{{WasmEdge Authors}(2026)}]{wasmedge}
+\bibinfo{author}{{WasmEdge Authors}}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{Wasmedge runtime}.
+\newblock \bibinfo{howpublished}{\url{https://wasmedge.org/}}.
+\newblock \bibinfo{note}{Accessed: 2026-05-15}.
+%Type = Misc
+\bibitem[{{World Wide Web Consortium}(2019)}]{wasm_core}
+\bibinfo{author}{{World Wide Web Consortium}}, \bibinfo{year}{2019}.
+\newblock \bibinfo{title}{Webassembly core specification}.
+\newblock \bibinfo{howpublished}{W3C Recommendation}.
+
+\end{thebibliography}

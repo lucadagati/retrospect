@@ -1,0 +1,44 @@
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+2: ens18: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP mode DEFAULT group default qlen 1000
+    link/ether bc:24:11:da:85:73 brd ff:ff:ff:ff:ff:ff
+    altname enp0s18
+4: docker0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT group default 
+    link/ether 4e:49:70:3c:4e:04 brd ff:ff:ff:ff:ff:ff
+5: veth419596b@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master docker0 state UP mode DEFAULT group default 
+    link/ether ce:1f:3c:77:4d:3f brd ff:ff:ff:ff:ff:ff link-netnsid 0
+6: flannel.1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN mode DEFAULT group default 
+    link/ether 2e:3c:9d:0e:e1:44 brd ff:ff:ff:ff:ff:ff
+7: cni0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UP mode DEFAULT group default qlen 1000
+    link/ether a2:a5:de:9b:1d:3d brd ff:ff:ff:ff:ff:ff
+8: veth0c2ce17e@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue master cni0 state UP mode DEFAULT group default 
+    link/ether 92:77:2f:02:fb:e9 brd ff:ff:ff:ff:ff:ff link-netns cni-c01483e4-3992-fef2-b618-253d935c75fc
+9: veth139d4460@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue master cni0 state UP mode DEFAULT group default 
+    link/ether 66:69:1e:4e:cf:77 brd ff:ff:ff:ff:ff:ff link-netns cni-7b2e4b55-ad02-30c8-5999-0d7ffe229cf5
+10: vethaa0ce296@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue master cni0 state UP mode DEFAULT group default 
+    link/ether 56:c9:61:5a:a8:b9 brd ff:ff:ff:ff:ff:ff link-netns cni-1b903682-db9f-78cd-ceb2-756b44ccdac3
+11: vethf1c2be7b@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue master cni0 state UP mode DEFAULT group default 
+    link/ether 3e:b9:6f:f6:5d:d3 brd ff:ff:ff:ff:ff:ff link-netns cni-c8f45667-4372-c7b1-78b1-4b67403ca7c3
+12: vethd66b325e@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue master cni0 state UP mode DEFAULT group default 
+    link/ether 86:55:da:61:f7:1d brd ff:ff:ff:ff:ff:ff link-netns cni-5f23b89e-df23-ea6d-b02b-a3002a721410
+13: vethaf06e802@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue master cni0 state UP mode DEFAULT group default 
+    link/ether 1e:4b:c4:0b:b2:8e brd ff:ff:ff:ff:ff:ff link-netns cni-d5903adb-9e08-27fc-cacc-f9e698ee978d
+15: veth5b893065@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue master cni0 state UP mode DEFAULT group default 
+    link/ether 76:34:01:ba:62:05 brd ff:ff:ff:ff:ff:ff link-netns cni-9aba1ba3-62cb-dde1-104d-dee6a292dd03
+16: vethb56959db@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue master cni0 state UP mode DEFAULT group default 
+    link/ether 3e:23:bb:5d:74:4e brd ff:ff:ff:ff:ff:ff link-netns cni-0e53fcf7-f12e-1461-27c2-871b5e9272a3
+17: tailscale0: <POINTOPOINT,MULTICAST,NOARP,UP,LOWER_UP> mtu 1280 qdisc fq_codel state UNKNOWN mode DEFAULT group default qlen 500
+    link/none 
+21: vethcc60b51c@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue master cni0 state UP mode DEFAULT group default 
+    link/ether 92:a2:2d:55:f7:ed brd ff:ff:ff:ff:ff:ff link-netns cni-013dda91-4497-8f9f-440e-1945a40c1bd3
+24: tap0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UNKNOWN mode DEFAULT group default qlen 1000
+    link/ether 72:25:d3:3d:81:7b brd ff:ff:ff:ff:ff:ff
+LISTEN 0      4096                     127.0.0.1:3001       0.0.0.0:*          
+LISTEN 0      4096                     127.0.0.1:8080       0.0.0.0:*          
+LISTEN 0      4096                     127.0.0.1:30443      0.0.0.0:*          
+Chain PREROUTING (policy ACCEPT)
+target     prot opt source               destination         
+KUBE-SERVICES  0    --  0.0.0.0/0            0.0.0.0/0            /* kubernetes service portals */
+DOCKER     0    --  0.0.0.0/0            0.0.0.0/0            ADDRTYPE match dst-type LOCAL
+CNI-HOSTPORT-DNAT  0    --  0.0.0.0/0            0.0.0.0/0            ADDRTYPE match dst-type LOCAL
+DNAT       6    --  0.0.0.0/0            192.168.1.1          tcp dpt:30443 to:127.0.0.1:30443

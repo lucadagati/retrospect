@@ -1,0 +1,16 @@
+\section{Problem Formulation and Design Requirements}\label{sec:problem}
+
+The platform addresses the following problem:
+\begin{quote}
+\emph{How can a Kubernetes-based control plane reliably express the intent that a constrained device should execute a specific WebAssembly module, route that intent through a secure gateway, and verify the resulting execution and liveness state---with measurable control-plane and southbound overhead compatible with sustainable research-infrastructure operation---without requiring the device to behave like a Kubernetes node?}
+\end{quote}
+
+Cloud orchestrators normally assume Linux-capable workers with container runtimes, cluster agents, and rich networking support. Embedded devices instead provide limited compute, memory, and network functionality, but they still need comparable guarantees for identity, observability, and life-cycle accountability. The framework therefore treats orchestration as an end-to-end translation problem between cloud intent, gateway-mediated protocol control, and edge-side WASM execution.
+
+\subsection{Design Tensions}
+Three tensions structure the problem. At the resource-model level, Kubernetes assumes a declarative control plane with explicit status ownership, whereas embedded deployments often rely on imperative, device-local procedures that are opaque to the cloud. At the transport level, constrained devices need lightweight and secure communication paths, but the cloud side requires rich enough semantics to express enrollment, liveness, and application control. Operationally, even when protocol messages are correct, reconciliation logic must interpret transient conditions conservatively to avoid reporting an incorrect device state.
+
+\subsection{Design Requirements}
+These tensions lead to a compact set of requirements. Desired and observed state for devices, applications, and gateways must remain represented in Kubernetes resources. Enrollment must occur over a protected channel with auditable binding between transport-level identity and platform-level resource identity. The application life cycle must use a format usable across cloud, fog, and constrained edge targets, motivating WebAssembly as a common execution abstraction. Runtime evidence must confirm enrollment, heartbeat-based liveness, deployment status, and gateway association without manual inspection of device internals. For digital research infrastructures, the same evidence model should expose where workload placement, liveness, and execution outcomes can later be correlated with site-level power or carbon signals. Finally, the complete stack must deploy and test in a commodity research environment.
+
+Secure attachment without unified state would remain difficult to operate; unified state without secure attachment would be insecure by construction; and either property without runtime evidence would leave operators unable to trust the control plane. Communication, orchestration, and status management are therefore co-designed rather than layered opportunistically. Embedded devices are not trusted to manage cluster state directly, and Kubernetes is not expected to maintain device sessions directly: a managed gateway acts as the trusted fog-layer mediation point while the control plane remains authoritative for desired state.

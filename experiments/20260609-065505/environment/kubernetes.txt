@@ -1,0 +1,118 @@
+NAME                        STATUS   AGE
+namespace/default           Active   24d
+namespace/kube-node-lease   Active   24d
+namespace/kube-public       Active   24d
+namespace/kube-system       Active   24d
+namespace/wasmbed           Active   24d
+
+NAMESPACE     NAME                                                  READY   STATUS      RESTARTS       AGE
+kube-system   pod/coredns-c4dbffb5f-pdhnv                           1/1     Running     7 (13d ago)    24d
+kube-system   pod/helm-install-traefik-crd-xgvd8                    0/1     Completed   0              24d
+kube-system   pod/helm-install-traefik-phn77                        0/1     Completed   1              24d
+kube-system   pod/local-path-provisioner-5c4dc5d66d-kbjgb           1/1     Running     7 (13d ago)    24d
+kube-system   pod/metrics-server-786d997795-45vx4                   1/1     Running     7 (13d ago)    24d
+kube-system   pod/svclb-traefik-26df1ef4-g52rj                      2/2     Running     14 (13d ago)   24d
+kube-system   pod/svclb-wasmbed-dashboard-5ebd1775-p9v87            1/1     Running     7 (13d ago)    24d
+kube-system   pod/traefik-9bcdbbd9-qrd49                            1/1     Running     7 (13d ago)    24d
+wasmbed       pod/gateway-1-deployment-7c684f64b9-rdwzp             1/1     Running     7 (13d ago)    23d
+wasmbed       pod/wasmbed-api-server-5bbd98b6b8-ghfms               1/1     Running     0              14m
+wasmbed       pod/wasmbed-application-controller-6f94bcd6bb-pk65q   1/1     Running     7 (13d ago)    23d
+
+NAMESPACE     NAME                         TYPE           CLUSTER-IP      EXTERNAL-IP       PORT(S)                      AGE
+default       service/kubernetes           ClusterIP      10.43.0.1       <none>            443/TCP                      24d
+kube-system   service/kube-dns             ClusterIP      10.43.0.10      <none>            53/UDP,53/TCP,9153/TCP       24d
+kube-system   service/metrics-server       ClusterIP      10.43.49.172    <none>            443/TCP                      24d
+kube-system   service/traefik              LoadBalancer   10.43.4.149     192.168.100.183   80:30954/TCP,443:30219/TCP   24d
+wasmbed       service/gateway-1-service    ClusterIP      10.43.18.251    <none>            8080/TCP,8443/TCP            24d
+wasmbed       service/wasmbed-api-server   ClusterIP      10.43.207.172   <none>            3001/TCP                     24d
+wasmbed       service/wasmbed-dashboard    LoadBalancer   10.43.212.97    192.168.100.183   3000:31090/TCP               24d
+wasmbed       service/wasmbed-gateway      ClusterIP      10.43.3.151     <none>            8080/TCP,8081/TCP            24d
+
+NAMESPACE   NAME                                                                                         CREATED AT
+            customresourcedefinition.apiextensions.k8s.io/accesscontrolpolicies.hub.traefik.io           2026-05-15T16:17:29Z
+            customresourcedefinition.apiextensions.k8s.io/addons.k3s.cattle.io                           2026-05-15T16:16:59Z
+            customresourcedefinition.apiextensions.k8s.io/aiservices.hub.traefik.io                      2026-05-15T16:17:29Z
+            customresourcedefinition.apiextensions.k8s.io/apiauths.hub.traefik.io                        2026-05-15T16:17:29Z
+            customresourcedefinition.apiextensions.k8s.io/apibundles.hub.traefik.io                      2026-05-15T16:17:29Z
+            customresourcedefinition.apiextensions.k8s.io/apicatalogitems.hub.traefik.io                 2026-05-15T16:17:30Z
+            customresourcedefinition.apiextensions.k8s.io/apiplans.hub.traefik.io                        2026-05-15T16:17:29Z
+            customresourcedefinition.apiextensions.k8s.io/apiportalauths.hub.traefik.io                  2026-05-15T16:17:30Z
+            customresourcedefinition.apiextensions.k8s.io/apiportals.hub.traefik.io                      2026-05-15T16:17:30Z
+            customresourcedefinition.apiextensions.k8s.io/apiratelimits.hub.traefik.io                   2026-05-15T16:17:29Z
+            customresourcedefinition.apiextensions.k8s.io/apis.hub.traefik.io                            2026-05-15T16:17:29Z
+            customresourcedefinition.apiextensions.k8s.io/apiversions.hub.traefik.io                     2026-05-15T16:17:29Z
+            customresourcedefinition.apiextensions.k8s.io/applications.wasmbed.github.io                 2026-05-15T16:27:30Z
+            customresourcedefinition.apiextensions.k8s.io/backendtlspolicies.gateway.networking.k8s.io   2026-05-15T16:17:29Z
+            customresourcedefinition.apiextensions.k8s.io/devices.wasmbed.github.io                      2026-05-15T16:27:30Z
+            customresourcedefinition.apiextensions.k8s.io/etcdsnapshotfiles.k3s.cattle.io                2026-05-15T16:16:59Z
+            customresourcedefinition.apiextensions.k8s.io/gatewayclasses.gateway.networking.k8s.io       2026-05-15T16:17:29Z
+            customresourcedefinition.apiextensions.k8s.io/gateways.gateway.networking.k8s.io             2026-05-15T16:17:30Z
+            customresourcedefinition.apiextensions.k8s.io/gateways.wasmbed.io                            2026-05-15T16:27:30Z
+            customresourcedefinition.apiextensions.k8s.io/grpcroutes.gateway.networking.k8s.io           2026-05-15T16:17:30Z
+            customresourcedefinition.apiextensions.k8s.io/helmchartconfigs.helm.cattle.io                2026-05-15T16:16:59Z
+            customresourcedefinition.apiextensions.k8s.io/helmcharts.helm.cattle.io                      2026-05-15T16:16:59Z
+            customresourcedefinition.apiextensions.k8s.io/httproutes.gateway.networking.k8s.io           2026-05-15T16:17:30Z
+            customresourcedefinition.apiextensions.k8s.io/ingressroutes.traefik.io                       2026-05-15T16:17:30Z
+            customresourcedefinition.apiextensions.k8s.io/ingressroutetcps.traefik.io                    2026-05-15T16:17:30Z
+            customresourcedefinition.apiextensions.k8s.io/ingressrouteudps.traefik.io                    2026-05-15T16:17:29Z
+            customresourcedefinition.apiextensions.k8s.io/managedapplications.hub.traefik.io             2026-05-15T16:17:29Z
+            customresourcedefinition.apiextensions.k8s.io/managedsubscriptions.hub.traefik.io            2026-05-15T16:17:30Z
+            customresourcedefinition.apiextensions.k8s.io/middlewares.traefik.io                         2026-05-15T16:17:30Z
+            customresourcedefinition.apiextensions.k8s.io/middlewaretcps.traefik.io                      2026-05-15T16:17:30Z
+            customresourcedefinition.apiextensions.k8s.io/referencegrants.gateway.networking.k8s.io      2026-05-15T16:17:29Z
+            customresourcedefinition.apiextensions.k8s.io/serverstransports.traefik.io                   2026-05-15T16:17:30Z
+            customresourcedefinition.apiextensions.k8s.io/serverstransporttcps.traefik.io                2026-05-15T16:17:30Z
+            customresourcedefinition.apiextensions.k8s.io/tlsoptions.traefik.io                          2026-05-15T16:17:29Z
+            customresourcedefinition.apiextensions.k8s.io/tlsstores.traefik.io                           2026-05-15T16:17:30Z
+            customresourcedefinition.apiextensions.k8s.io/traefikservices.traefik.io                     2026-05-15T16:17:30Z
+NAME                                                  READY   STATUS    RESTARTS      AGE   IP            NODE     NOMINATED NODE   READINESS GATES
+pod/gateway-1-deployment-7c684f64b9-rdwzp             1/1     Running   7 (13d ago)   23d   10.42.0.99    ubuntu   <none>           <none>
+pod/wasmbed-api-server-5bbd98b6b8-ghfms               1/1     Running   0             14m   10.42.0.101   ubuntu   <none>           <none>
+pod/wasmbed-application-controller-6f94bcd6bb-pk65q   1/1     Running   7 (13d ago)   23d   10.42.0.100   ubuntu   <none>           <none>
+
+NAME                         TYPE           CLUSTER-IP      EXTERNAL-IP       PORT(S)             AGE   SELECTOR
+service/gateway-1-service    ClusterIP      10.43.18.251    <none>            8080/TCP,8443/TCP   24d   app=wasmbed-gateway,gateway=gateway-1
+service/wasmbed-api-server   ClusterIP      10.43.207.172   <none>            3001/TCP            24d   app=wasmbed-api-server
+service/wasmbed-dashboard    LoadBalancer   10.43.212.97    192.168.100.183   3000:31090/TCP      24d   app=wasmbed-dashboard
+service/wasmbed-gateway      ClusterIP      10.43.3.151     <none>            8080/TCP,8081/TCP   24d   app=wasmbed-gateway
+
+NAME                                             READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS               IMAGES                                                     SELECTOR
+deployment.apps/gateway-1-deployment             1/1     1            1           24d   gateway                  localhost:5000/wasmbed/gateway:fixhb2                      app=wasmbed-gateway,gateway=gateway-1
+deployment.apps/wasmbed-api-server               1/1     1            1           24d   api-server               localhost:5000/wasmbed/api-server:latest                   app=wasmbed-api-server
+deployment.apps/wasmbed-application-controller   1/1     1            1           24d   application-controller   localhost:5000/wasmbed/application-controller:fixstatus1   app=wasmbed-application-controller
+deployment.apps/wasmbed-dashboard                0/0     0            0           24d   dashboard                localhost:5000/wasmbed/dashboard:latest                    app=wasmbed-dashboard
+deployment.apps/wasmbed-device-controller        0/0     0            0           24d   device-controller        localhost:5000/wasmbed/device-controller:fix2              app=wasmbed-device-controller
+deployment.apps/wasmbed-gateway-controller       0/0     0            0           24d   gateway-controller       localhost:5000/wasmbed/gateway-controller:latest           app=wasmbed-gateway-controller
+
+NAME                                                        DESIRED   CURRENT   READY   AGE   CONTAINERS               IMAGES                                                     SELECTOR
+replicaset.apps/gateway-1-deployment-567ffbdb5f             0         0         0       24d   gateway                  localhost:5000/wasmbed/gateway:latest                      app=wasmbed-gateway,gateway=gateway-1,pod-template-hash=567ffbdb5f
+replicaset.apps/gateway-1-deployment-64c66b5f6              0         0         0       23d   gateway                  localhost:5000/wasmbed/gateway:fixhb1                      app=wasmbed-gateway,gateway=gateway-1,pod-template-hash=64c66b5f6
+replicaset.apps/gateway-1-deployment-6dd6bfdc78             0         0         0       24d   gateway                  localhost:5000/wasmbed/gateway:fixtls4                     app=wasmbed-gateway,gateway=gateway-1,pod-template-hash=6dd6bfdc78
+replicaset.apps/gateway-1-deployment-7c444674dc             0         0         0       24d   gateway                  localhost:5000/wasmbed/gateway:fixtls3                     app=wasmbed-gateway,gateway=gateway-1,pod-template-hash=7c444674dc
+replicaset.apps/gateway-1-deployment-7c684f64b9             1         1         1       23d   gateway                  localhost:5000/wasmbed/gateway:fixhb2                      app=wasmbed-gateway,gateway=gateway-1,pod-template-hash=7c684f64b9
+replicaset.apps/gateway-1-deployment-7f9d44f4b5             0         0         0       24d   gateway                  localhost:5000/wasmbed/gateway:fixtls1                     app=wasmbed-gateway,gateway=gateway-1,pod-template-hash=7f9d44f4b5
+replicaset.apps/gateway-1-deployment-94f9d9584              0         0         0       24d   gateway                  localhost:5000/wasmbed/gateway:fixtls2                     app=wasmbed-gateway,gateway=gateway-1,pod-template-hash=94f9d9584
+replicaset.apps/wasmbed-api-server-5bbd98b6b8               1         1         1       14m   api-server               localhost:5000/wasmbed/api-server:latest                   app=wasmbed-api-server,pod-template-hash=5bbd98b6b8
+replicaset.apps/wasmbed-api-server-6c9cb8d5f                0         0         0       23d   api-server               localhost:5000/wasmbed/api-server:latest                   app=wasmbed-api-server,pod-template-hash=6c9cb8d5f
+replicaset.apps/wasmbed-api-server-7958999686               0         0         0       23d   api-server               localhost:5000/wasmbed/api-server:latest                   app=wasmbed-api-server,pod-template-hash=7958999686
+replicaset.apps/wasmbed-api-server-858dbd9df8               0         0         0       24d   api-server               localhost:5000/wasmbed/api-server:latest                   app=wasmbed-api-server,pod-template-hash=858dbd9df8
+replicaset.apps/wasmbed-api-server-9d58b48c                 0         0         0       24d   api-server               localhost:5000/wasmbed/api-server:latest                   app=wasmbed-api-server,pod-template-hash=9d58b48c
+replicaset.apps/wasmbed-application-controller-5497cbb64    0         0         0       24d   application-controller   localhost:5000/wasmbed/application-controller:fixdeploy1   app=wasmbed-application-controller,pod-template-hash=5497cbb64
+replicaset.apps/wasmbed-application-controller-57c588f6d4   0         0         0       23d   application-controller   localhost:5000/wasmbed/application-controller:fixdeploy2   app=wasmbed-application-controller,pod-template-hash=57c588f6d4
+replicaset.apps/wasmbed-application-controller-5c6dbb6bff   0         0         0       23d   application-controller   localhost:5000/wasmbed/application-controller:fixdeploy1   app=wasmbed-application-controller,pod-template-hash=5c6dbb6bff
+replicaset.apps/wasmbed-application-controller-5fb5d96b9c   0         0         0       23d   application-controller   localhost:5000/wasmbed/application-controller:fixdeploy3   app=wasmbed-application-controller,pod-template-hash=5fb5d96b9c
+replicaset.apps/wasmbed-application-controller-64bddb65cd   0         0         0       23d   application-controller   localhost:5000/wasmbed/application-controller:fixdeploy1   app=wasmbed-application-controller,pod-template-hash=64bddb65cd
+replicaset.apps/wasmbed-application-controller-67849fb46f   0         0         0       23d   application-controller   localhost:5000/wasmbed/application-controller:fixdeploy1   app=wasmbed-application-controller,pod-template-hash=67849fb46f
+replicaset.apps/wasmbed-application-controller-6958f65784   0         0         0       24d   application-controller   localhost:5000/wasmbed/application-controller:latest       app=wasmbed-application-controller,pod-template-hash=6958f65784
+replicaset.apps/wasmbed-application-controller-6f94bcd6bb   1         1         1       23d   application-controller   localhost:5000/wasmbed/application-controller:fixstatus1   app=wasmbed-application-controller,pod-template-hash=6f94bcd6bb
+replicaset.apps/wasmbed-dashboard-7c979dc7b8                0         0         0       24d   dashboard                localhost:5000/wasmbed/dashboard:latest                    app=wasmbed-dashboard,pod-template-hash=7c979dc7b8
+replicaset.apps/wasmbed-device-controller-564865b544        0         0         0       24d   device-controller        localhost:5000/wasmbed/device-controller:latest            app=wasmbed-device-controller,pod-template-hash=564865b544
+replicaset.apps/wasmbed-device-controller-6bdd85c           0         0         0       24d   device-controller        localhost:5000/wasmbed/device-controller:fix1              app=wasmbed-device-controller,pod-template-hash=6bdd85c
+replicaset.apps/wasmbed-device-controller-777675f476        0         0         0       24d   device-controller        localhost:5000/wasmbed/device-controller:fix2              app=wasmbed-device-controller,pod-template-hash=777675f476
+replicaset.apps/wasmbed-gateway-controller-65f7884677       0         0         0       24d   gateway-controller       localhost:5000/wasmbed/gateway-controller:latest           app=wasmbed-gateway-controller,pod-template-hash=65f7884677
+
+NAME                                    AGE
+device.wasmbed.github.io/native-sim-1   24d
+
+NAME                                                     AGE
+application.wasmbed.github.io/experiment-50-1780987750   6m4s

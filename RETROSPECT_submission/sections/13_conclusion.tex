@@ -1,0 +1,7 @@
+\section{Conclusion and Future Work}\label{sec:conclusion}
+
+This paper presented a Kubernetes-native framework for managing embedded WebAssembly workloads across the Cloud--Fog--Edge continuum without requiring constrained devices to become Kubernetes nodes. The contribution integrates CRD-based intent, gateway-mediated TLS/CBOR communication, Zephyr firmware, WAMR execution, and evidence-driven reconciliation into a single verifiable operational path suitable for sustainable digital research infrastructures.
+
+The experimental evaluation on a K3s test bed with emulated embedded targets confirms that the architecture supports a complete enrollment-to-deployment workflow under repeatable conditions, with 100/100 transactional success and sub-second mean end-to-end orchestration latency. Measured southbound control traffic, firmware footprint, and fog-layer resource use provide quantitative anchors for subsequent energy-aware placement and green-experimentation studies.
+
+Future work will extend the platform toward multi-gateway deployments, fault injection, physical hardware, wattmeter-based energy measurements, carbon-intensity annotations, and larger device populations.

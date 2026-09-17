@@ -1,0 +1,43 @@
+{
+  "generated_at": "2026-06-11T09:47:38.152665+00:00",
+  "baseline": {
+    "devices_target": 0,
+    "devices_connected": 1,
+    "gateway": {
+      "cpu_millicores": 1.0,
+      "memory_mib": 22.0
+    }
+  },
+  "scaling": [
+    {
+      "devices_target": 1,
+      "devices_connected": 1,
+      "gateway_cpu_millicores_mean": 1.0,
+      "gateway_memory_mib_mean": 18.0,
+      "device_ids": [
+        "scale-tls-1"
+      ]
+    },
+    {
+      "devices_target": 2,
+      "devices_connected": 1,
+      "gateway_cpu_millicores_mean": 1.0,
+      "gateway_memory_mib_mean": 18.0,
+      "device_ids": [
+        "scale-tls-1",
+        "scale-tls-2"
+      ]
+    },
+    {
+      "devices_target": 3,
+      "devices_connected": 1,
+      "gateway_cpu_millicores_mean": 1.0,
+      "gateway_memory_mib_mean": 18.0,
+      "device_ids": [
+        "scale-tls-1",
+        "scale-tls-2",
+        "scale-tls-3"
+      ]
+    }
+  ]
+}
